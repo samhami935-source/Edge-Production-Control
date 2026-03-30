@@ -630,6 +630,32 @@
       <button class="btn btn-outline" onclick="clearPaysheet()">Clear Sheet</button>
     </div>
 
+    <!-- Budget by Area panel -->
+    <details id="ps-area-budget-details" style="margin-bottom:24px;" open>
+      <summary style="cursor:pointer;font-weight:600;font-size:.95rem;color:var(--green);padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;list-style:none;display:flex;align-items:center;gap:8px;">
+        <span>💰</span><span>Budget by Area</span>
+      </summary>
+      <div style="margin-top:8px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:0 0 8px 8px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+          <label style="font-size:.85rem;color:var(--muted);white-space:nowrap;">Select Area</label>
+          <select id="ps-area-budget-select" class="fi" style="max-width:280px;" onchange="renderPSAreaBudgetTable()">
+            <option value="">— Select area —</option>
+          </select>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="min-width:500px;margin:0;">
+            <thead><tr>
+              <th>Labor Group</th>
+              <th style="text-align:right;">Budget</th>
+              <th style="text-align:right;">Paid</th>
+              <th style="text-align:right;">Remaining</th>
+            </tr></thead>
+            <tbody id="ps-area-budget-tbody"><tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">Select a job and area to view budget.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+
     <!-- Printable paysheet -->
     <div id="paysheet-print-area" style="background:#fff;color:#000;border-radius:8px;padding:32px;max-width:960px;font-family:Arial,sans-serif;font-size:13px;">
 
@@ -2156,6 +2182,7 @@ function switchToPaysheet() {
   ['csv-content','payroll-content','budgets-content','lc-content'].forEach(id => document.getElementById(id).style.display = 'none');
   document.getElementById('paysheet-content').style.display = 'block';
   psPopulateJobSelect();
+  psPopulateAreaBudgetSelect();
   psRenderMainTable();
   psRenderCrewTable();
 }
@@ -2173,7 +2200,64 @@ function psPopulateJobSelect() {
 }
 
 function psJobChanged() {
+  psPopulateAreaBudgetSelect();
   psRenderMainTable();
+}
+
+function psPopulateAreaBudgetSelect() {
+  const jobName = document.getElementById('ps-job-select').value;
+  const sel = document.getElementById('ps-area-budget-select');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Select area —</option>';
+  if (jobName) {
+    psGetAreas(jobName).forEach(a => {
+      const o = document.createElement('option');
+      o.value = a; o.textContent = a;
+      sel.appendChild(o);
+    });
+    if (cur) sel.value = cur;
+  }
+  renderPSAreaBudgetTable();
+}
+
+function renderPSAreaBudgetTable() {
+  const jobName = document.getElementById('ps-job-select').value;
+  const area    = document.getElementById('ps-area-budget-select').value;
+  const tbody   = document.getElementById('ps-area-budget-tbody');
+  if (!area || !jobName) {
+    tbody.innerHTML='<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">Select a job and area above.</td></tr>';
+    return;
+  }
+  const f = getSavedCSVFiles().find(x => x.name === jobName);
+  if (!f) return;
+  const allEntries = getPayrollEntries().filter(e => e.csvFile === jobName);
+  let totalBudget=0, totalPaid=0;
+  const rows = PAYROLL_GROUPS.map(g => {
+    const budget = f.rows.filter(r=>r.area===area&&getCodeGroup(r.costCode)===g.code).reduce((s,r)=>s+r.amount,0);
+    const paid   = allEntries.filter(e=>e.area===area&&e.costCode===g.code).reduce((s,e)=>s+e.price,0);
+    if (budget===0 && paid===0) return '';
+    const rem = budget - paid;
+    const rc  = rem<0?'color:var(--red)':rem===0?'color:var(--yellow)':'color:var(--green)';
+    totalBudget+=budget; totalPaid+=paid;
+    return `<tr>
+      <td style="font-size:.85rem;">${g.code} — ${g.description}</td>
+      <td style="text-align:right;">${fm(budget)}</td>
+      <td style="text-align:right;color:var(--yellow);">${paid>0?fm(paid):'—'}</td>
+      <td style="text-align:right;${rc}">${rem<0?'-':''}${fm(Math.abs(rem))}</td>
+    </tr>`;
+  }).filter(Boolean);
+  if (!rows.length) {
+    tbody.innerHTML='<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">No budget data for this area.</td></tr>';
+    return;
+  }
+  const totRem = totalBudget-totalPaid;
+  const totRc  = totRem<0?'color:var(--red)':totRem===0?'color:var(--yellow)':'color:var(--green)';
+  tbody.innerHTML = rows.join('') + `<tr style="border-top:2px solid var(--border);font-weight:700;">
+    <td>Total</td>
+    <td style="text-align:right;">${fm(totalBudget)}</td>
+    <td style="text-align:right;color:var(--yellow);">${totalPaid>0?fm(totalPaid):'—'}</td>
+    <td style="text-align:right;${totRc}">${totRem<0?'-':''}${fm(Math.abs(totRem))}</td>
+  </tr>`;
 }
 
 // Get all areas for a job from both CSV rows and payroll entries
