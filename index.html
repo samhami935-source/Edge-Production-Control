@@ -724,6 +724,9 @@
       </div>
     </details>
 
+    <!-- Crew tab bar for paysheet -->
+    <div id="ps-crew-tab-bar" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;"></div>
+
     <!-- Printable paysheet -->
     <div id="paysheet-print-area" style="background:#fff;color:#000;border-radius:8px;padding:32px;max-width:960px;font-family:Arial,sans-serif;font-size:13px;">
 
@@ -2481,16 +2484,17 @@ function psAutoFillFromDaily() {
   psJobSel.value = jobName;
   psJobChanged();
 
-  // Fill main table rows
+  // Fill main table rows for active crew
   combos.slice(0, PS_MAIN_ROWS).forEach((combo, i) => {
-    _psRows[i].area     = combo.area;
-    _psRows[i].costCode = combo.costCode;
+    _ps().rows[i].area     = combo.area;
+    _ps().rows[i].costCode = combo.costCode;
   });
 
-  // Fill crew splits with employee names from Crew 1
-  const crew1Employees = _diData[1].filter(r => r.employee.trim()).map(r => r.employee.trim());
-  crew1Employees.slice(0, _psCrew.length).forEach((name, i) => {
-    _psCrew[i].name = name;
+  // Fill crew splits from active daily input crew
+  const activeDiCrew = _diData[_psActiveCrew] || _diData[1];
+  const crewEmps = activeDiCrew.filter(r => r.employee.trim());
+  crewEmps.slice(0, _ps().crew.length).forEach((r, i) => {
+    _ps().crew[i].name = r.employee.trim();
   });
 
   psRenderMainTable();
@@ -2521,15 +2525,15 @@ function diAutoFillFromLog(id) {
     });
 
     combos.slice(0, PS_MAIN_ROWS).forEach((combo, i) => {
-      _psRows[i].area     = combo.area;
-      _psRows[i].costCode = combo.costCode;
+      _ps().rows[i].area     = combo.area;
+      _ps().rows[i].costCode = combo.costCode;
     });
 
-    // Fill crew splits from Crew 1 employees
-    const crew1 = r.crews.find(c => c.crewNum === 1);
-    if (crew1) {
-      crew1.entries.slice(0, _psCrew.length).forEach((e, i) => {
-        _psCrew[i].name = e.employee || '';
+    // Fill crew splits from matching crew in submission
+    const matchCrew = r.crews.find(c => c.crewNum === _psActiveCrew) || r.crews[0];
+    if (matchCrew) {
+      matchCrew.entries.slice(0, _ps().crew.length).forEach((e, i) => {
+        _ps().crew[i].name = e.employee || '';
       });
     }
 
@@ -2550,14 +2554,113 @@ function diAutoFillFromLog(id) {
 // ═══════════════════════════
 const PS_MAIN_ROWS  = 15;
 const PS_CREW_ROWS  = 10;
+const PS_NUM_CREWS  = 10;
+
+// Per-crew paysheet state
+let _psActiveCrew = 1;
+function _psEmptyRows()   { return Array.from({length: PS_MAIN_ROWS}, () => ({area:'', costCode:'', weAmount:''})); }
+function _psEmptyCrew()   { return Array.from({length: PS_CREW_ROWS}, () => ({empNum:'', name:'', split:'', initials:''})); }
+function _psEmptyHeader() { return {project:'', foreman:'', crewName:'', weekEnding:''}; }
+let _psState = {};
+for (let c=1; c<=PS_NUM_CREWS; c++) {
+  _psState[c] = { rows: _psEmptyRows(), crew: _psEmptyCrew(), header: _psEmptyHeader() };
+}
+
+// Convenience accessors for current crew
+function _ps()     { return _psState[_psActiveCrew]; }
+let _psRows = null; // legacy alias updated on crew switch
+let _psCrew = null;
+
+function psSwitchCrew(n) {
+  _psSaveHeaderFields();
+  _psActiveCrew = n;
+  _psRows = _ps().rows;
+  _psCrew = _ps().crew;
+  psRenderCrewTabs();
+  psLoadHeaderFields();
+  psRenderMainTable();
+  psRenderCrewTable();
+  // Auto-fill from daily input for this crew if rows are empty
+  psAutoFillCrewFromDaily(n);
+}
+
+function _psSaveHeaderFields() {
+  const h = _ps().header;
+  ['project','foreman','crewName','weekEnding'].forEach(k => {
+    const el = document.getElementById('ps-' + (k==='crewName'?'crew':k==='weekEnding'?'weekending':k));
+    if (el) h[k] = el.value;
+  });
+}
+
+function psLoadHeaderFields() {
+  const h = _ps().header;
+  const map = {project:'ps-project', foreman:'ps-foreman', crewName:'ps-crew', weekEnding:'ps-weekending'};
+  Object.entries(map).forEach(([k,id]) => { const el=document.getElementById(id); if(el) el.value=h[k]||''; });
+}
+
+function psRenderCrewTabs() {
+  let wrap = document.getElementById('ps-crew-tab-bar');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  for (let c=1; c<=PS_NUM_CREWS; c++) {
+    const btn = document.createElement('button');
+    btn.className = 'btn-sm' + (c===_psActiveCrew?'':' btn-outline');
+    btn.style.cssText = c===_psActiveCrew ? 'background:var(--accent);color:#000;border-color:var(--accent);font-weight:700;' : '';
+    btn.textContent = `Crew ${c}`;
+    btn.onclick = () => psSwitchCrew(c);
+    wrap.appendChild(btn);
+  }
+}
+
+function psAutoFillCrewFromDaily(crewNum) {
+  // Only auto-fill if this crew's rows are all empty
+  const state = _psState[crewNum];
+  const hasData = state.rows.some(r => r.area || r.costCode);
+  if (hasData) return;
+
+  const diRows = _diData[crewNum] ? _diData[crewNum].filter(r => r.employee.trim()) : [];
+  if (!diRows.length) return;
+
+  const jobName = document.getElementById('ps-job-select').value ||
+                  document.getElementById('di-job-select').value;
+  if (!jobName) return;
+
+  // Collect unique area+code combos for this crew
+  const combos = [], seen = new Set();
+  diRows.forEach(r => {
+    if (!r.area || !r.costCode) return;
+    const key = r.area+'|||'+r.costCode;
+    if (!seen.has(key)) { seen.add(key); combos.push({area:r.area, costCode:r.costCode}); }
+  });
+  combos.slice(0, PS_MAIN_ROWS).forEach((combo, i) => {
+    state.rows[i].area     = combo.area;
+    state.rows[i].costCode = combo.costCode;
+  });
+
+  // Fill crew split names
+  diRows.slice(0, PS_CREW_ROWS).forEach((r, i) => {
+    state.crew[i].name = r.employee;
+  });
+
+  // Set job on paysheet if not set
+  const psSel = document.getElementById('ps-job-select');
+  if (psSel && !psSel.value && jobName) { psSel.value = jobName; psJobChanged(); }
+
+  psRenderMainTable();
+  psRenderCrewTable();
+}
 
 function switchToPaysheet() {
   activeTab = 'paysheet';
   renderTabBar();
   ['csv-content','payroll-content','budgets-content','lc-content'].forEach(id => document.getElementById(id).style.display = 'none');
   document.getElementById('paysheet-content').style.display = 'block';
+  _psRows = _ps().rows;
+  _psCrew = _ps().crew;
   psPopulateJobSelect();
   psPopulateAreaBudgetSelect();
+  psRenderCrewTabs();
+  psLoadHeaderFields();
   psRenderMainTable();
   psRenderCrewTable();
   diInit();
@@ -2653,15 +2756,12 @@ function psGetAreaCodeData(jobName, area, costCode) {
   return { budget, ptd, remaining: budget - ptd };
 }
 
-// State: main table rows (area + costCode selections + WE amount)
-let _psRows = Array.from({length: PS_MAIN_ROWS}, () => ({ area:'', costCode:'', weAmount:'' }));
-
 function psRenderMainTable() {
   const jobName = document.getElementById('ps-job-select').value;
   const tbody   = document.getElementById('ps-main-tbody');
   const areas   = jobName ? psGetAreas(jobName) : [];
 
-  tbody.innerHTML = _psRows.map((row, i) => {
+  tbody.innerHTML = _ps().rows.map((row, i) => {
     // Area dropdown — blank placeholder if no selection
     const areaOpts = ['<option value="" style="color:#aaa;">' + (row.area ? '— Area —' : '') + '</option>',
       ...areas.map(a => `<option value="${eh(a)}" ${row.area===a?'selected':''}>${eh(a)}</option>`)
@@ -2725,22 +2825,21 @@ function psCalcPct(budgetStr, weStr) {
 }
 
 function psAreaChanged(i, area) {
-  _psRows[i].area = area;
-  _psRows[i].costCode = ''; // reset code when area changes
+  _ps().rows[i].area = area;
+  _ps().rows[i].costCode = '';
   psRenderMainTable();
 }
 
 function psCodeChanged(i, code) {
-  _psRows[i].costCode = code;
+  _ps().rows[i].costCode = code;
   psRenderMainTable();
 }
 
 function psWEChanged(i, val) {
-  _psRows[i].weAmount = val;
+  _ps().rows[i].weAmount = val;
   psUpdateTotal();
-  // Update pct cell inline without full re-render
   const jobName = document.getElementById('ps-job-select').value;
-  const row = _psRows[i];
+  const row = _ps().rows[i];
   let budgetVal = '';
   if (jobName && row.area && row.costCode) {
     const d = psGetAreaCodeData(jobName, row.area, row.costCode);
@@ -2751,33 +2850,30 @@ function psWEChanged(i, val) {
 }
 
 function psUpdateTotal() {
-  const total = _psRows.reduce((s, r) => s + (parseFloat(r.weAmount) || 0), 0);
+  const total = _ps().rows.reduce((s, r) => s + (parseFloat(r.weAmount) || 0), 0);
   document.getElementById('ps-total-display').textContent = total > 0
     ? '$ ' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
     : '$ —';
   psUpdateCrewAmounts(total);
 }
 
-// Crew table state
-let _psCrew = Array.from({length: PS_CREW_ROWS}, () => ({ empNum:'', name:'', split:'', initials:'' }));
-
 function psRenderCrewTable() {
   const tbody = document.getElementById('ps-crew-tbody');
-  const total = _psRows.reduce((s,r) => s + (parseFloat(r.weAmount)||0), 0);
-  tbody.innerHTML = _psCrew.map((c, i) => {
+  const total = _ps().rows.reduce((s,r) => s + (parseFloat(r.weAmount)||0), 0);
+  tbody.innerHTML = _ps().crew.map((c, i) => {
     const amt = total > 0 && c.split ? (total * parseFloat(c.split) / 100) : 0;
     return `<tr>
-      <td style="border:1px solid #000;padding:2px 4px;"><input class="ps-editable-cell" value="${c.empNum}" placeholder="" oninput="_psCrew[${i}].empNum=this.value" style="text-align:center;" /></td>
-      <td style="border:1px solid #000;padding:2px 4px;"><input class="ps-editable-cell" value="${c.name}"   placeholder="" oninput="_psCrew[${i}].name=this.value"   style="text-align:left;" /></td>
-      <td style="border:1px solid #000;padding:2px 4px;"><input class="ps-editable-cell" type="number" min="0" max="100" value="${c.split}"   placeholder="0" oninput="_psCrew[${i}].split=this.value;psUpdateTotal()" style="text-align:center;" /></td>
+      <td style="border:1px solid #000;padding:2px 4px;"><input class="ps-editable-cell" value="${c.empNum}" placeholder="" oninput="_ps().crew[${i}].empNum=this.value" style="text-align:center;" /></td>
+      <td style="border:1px solid #000;padding:2px 4px;"><input class="ps-editable-cell" value="${c.name}"   placeholder="" oninput="_ps().crew[${i}].name=this.value"   style="text-align:left;" /></td>
+      <td style="border:1px solid #000;padding:2px 4px;"><input class="ps-editable-cell" type="number" min="0" max="100" value="${c.split}" placeholder="0" oninput="_ps().crew[${i}].split=this.value;psUpdateTotal()" style="text-align:center;" /></td>
       <td style="border:1px solid #000;padding:4px 8px;text-align:right;" id="ps-crew-amt-${i}">${amt>0?'$'+amt.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):''}</td>
-      <td style="border:1px solid #000;padding:2px 4px;"><input class="ps-editable-cell" value="${c.initials}" placeholder="" oninput="_psCrew[${i}].initials=this.value" style="text-align:center;" /></td>
+      <td style="border:1px solid #000;padding:2px 4px;"><input class="ps-editable-cell" value="${c.initials}" placeholder="" oninput="_ps().crew[${i}].initials=this.value" style="text-align:center;" /></td>
     </tr>`;
   }).join('');
 }
 
 function psUpdateCrewAmounts(total) {
-  _psCrew.forEach((c, i) => {
+  _ps().crew.forEach((c, i) => {
     const el = document.getElementById(`ps-crew-amt-${i}`);
     if (!el) return;
     const amt = total > 0 && c.split ? (total * parseFloat(c.split) / 100) : 0;
@@ -2786,10 +2882,9 @@ function psUpdateCrewAmounts(total) {
 }
 
 function clearPaysheet() {
-  if (!confirm('Clear all paysheet entries?')) return;
-  _psRows = Array.from({length: PS_MAIN_ROWS}, () => ({ area:'', costCode:'', weAmount:'' }));
-  _psCrew = Array.from({length: PS_CREW_ROWS}, () => ({ empNum:'', name:'', split:'', initials:'' }));
-  ['ps-project','ps-foreman','ps-crew','ps-weekending'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  if (!confirm(`Clear Crew ${_psActiveCrew} paysheet?`)) return;
+  _psState[_psActiveCrew] = { rows: _psEmptyRows(), crew: _psEmptyCrew(), header: _psEmptyHeader() };
+  psLoadHeaderFields();
   psRenderMainTable();
   psRenderCrewTable();
 }
@@ -2821,7 +2916,7 @@ function exportPaysheetExcel() {
   mainData.push(['Area Worked', 'Labor Code', 'Budget ($)', 'PTD ($)', 'Remaining Budget', 'W/E Earned Amount', '% Complete']);
 
   let totalWE = 0;
-  _psRows.forEach(row => {
+  _ps().rows.forEach(row => {
     if (!row.area && !row.costCode && !row.weAmount) return;
     let budgetVal = '', ptdVal = '', remVal = '', pctVal = '';
     if (jobName && row.area && row.costCode) {
@@ -2852,7 +2947,7 @@ function exportPaysheetExcel() {
   // Crew splits
   mainData.push(['Crew Splits']);
   mainData.push(['Employee #', 'Employee Name', '% Split', 'Amount', 'Employee Initials']);
-  _psCrew.forEach(c => {
+  _ps().crew.forEach(c => {
     if (!c.empNum && !c.name) return;
     const amt = totalWE > 0 && c.split ? (totalWE * parseFloat(c.split) / 100) : '';
     mainData.push([c.empNum, c.name, c.split ? parseFloat(c.split) : '', amt || '', c.initials]);
