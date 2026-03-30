@@ -1007,15 +1007,15 @@ function savePayrollEntries(newEntries) {
   const oldEntries = _cache.payroll || [];
   const oldIds = new Set(oldEntries.map(e => String(e.id)));
   const newIds = new Set(newEntries.map(e => String(e.id)));
-  // Write added entries
   newEntries.forEach(e => {
     if (!oldIds.has(String(e.id)))
-      db.collection('payroll').doc(String(e.id)).set(e).catch(err => console.error('payroll write:', err));
+      db.collection('payroll').doc(String(e.id)).set(e)
+        .catch(err => { console.error('payroll write:', err); alert('Failed to save payroll entry: ' + err.message); });
   });
-  // Delete removed entries
   oldEntries.forEach(e => {
     if (!newIds.has(String(e.id)))
-      db.collection('payroll').doc(String(e.id)).delete().catch(err => console.error('payroll delete:', err));
+      db.collection('payroll').doc(String(e.id)).delete()
+        .catch(err => console.error('payroll delete:', err));
   });
   _cache.payroll = newEntries;
 }
@@ -1103,11 +1103,13 @@ function saveWOEntries(newEntries) {
   const newIds = new Set(newEntries.map(e => String(e.id)));
   newEntries.forEach(e => {
     if (!oldIds.has(String(e.id)))
-      db.collection('workorders').doc(String(e.id)).set(e).catch(err => console.error('wo write:', err));
+      db.collection('workorders').doc(String(e.id)).set(e)
+        .catch(err => { console.error('wo write:', err); alert('Failed to save work order: ' + err.message); });
   });
   oldEntries.forEach(e => {
     if (!newIds.has(String(e.id)))
-      db.collection('workorders').doc(String(e.id)).delete().catch(err => console.error('wo delete:', err));
+      db.collection('workorders').doc(String(e.id)).delete()
+        .catch(err => console.error('wo delete:', err));
   });
   _cache.workorders = newEntries;
 }
