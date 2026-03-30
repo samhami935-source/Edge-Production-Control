@@ -625,6 +625,7 @@
       <select id="ps-job-select" class="fi" style="min-width:200px;" onchange="psJobChanged()">
         <option value="">— Select Job —</option>
       </select>
+      <button class="btn btn-outline" onclick="psAutoFillFromDaily()" title="Pull Area, Labor Code & Employees from the Daily Input above">⬇ Fill from Daily Input</button>
       <button class="btn" onclick="printPaysheet()">🖨 Export PDF</button>
       <button class="btn btn-outline" onclick="exportPaysheetExcel()">📊 Export Excel</button>
       <button class="btn btn-outline" onclick="clearPaysheet()">Clear Sheet</button>
@@ -692,7 +693,7 @@
                 <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);width:200px;">Employee Name</th>
                 <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Area Worked</th>
                 <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Labor Code</th>
-                <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Description</th>
+                <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Notes</th>
               </tr>
             </thead>
             <tbody id="di-crew-tbody"></tbody>
@@ -707,9 +708,10 @@
               <thead>
                 <tr style="background:var(--surface2);">
                   <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Date</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Time</th>
                   <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Job</th>
                   <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Crew</th>
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Submitted By</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Foreman</th>
                   <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Employees</th>
                   <th style="padding:8px 10px;border-bottom:1px solid var(--border);"></th>
                 </tr>
@@ -2329,7 +2331,7 @@ function diRenderCrewTable() {
         </select>
       </td>
       <td style="padding:6px 8px;">
-        <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.description)}" placeholder="Description"
+        <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.description)}" placeholder="Notes"
           oninput="_diData[${_diActiveCrew}][${i}].description=this.value" />
       </td>
     </tr>`;
@@ -2350,12 +2352,16 @@ async function submitDailyInput() {
   }
   if (!crews.length) { alert('Please enter at least one employee name.'); return; }
 
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:true});
   const id  = `${date}_${jobName.replace(/[^\w-]/g,'_')}_${Date.now()}`;
   const doc = {
     id, date, job: jobName,
     crews,
     submittedBy: _currentUser ? _currentUser.email : 'unknown',
-    submittedAt: new Date().toISOString()
+    submittedByRole: _currentUserRole || 'unknown',
+    submittedAt: now.toISOString(),
+    submittedTime: timeStr
   };
 
   try {
@@ -2374,7 +2380,7 @@ async function diLoadLog() {
   try {
     const snap = await db.collection('dailyinput').orderBy('date','desc').limit(50).get();
     if (snap.empty) {
-      tbody.innerHTML = '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted);">No submissions yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);">No submissions yet.</td></tr>';
       return;
     }
     tbody.innerHTML = snap.docs.map(d => {
@@ -2383,12 +2389,14 @@ async function diLoadLog() {
       const empCount = r.crews.reduce((s,c) => s+c.entries.length, 0);
       return `<tr style="border-top:1px solid var(--border);">
         <td style="padding:8px 10px;">${fmtDate(r.date)}</td>
+        <td style="padding:8px 10px;color:var(--muted);">${r.submittedTime||'—'}</td>
         <td style="padding:8px 10px;color:var(--accent);">${eh(r.job)}</td>
         <td style="padding:8px 10px;">${crewNums}</td>
         <td style="padding:8px 10px;color:var(--muted);">${eh(r.submittedBy)}</td>
         <td style="padding:8px 10px;">${empCount} employee${empCount!==1?'s':''}</td>
         <td style="padding:8px 10px;">
           <button class="btn-sm" onclick="diViewSubmission('${r.id}')">View</button>
+          <button class="btn-sm" style="margin-left:4px;border-color:var(--accent);color:var(--accent);" onclick="diAutoFillFromLog('${r.id}')">→ Paysheet</button>
           ${isAdmin()?`<button class="btn-sm btn-danger" style="margin-left:4px;" onclick="diDeleteSubmission('${r.id}')">Delete</button>`:''}
         </td>
       </tr>`;
@@ -2397,19 +2405,21 @@ async function diLoadLog() {
     // orderBy requires an index — fallback without ordering
     try {
       const snap2 = await db.collection('dailyinput').get();
-      if (snap2.empty) { tbody.innerHTML='<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted);">No submissions yet.</td></tr>'; return; }
+      if (snap2.empty) { tbody.innerHTML='<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);">No submissions yet.</td></tr>'; return; }
       const docs = snap2.docs.map(d=>d.data()).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,50);
       tbody.innerHTML = docs.map(r => {
         const crewNums = r.crews.map(c=>`Crew ${c.crewNum}`).join(', ');
         const empCount = r.crews.reduce((s,c)=>s+c.entries.length,0);
         return `<tr style="border-top:1px solid var(--border);">
           <td style="padding:8px 10px;">${fmtDate(r.date)}</td>
+          <td style="padding:8px 10px;color:var(--muted);">${r.submittedTime||'—'}</td>
           <td style="padding:8px 10px;color:var(--accent);">${eh(r.job)}</td>
           <td style="padding:8px 10px;">${crewNums}</td>
           <td style="padding:8px 10px;color:var(--muted);">${eh(r.submittedBy)}</td>
           <td style="padding:8px 10px;">${empCount} employee${empCount!==1?'s':''}</td>
           <td style="padding:8px 10px;">
             <button class="btn-sm" onclick="diViewSubmission('${r.id}')">View</button>
+            <button class="btn-sm" style="margin-left:4px;border-color:var(--accent);color:var(--accent);" onclick="diAutoFillFromLog('${r.id}')">→ Paysheet</button>
             ${isAdmin()?`<button class="btn-sm btn-danger" style="margin-left:4px;" onclick="diDeleteSubmission('${r.id}')">Delete</button>`:''}
           </td>
         </tr>`;
@@ -2448,6 +2458,91 @@ async function diDeleteSubmission(id) {
     await db.collection('dailyinput').doc(id).delete();
     diLoadLog();
   } catch(e) { alert('Delete failed: ' + e.message); }
+}
+
+// Auto-fill paysheet from current daily input state
+function psAutoFillFromDaily() {
+  const jobName = document.getElementById('di-job-select').value;
+  if (!jobName) { alert('Please select a job in the Daily Input section first.'); return; }
+
+  // Collect unique area+code combos from all crews
+  const combos = [];
+  const seen = new Set();
+  for (let c=1; c<=DI_CREWS; c++) {
+    _diData[c].forEach(row => {
+      if (!row.area || !row.costCode) return;
+      const key = row.area + '|||' + row.costCode;
+      if (!seen.has(key)) { seen.add(key); combos.push({area: row.area, costCode: row.costCode}); }
+    });
+  }
+
+  // Fill paysheet job
+  const psJobSel = document.getElementById('ps-job-select');
+  psJobSel.value = jobName;
+  psJobChanged();
+
+  // Fill main table rows
+  combos.slice(0, PS_MAIN_ROWS).forEach((combo, i) => {
+    _psRows[i].area     = combo.area;
+    _psRows[i].costCode = combo.costCode;
+  });
+
+  // Fill crew splits with employee names from Crew 1
+  const crew1Employees = _diData[1].filter(r => r.employee.trim()).map(r => r.employee.trim());
+  crew1Employees.slice(0, _psCrew.length).forEach((name, i) => {
+    _psCrew[i].name = name;
+  });
+
+  psRenderMainTable();
+  psRenderCrewTable();
+  alert('Paysheet filled from Daily Input.');
+}
+
+// Auto-fill paysheet from a saved submission
+function diAutoFillFromLog(id) {
+  db.collection('dailyinput').doc(id).get().then(doc => {
+    if (!doc.exists) { alert('Submission not found.'); return; }
+    const r = doc.data();
+
+    // Set job
+    const psJobSel = document.getElementById('ps-job-select');
+    psJobSel.value = r.job;
+    psJobChanged();
+
+    // Collect unique area+code combos across all crews
+    const combos = [];
+    const seen = new Set();
+    r.crews.forEach(c => {
+      c.entries.forEach(e => {
+        if (!e.area || !e.costCode) return;
+        const key = e.area + '|||' + e.costCode;
+        if (!seen.has(key)) { seen.add(key); combos.push({area: e.area, costCode: e.costCode}); }
+      });
+    });
+
+    combos.slice(0, PS_MAIN_ROWS).forEach((combo, i) => {
+      _psRows[i].area     = combo.area;
+      _psRows[i].costCode = combo.costCode;
+    });
+
+    // Fill crew splits from Crew 1 employees
+    const crew1 = r.crews.find(c => c.crewNum === 1);
+    if (crew1) {
+      crew1.entries.slice(0, _psCrew.length).forEach((e, i) => {
+        _psCrew[i].name = e.employee || '';
+      });
+    }
+
+    // Set week ending to submission date
+    const weEl = document.getElementById('ps-weekending');
+    if (weEl) weEl.value = r.date;
+
+    psRenderMainTable();
+    psRenderCrewTable();
+
+    // Scroll to paysheet
+    document.getElementById('paysheet-print-area').scrollIntoView({behavior:'smooth'});
+  }).catch(e => alert('Error loading submission: ' + e.message));
 }
 
 // ═══════════════════════════
