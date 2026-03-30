@@ -680,6 +680,7 @@
             <div id="di-job-label" class="fi" style="font-weight:600;color:var(--accent);background:var(--surface2);cursor:default;padding:8px 12px;border-radius:8px;min-height:38px;display:flex;align-items:center;">— No job selected —</div>
           </div>
           <div style="display:flex;gap:8px;align-items:flex-end;">
+            <button class="btn btn-outline" onclick="diClearDropdowns()" style="margin-top:0;" title="Clear all Area and Labor Code dropdowns for this crew">Clear Dropdowns</button>
             <button class="btn" onclick="submitDailyInput()" style="margin-top:0;">Save Daily Input</button>
           </div>
         </div>
@@ -2391,6 +2392,11 @@ function diRenderCrewTable() {
       </td>
     </tr>`;
   }).join('');
+}
+
+function diClearDropdowns() {
+  _diData[_diActiveCrew].forEach(row => { row.area = ''; row.costCode = ''; });
+  diRenderCrewTable();
 }
 
 async function submitDailyInput() {
