@@ -191,7 +191,7 @@
 <!-- Loading Screen -->
 <div id="loading-screen">
   <div class="spinner"></div>
-  <div style="color:var(--muted);font-size:.85rem;letter-spacing:.1em;text-transform:uppercase;">Loading D9 Edge…</div>
+  <div id="loading-msg" style="color:var(--muted);font-size:.85rem;letter-spacing:.1em;text-transform:uppercase;">Loading D9 Edge…</div>
 </div>
 
 <!-- Pending Approval Screen -->
@@ -743,6 +743,24 @@ const db = firebase.firestore();
 let _currentUserRole = null;
 let _currentUser     = null;
 
+// ─── In-memory data cache ───
+const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null };
+
+async function loadAllData() {
+  const loadMsg = document.getElementById('loading-msg');
+  if (loadMsg) loadMsg.textContent = 'Loading data…';
+  const [jobsSnap, payrollSnap, woSnap, lcDoc] = await Promise.all([
+    db.collection('jobs').get(),
+    db.collection('payroll').get(),
+    db.collection('workorders').get(),
+    db.collection('config').doc('laborcodes').get(),
+  ]);
+  _cache.jobs       = jobsSnap.docs.map(d => d.data());
+  _cache.payroll    = payrollSnap.docs.map(d => d.data());
+  _cache.workorders = woSnap.docs.map(d => d.data());
+  _cache.laborcodes = lcDoc.exists ? (lcDoc.data().codes || []) : [];
+}
+
 function isAdmin()   { return _currentUserRole === 'admin'; }
 function isPM()      { return _currentUserRole === 'project_manager'; }
 function isForeman() { return _currentUserRole === 'foreman'; }
@@ -837,16 +855,19 @@ firebase.auth().onAuthStateChanged(async user => {
     _currentUserRole = 'pending';
   }
 
-  document.getElementById('loading-screen').style.display = 'none';
-  document.getElementById('auth-screen').style.display    = 'none';
+  document.getElementById('auth-screen').style.display = 'none';
 
   if (_currentUserRole === 'pending') {
+    document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('pending-screen').style.display = 'flex';
     document.getElementById('app-screen').style.display     = 'none';
     return;
   }
 
   document.getElementById('pending-screen').style.display = 'none';
+  // Load all Firestore data before revealing the app (loading screen stays up during this)
+  try { await loadAllData(); } catch(e) { console.error('Data load error:', e); }
+  document.getElementById('loading-screen').style.display = 'none';
   document.getElementById('app-screen').style.display     = 'block';
   updateUserPill();
   appInit();
@@ -926,28 +947,46 @@ function updateAdminUI() {
 }
 
 // ═══════════════════════════
-//  STORAGE
+//  STORAGE  (Firestore-backed, in-memory cache)
 // ═══════════════════════════
-function getSavedCSVFiles() {
-  try { return JSON.parse(localStorage.getItem(CSV_KEY)) || []; } catch { return []; }
-}
+
+// ─── CSV / Job Files ───
+function getSavedCSVFiles() { return _cache.jobs || []; }
+
 function saveCSVFile(name, rows) {
-  const files = getSavedCSVFiles();
-  const idx = files.findIndex(f => f.name === name);
+  if (!_cache.jobs) _cache.jobs = [];
   const entry = { name, rows, savedAt: new Date().toISOString(), count: rows.length };
-  if (idx !== -1) files[idx] = entry; else files.push(entry);
-  try { localStorage.setItem(CSV_KEY, JSON.stringify(files)); return true; }
-  catch(e) { console.warn('Storage full:', e); return false; }
-}
-function removeCSVFile(name) {
-  localStorage.setItem(CSV_KEY, JSON.stringify(getSavedCSVFiles().filter(f => f.name !== name)));
+  const idx = _cache.jobs.findIndex(f => f.name === name);
+  if (idx !== -1) _cache.jobs[idx] = entry; else _cache.jobs.push(entry);
+  const docId = name.replace(/[^\w-]/g, '_');
+  db.collection('jobs').doc(docId).set(entry).catch(e => console.error('jobs write:', e));
+  return true;
 }
 
-function getPayrollEntries() {
-  try { return JSON.parse(localStorage.getItem(PR_KEY)) || []; } catch { return []; }
+function removeCSVFile(name) {
+  if (_cache.jobs) _cache.jobs = _cache.jobs.filter(f => f.name !== name);
+  const docId = name.replace(/[^\w-]/g, '_');
+  db.collection('jobs').doc(docId).delete().catch(e => console.error('jobs delete:', e));
 }
-function savePayrollEntries(e) {
-  try { localStorage.setItem(PR_KEY, JSON.stringify(e)); } catch(err) { console.warn('Storage full:', err); }
+
+// ─── Payroll Entries ───
+function getPayrollEntries() { return _cache.payroll || []; }
+
+function savePayrollEntries(newEntries) {
+  const oldEntries = _cache.payroll || [];
+  const oldIds = new Set(oldEntries.map(e => String(e.id)));
+  const newIds = new Set(newEntries.map(e => String(e.id)));
+  // Write added entries
+  newEntries.forEach(e => {
+    if (!oldIds.has(String(e.id)))
+      db.collection('payroll').doc(String(e.id)).set(e).catch(err => console.error('payroll write:', err));
+  });
+  // Delete removed entries
+  oldEntries.forEach(e => {
+    if (!newIds.has(String(e.id)))
+      db.collection('payroll').doc(String(e.id)).delete().catch(err => console.error('payroll delete:', err));
+  });
+  _cache.payroll = newEntries;
 }
 
 function getPayrollTotals(csvFile, costCode, description, area) {
@@ -966,10 +1005,12 @@ function getFileTotalPaid(csvFile) {
 //  LABOR CODES
 // ═══════════════════════════
 function getLaborCodes() {
-  try { const d=JSON.parse(localStorage.getItem(LC_KEY)); return Array.isArray(d)&&d.length?d:LABOR_CODES_DEFAULT; } catch { return LABOR_CODES_DEFAULT; }
+  const d = _cache.laborcodes;
+  return Array.isArray(d) && d.length ? d : LABOR_CODES_DEFAULT;
 }
 function saveLaborCodes(list) {
-  try { localStorage.setItem(LC_KEY, JSON.stringify(list)); } catch(e) { console.warn(e); }
+  _cache.laborcodes = list;
+  db.collection('config').doc('laborcodes').set({ codes: list }).catch(e => console.error('laborcodes write:', e));
 }
 
 // ═══════════════════════════
@@ -1022,11 +1063,22 @@ function exportBudgetsCSV() {
 // ═══════════════════════════
 //  501 & 502 WORK ORDERS / CHANGE ORDERS
 // ═══════════════════════════
-function getWOEntries() {
-  try { return JSON.parse(localStorage.getItem(WO_KEY)) || []; } catch { return []; }
-}
-function saveWOEntries(e) {
-  try { localStorage.setItem(WO_KEY, JSON.stringify(e)); } catch(err) { console.warn(err); }
+// ─── Work Order Entries ───
+function getWOEntries() { return _cache.workorders || []; }
+
+function saveWOEntries(newEntries) {
+  const oldEntries = _cache.workorders || [];
+  const oldIds = new Set(oldEntries.map(e => String(e.id)));
+  const newIds = new Set(newEntries.map(e => String(e.id)));
+  newEntries.forEach(e => {
+    if (!oldIds.has(String(e.id)))
+      db.collection('workorders').doc(String(e.id)).set(e).catch(err => console.error('wo write:', err));
+  });
+  oldEntries.forEach(e => {
+    if (!newIds.has(String(e.id)))
+      db.collection('workorders').doc(String(e.id)).delete().catch(err => console.error('wo delete:', err));
+  });
+  _cache.workorders = newEntries;
 }
 
 function addWOEntry() {
