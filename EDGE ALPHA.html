@@ -1687,7 +1687,7 @@ function renderAllJobsOverview() {
     const tPaid = entries.filter(e=>e.date===today).reduce((s,e)=>s+e.price,0);
     totBudget+=budget; totPaid+=paid; todayPaid+=tPaid;
     const rc = rem<0?'ar':rem===0?'ay':'ap';
-    return`<tr>
+    return`<tr style="cursor:pointer;" onclick="switchPayrollJob('${ea(f.name)}')" title="View ${eh(f.name)} payroll">
       <td><span class="pill">${eh(f.name)}</span></td>
       <td class="ap" style="text-align:right;">${fm(budget)}</td>
       <td class="ay" style="text-align:right;">${paid>0?fm(paid):'$0.00'}</td>
