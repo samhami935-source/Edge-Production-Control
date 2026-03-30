@@ -2323,9 +2323,14 @@ function psRenderMainTable() {
       <td style="border:1px solid #000;padding:4px 8px;text-align:right;color:#222;">${budgetVal?'$'+parseFloat(budgetVal).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):''}</td>
       <td style="border:1px solid #000;padding:4px 8px;text-align:right;color:#222;">${ptdVal?'$'+parseFloat(ptdVal).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):''}</td>
       <td style="border:1px solid #000;padding:4px 8px;text-align:right;${remColor}">${remVal?'$'+Math.abs(parseFloat(remVal)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+(parseFloat(remVal)<0?' (Over)':''):''}</td>
-      <td style="border:1px solid #000;padding:2px 4px;">
-        <input type="number" class="ps-editable-cell" value="${row.weAmount}" placeholder="0.00" min="0" step="0.01"
-          oninput="psWEChanged(${i},this.value)" onchange="psWEChanged(${i},this.value)" />
+      <td style="border:1px solid #000;padding:2px 6px;">
+        <div style="display:flex;align-items:center;gap:2px;">
+          <span style="color:#555;font-size:12px;">$</span>
+          <input type="number" class="ps-editable-cell" value="${row.weAmount}"
+            placeholder="${row.area||row.costCode?'0.00':''}" min="0" step="0.01"
+            style="flex:1;text-align:right;font-weight:${row.weAmount?'700':'400'};color:${row.weAmount?'#111':'#aaa'};"
+            oninput="psWEChanged(${i},this.value)" onchange="psWEChanged(${i},this.value)" />
+        </div>
       </td>
       <td style="border:1px solid #000;padding:4px 8px;text-align:right;color:#222;" id="ps-pct-${i}">
         ${psCalcPct(budgetVal, row.weAmount)}
