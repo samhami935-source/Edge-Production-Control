@@ -783,22 +783,8 @@
         <div style="border:1px solid #000;padding:6px 16px;min-width:150px;text-align:right;font-weight:700;" id="ps-total-display">$ —</div>
       </div>
 
-      <!-- Crew Splits table -->
-      <table style="width:100%;border-collapse:collapse;">
-        <thead>
-          <tr style="background:#c9a84c;">
-            <th colspan="5" style="border:1px solid #000;padding:6px 8px;text-align:center;font-weight:700;">Crew Splits</th>
-          </tr>
-          <tr style="background:#d9d9d9;">
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:80px;">Employee #</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">Employee Name</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:80px;">% Split</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:110px;">Amount</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:140px;">Employee Initials</th>
-          </tr>
-        </thead>
-        <tbody id="ps-crew-tbody"></tbody>
-      </table>
+      <!-- Crew Splits — rendered dynamically by psRenderCrewTable() -->
+      <div id="ps-crew-section"></div>
 
     </div><!-- /paysheet-print-area -->
   </div><!-- /paysheet-content -->
@@ -2500,8 +2486,10 @@ function psAutoFillFromSubmission(crews, jobName, date) {
   const el = document.getElementById('paysheet-print-area');
   if (el) el.scrollIntoView({ behavior: 'smooth' });
 
-  // Show folder picker so user can choose where to save
-  _psSavePendingData = { defaultDate: date };
+  // Show folder picker — mark this as a daily save
+  _psCurrentType = 'daily';
+  psRenderCrewTable(); // re-render immediately with daily layout (no splits columns)
+  _psSavePendingData = { defaultDate: date, type: 'daily', dailyDate: date };
   openSaveDestModal();
 }
 
@@ -2696,6 +2684,10 @@ let _psState = {};
 for (let c=1; c<=PS_NUM_CREWS; c++) {
   _psState[c] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
 }
+
+// 'daily' = auto-generated from daily input (no % split/amount/sign)
+// 'weekly' = compiled or manually saved (full crew splits)
+let _psCurrentType = 'weekly';
 
 // Convenience accessor for current crew state
 function _ps() { return _psState[_psActiveCrew]; }
@@ -2988,44 +2980,70 @@ function psUpdateTotal() {
 }
 
 function psRenderCrewTable() {
-  const tbody  = document.getElementById('ps-crew-tbody');
-  const splits = _ps().splits;
-  const inp    = 'width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:inherit;padding:0;';
+  const section  = document.getElementById('ps-crew-section');
+  const splits   = _ps().splits;
+  const isDaily  = _psCurrentType === 'daily';
+  const colspan  = isDaily ? 2 : 5;
+  const inp      = 'width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:inherit;padding:0;';
 
-  tbody.innerHTML = splits.map((s, i) => `<tr>
-    <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
-      <input style="${inp}text-align:center;" value="${eh(s.empNum)}" placeholder="—"
-        oninput="_ps().splits[${i}].empNum=this.value" />
-    </td>
-    <td style="border:1px solid #000;padding:2px 4px;">
-      <input style="${inp}" value="${eh(s.employee)}" placeholder="Employee name"
-        oninput="_ps().splits[${i}].employee=this.value" />
-    </td>
-    <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
-      <input type="number" style="${inp}text-align:center;" value="${s.pctSplit||''}" placeholder="0"
-        min="0" max="100" step="0.1"
-        oninput="_ps().splits[${i}].pctSplit=this.value" />
-    </td>
-    <td style="border:1px solid #000;padding:2px 5px;text-align:right;">
-      <input type="number" style="${inp}text-align:right;" value="${s.amount||''}" placeholder="0.00"
-        min="0" step="0.01"
-        oninput="_ps().splits[${i}].amount=this.value" />
-    </td>
-    <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
-      ${s.signatureData
-        ? `<div style="display:flex;align-items:center;gap:4px;justify-content:center;">
-             <img src="${s.signatureData}" style="height:28px;max-width:110px;" />
-             <button onclick="psClearSignature(${i})" style="border:none;background:transparent;color:#999;cursor:pointer;font-size:11px;padding:0 2px;">✕</button>
-           </div>`
-        : `<button onclick="psOpenSignature(${i})" style="border:1px solid #aaa;background:#f5f5f5;padding:4px 12px;font-size:11px;cursor:pointer;border-radius:4px;">Sign</button>`
-      }
-    </td>
-  </tr>`).join('');
+  const thead = `
+    <tr style="background:#c9a84c;">
+      <th colspan="${colspan}" style="border:1px solid #000;padding:6px 8px;text-align:center;font-weight:700;letter-spacing:.04em;">
+        ${isDaily ? 'CREW — DAILY LOG' : 'CREW SPLITS'}
+      </th>
+    </tr>
+    <tr style="background:#d9d9d9;">
+      <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:80px;">Employee #</th>
+      <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">Employee Name</th>
+      ${isDaily ? '' : `
+        <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:80px;">% Split</th>
+        <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:110px;">Amount</th>
+        <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:140px;">Employee Initials</th>
+      `}
+    </tr>`;
+
+  const rows = splits.map((s, i) => {
+    const optCols = isDaily ? '' : `
+      <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
+        <input type="number" style="${inp}text-align:center;" value="${s.pctSplit||''}" placeholder="0"
+          min="0" max="100" step="0.1" oninput="_ps().splits[${i}].pctSplit=this.value" />
+      </td>
+      <td style="border:1px solid #000;padding:2px 5px;text-align:right;">
+        <input type="number" style="${inp}text-align:right;" value="${s.amount||''}" placeholder="0.00"
+          min="0" step="0.01" oninput="_ps().splits[${i}].amount=this.value" />
+      </td>
+      <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
+        ${s.signatureData
+          ? `<div style="display:flex;align-items:center;gap:4px;justify-content:center;">
+               <img src="${s.signatureData}" style="height:28px;max-width:110px;" />
+               <button onclick="psClearSignature(${i})" style="border:none;background:transparent;color:#999;cursor:pointer;font-size:11px;padding:0 2px;">✕</button>
+             </div>`
+          : `<button onclick="psOpenSignature(${i})" style="border:1px solid #aaa;background:#f5f5f5;padding:4px 12px;font-size:11px;cursor:pointer;border-radius:4px;">Sign</button>`
+        }
+      </td>`;
+    return `<tr>
+      <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
+        <input style="${inp}text-align:center;" value="${eh(s.empNum)}" placeholder="—"
+          oninput="_ps().splits[${i}].empNum=this.value" />
+      </td>
+      <td style="border:1px solid #000;padding:2px 4px;">
+        <input style="${inp}" value="${eh(s.employee)}" placeholder="Employee name"
+          oninput="_ps().splits[${i}].employee=this.value" />
+      </td>
+      ${optCols}
+    </tr>`;
+  }).join('');
+
+  section.innerHTML = `<table style="width:100%;border-collapse:collapse;">
+    <thead>${thead}</thead>
+    <tbody>${rows}</tbody>
+  </table>`;
 }
 
 function clearPaysheet() {
   if (!confirm(`Clear Crew ${_psActiveCrew} paysheet?`)) return;
   _psState[_psActiveCrew] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
+  _psCurrentType = 'weekly';
   psLoadHeaderFields();
   psRenderMainTable();
   psRenderCrewTable();
@@ -3037,26 +3055,35 @@ function printPaysheet() {
 }
 
 // ─── Save paysheet to Firestore ───
-// silent=true → no alert (used for auto-save from daily input)
-async function savePaysheetToCloud(silent) {
+// silent = true  → no alert
+// opts.type      = 'daily' | 'weekly' (default 'weekly')
+// opts.dailyDate = YYYY-MM-DD required when type='daily' (used as docId suffix)
+async function savePaysheetToCloud(silent, opts = {}) {
   _psSaveHeaderFields();
   const jobName = document.getElementById('ps-job-select').value;
-  // Use the first crew that has a weekEnding, or fall back to today
+  if (!jobName) { if (!silent) alert('Please select a job before saving.'); return; }
+
+  const type = opts.type || 'weekly';
+  const isDailyType = type === 'daily';
+
   let weekEnd = '';
   for (let c = 1; c <= PS_NUM_CREWS; c++) {
     if (_psState[c].header.weekEnding) { weekEnd = _psState[c].header.weekEnding; break; }
   }
-  if (!jobName) { if (!silent) alert('Please select a job before saving.'); return; }
+  if (!weekEnd && isDailyType) weekEnd = opts.dailyDate || '';
   if (!weekEnd) { if (!silent) alert('Please enter a Week Ending date in the paysheet header before saving.'); return; }
 
-  const docId = (jobName + '_' + weekEnd).replace(/[^\w-]/g, '_');
+  // Daily: one doc per day per job; Weekly/manual: one doc per job per weekEnding
+  const docId = isDailyType
+    ? `daily_${(jobName + '_' + (opts.dailyDate || weekEnd)).replace(/[^\w-]/g, '_')}`
+    : (jobName + '_' + weekEnd).replace(/[^\w-]/g, '_');
+
   const crews = {};
   for (let c = 1; c <= PS_NUM_CREWS; c++) {
     crews[String(c)] = {
       header: Object.assign({}, _psState[c].header),
       rows:   _psState[c].rows.map(r => Object.assign({}, r)),
       splits: _psState[c].splits.map(s => {
-        // Don't save signatureData to Firestore (large base64) — only store flag
         const { signatureData, ...rest } = s;
         return { ...rest, hasSig: !!signatureData };
       }),
@@ -3066,6 +3093,8 @@ async function savePaysheetToCloud(silent) {
     id: docId,
     job: jobName,
     weekEnding: weekEnd,
+    type,
+    ...(isDailyType ? { date: opts.dailyDate || weekEnd } : {}),
     savedAt: new Date().toISOString(),
     savedBy: _currentUser ? _currentUser.email : 'unknown',
     crews,
@@ -3075,7 +3104,8 @@ async function savePaysheetToCloud(silent) {
     if (!_cache.paysheets) _cache.paysheets = [];
     const idx = _cache.paysheets.findIndex(p => p.id === docId);
     if (idx !== -1) _cache.paysheets[idx] = doc; else _cache.paysheets.push(doc);
-    if (!silent) alert(`Paysheet saved — "${jobName}" · Week Ending ${weekEnd}`);
+    _psCurrentType = type;
+    if (!silent) alert(`Paysheet saved — "${jobName}" · Week Ending ${_fmtWeekDate(weekEnd)}`);
     return doc;
   } catch(e) {
     if (!silent) alert('Save failed: ' + e.message);
@@ -3156,6 +3186,87 @@ function _psInitSigCanvas(canvas) {
   fresh.addEventListener('touchstart', _start, { passive: false });
   fresh.addEventListener('touchmove',  _move,  { passive: false });
   fresh.addEventListener('touchend',   _stop,  { passive: false });
+}
+
+// ─── Compile Weekly Paysheet ───
+// Aggregates all daily paysheets in a folder into one compiled paysheet per crew
+async function psCompileWeeklyPaysheet(weekEnding) {
+  const daily = (_cache.paysheets || []).filter(p => p.weekEnding === weekEnding && p.type === 'daily');
+  if (!daily.length) {
+    alert(`No daily paysheets found in this folder yet.\nSave at least one daily paysheet to this folder first.`);
+    return;
+  }
+  if (!confirm(`Compile ${daily.length} daily paysheet(s) for Week Ending ${_fmtWeekDate(weekEnding)} into a weekly summary?\n\nThis creates one paysheet per crew with all areas/employees combined and ready for % Split, Amount, and signatures.\n(Any existing weekly summary for this week will be overwritten.)`)) return;
+
+  // Group by job
+  const byJob = {};
+  daily.forEach(p => {
+    const job = p.job || '(No Job)';
+    if (!byJob[job]) byJob[job] = [];
+    byJob[job].push(p);
+  });
+
+  let compiled = 0;
+  for (const [job, sheets] of Object.entries(byJob)) {
+    const crews = {};
+
+    for (let c = 1; c <= PS_NUM_CREWS; c++) {
+      const areaMap = {};   // key: area|||code → aggregated row
+      const empSet  = new Set();
+      let   header  = _psEmptyHeader();
+
+      sheets.forEach(p => {
+        const sc = p.crews && p.crews[String(c)];
+        if (!sc) return;
+        // Take header from first crew that has one
+        if (!header.crewName && sc.header && sc.header.crewName) {
+          header = Object.assign(_psEmptyHeader(), sc.header);
+        }
+        // Aggregate main rows by area+code
+        (sc.rows || []).forEach(r => {
+          if (!r.area && !r.costCode) return;
+          const key = (r.area||'') + '|||' + (r.costCode||'');
+          if (!areaMap[key]) areaMap[key] = { area: r.area||'', costCode: r.costCode||'', ptd: 0, weAmount: 0, pctComplete: '' };
+          areaMap[key].weAmount += parseFloat(r.weAmount) || 0;
+          areaMap[key].ptd      += parseFloat(r.ptd)      || 0;
+        });
+        // Collect unique employees from splits
+        (sc.splits || []).forEach(s => { if (s.employee) empSet.add(s.employee); });
+      });
+
+      // Skip crew if no data
+      if (!Object.keys(areaMap).length && !empSet.size) continue;
+
+      header.weekEnding = weekEnding;
+      const rows = Object.values(areaMap);
+      while (rows.length < PS_MAIN_ROWS) rows.push(_psEmptyRow());
+
+      const splits = [...empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp }));
+      while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
+
+      crews[String(c)] = { header, rows, splits };
+    }
+
+    if (!Object.keys(crews).length) continue;
+
+    const docId = `weekly_${(job + '_' + weekEnding).replace(/[^\w-]/g, '_')}`;
+    const doc = {
+      id: docId, job, weekEnding,
+      type: 'weekly',
+      savedAt: new Date().toISOString(),
+      savedBy: _currentUser ? _currentUser.email : 'unknown',
+      crews,
+    };
+    await db.collection('paysheets').doc(docId).set(doc);
+    if (!_cache.paysheets) _cache.paysheets = [];
+    const idx = _cache.paysheets.findIndex(p => p.id === docId);
+    if (idx !== -1) _cache.paysheets[idx] = doc; else _cache.paysheets.push(doc);
+    compiled++;
+  }
+
+  renderPSLoadList();
+  if (compiled) alert(`Weekly summary compiled for ${compiled} job(s) — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nOpen the Load tab and click "Load" on the weekly summary to fill it out.`);
+  else alert('No crew data found to compile.');
 }
 
 // ─── Load paysheet modal ───
@@ -3267,7 +3378,23 @@ function renderPSLoadList() {
                <span>Empty — save a paysheet here.</span>
                ${isAdmin() ? `<button class="btn-sm btn-danger" style="font-size:.75rem;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
              </div>`
-          : sheets.map(p => _psLoadRow(p, we)).join('')
+          : (() => {
+              const daily   = sheets.filter(p => p.type === 'daily');
+              const weekly  = sheets.filter(p => p.type !== 'daily');
+              const hasDone = weekly.length > 0;
+              return `
+                ${daily.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Paysheets (${daily.length})</div>
+                  ${daily.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(p => _psLoadRow(p, we)).join('')}` : ''}
+                ${weekly.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--green);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">★ Weekly Summary</div>
+                  ${weekly.map(p => _psLoadRow(p, we)).join('')}` : ''}
+                <div style="padding:8px 14px 10px 36px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);margin-top:4px;">
+                  <button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">
+                    📋 Compile into Weekly Paysheet
+                  </button>
+                  ${hasDone ? '<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>' : '<span style="font-size:.75rem;color:var(--muted);">Combines all daily paysheets into one per crew</span>'}
+                  ${isAdmin() && sheets.length === 0 ? `<button class="btn-sm btn-danger" style="font-size:.75rem;margin-left:auto;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
+                </div>`;
+            })()
         }
       </div>
     </div>`;
@@ -3279,8 +3406,13 @@ function _psLoadRow(p, currentFolder) {
   const t   = p.savedAt ? new Date(p.savedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : '';
   const who = p.savedBy || '';
   const crewCount = p.crews
-    ? Object.values(p.crews).filter(c => c.rows && c.rows.some(r => r.employee || r.area)).length
+    ? Object.values(p.crews).filter(c => c.rows && c.rows.some(r => r.area || r.costCode)).length
     : 0;
+
+  const isDaily   = p.type === 'daily';
+  const typeLabel = isDaily
+    ? `<span style="font-size:.72rem;background:rgba(201,168,76,.15);color:var(--accent);border:1px solid rgba(201,168,76,.3);padding:1px 6px;border-radius:4px;font-weight:700;">DAILY · ${p.date ? _fmtWeekDate(p.date) : d}</span>`
+    : `<span style="font-size:.72rem;background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3);padding:1px 6px;border-radius:4px;font-weight:700;">★ WEEKLY SUMMARY</span>`;
 
   // Build "Move to…" options — all other folders
   const allWE = [...new Set([..._psFolders, ...(_cache.paysheets||[]).map(ps=>ps.weekEnding).filter(Boolean)])].sort((a,b)=>b.localeCompare(a));
@@ -3290,8 +3422,11 @@ function _psLoadRow(p, currentFolder) {
   const safeId = (p.id||'').replace(/'/g,"\\'");
   return `<div style="display:flex;align-items:center;gap:8px;padding:10px 14px 10px 36px;border-top:1px solid var(--border);flex-wrap:wrap;">
     <div style="flex:1;min-width:120px;">
-      <div style="font-weight:600;font-size:.88rem;">${eh(p.job||'No Job')}</div>
-      <div style="font-size:.75rem;color:var(--muted);margin-top:2px;">${d} ${t} · ${who} · ${crewCount} crew${crewCount!==1?'s':''} with data</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
+        ${typeLabel}
+        <span style="font-weight:600;font-size:.88rem;">${eh(p.job||'No Job')}</span>
+      </div>
+      <div style="font-size:.75rem;color:var(--muted);">Saved ${d} ${t} · ${who} · ${crewCount} crew${crewCount!==1?'s':''} with data</div>
     </div>
     <button class="btn" style="font-size:.78rem;padding:5px 12px;white-space:nowrap;margin-top:0;" onclick="loadPaysheetFromCloud('${safeId}')">Load</button>
     ${moveOpts ? `<select class="fi" style="font-size:.75rem;padding:4px 8px;height:30px;margin-top:0;" title="Move to another folder" onchange="psMovePaysheetTo('${safeId}',this.value,this)">
@@ -3370,19 +3505,21 @@ function openSaveDestModal() {
 
 async function psSaveToFolder(weekEnding) {
   if (!weekEnding) return;
-  // Stamp weekEnding into any crews that don't have one yet
   for (let c = 1; c <= PS_NUM_CREWS; c++) {
     if (!_psState[c].header.weekEnding) _psState[c].header.weekEnding = weekEnding;
   }
   document.getElementById('ps-save-dest-modal').classList.remove('open');
-  // Add to _psFolders if new
   if (!_psFolders.includes(weekEnding)) {
     _psFolders.push(weekEnding);
     _psFolders.sort((a,b) => b.localeCompare(a));
     localStorage.setItem('d9_ps_folders', JSON.stringify(_psFolders));
   }
+  // Carry over type/date from pending save context
+  const opts = (_psSavePendingData && _psSavePendingData.type)
+    ? { type: _psSavePendingData.type, dailyDate: _psSavePendingData.dailyDate }
+    : { type: 'weekly' };
   _psSavePendingData = null;
-  await savePaysheetToCloud(false); // show success alert
+  await savePaysheetToCloud(false, opts);
 }
 
 async function psSaveToNewFolder() {
@@ -3436,6 +3573,9 @@ async function loadPaysheetFromCloud(docId) {
     }
     onJobChanged();
   }
+
+  // Set type for conditional rendering
+  _psCurrentType = doc.type || 'weekly';
 
   // Refresh current crew view
   psLoadHeaderFields();
