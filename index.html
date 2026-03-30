@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>D9 Edge — Budget Tracker</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -142,9 +145,98 @@
 
     /* Section visibility */
     #csv-content{display:none;} #payroll-content{display:none;} #budgets-content{display:none;} #lc-content{display:none;}
+
+    /* ── Auth Screen ── */
+    #auth-screen { position:fixed; inset:0; background:var(--bg); z-index:9999; display:none; align-items:center; justify-content:center; padding:24px; }
+    #app-screen  { display:none; }
+    .auth-box { background:var(--surface); border:1px solid var(--border); border-top:3px solid var(--accent); border-radius:var(--radius); padding:40px 36px; width:100%; max-width:420px; }
+    .auth-logo { text-align:center; margin-bottom:28px; }
+    .auth-logo h1 { font-size:2rem; font-weight:900; letter-spacing:.04em; background:linear-gradient(135deg,#c9a84c 0%,#f5e199 40%,#c9a84c 60%,#9a7a2a 100%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+    .auth-logo p  { font-size:.72rem; letter-spacing:.2em; color:var(--muted); text-transform:uppercase; margin-top:2px; }
+    .auth-tabs { display:flex; border-bottom:1px solid var(--border); margin-bottom:24px; }
+    .auth-tab  { flex:1; text-align:center; padding:10px; font-size:.85rem; font-weight:600; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; transition:color .15s,border-color .15s; }
+    .auth-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+    .auth-field { margin-bottom:14px; }
+    .auth-field label { display:block; font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:5px; font-weight:600; }
+    .auth-field input { width:100%; background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:10px 14px; font-size:.9rem; outline:none; transition:border-color .15s; }
+    .auth-field input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(201,168,76,.1); }
+    .auth-btn { width:100%; padding:12px; border-radius:8px; background:var(--accent); color:#000; font-weight:800; font-size:.95rem; border:none; cursor:pointer; transition:opacity .15s; margin-top:6px; letter-spacing:.02em; }
+    .auth-btn:hover { opacity:.88; }
+    .auth-err  { color:var(--red); font-size:.82rem; margin-top:10px; min-height:18px; text-align:center; }
+    .auth-msg  { color:var(--green); font-size:.85rem; margin-top:10px; text-align:center; line-height:1.5; }
+    .auth-link { text-align:center; margin-top:16px; font-size:.82rem; color:var(--muted); }
+    .auth-link span { color:var(--accent); cursor:pointer; font-weight:600; }
+    .auth-link span:hover { text-decoration:underline; }
+
+    /* Loading spinner */
+    #loading-screen { position:fixed; inset:0; background:var(--bg); z-index:9998; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; }
+    .spinner { width:40px; height:40px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* Pending screen */
+    #pending-screen { position:fixed; inset:0; background:var(--bg); z-index:9997; display:none; flex-direction:column; align-items:center; justify-content:center; gap:16px; text-align:center; padding:24px; }
+    #pending-screen h2 { color:var(--accent); font-size:1.4rem; }
+    #pending-screen p  { color:var(--muted); max-width:400px; line-height:1.6; }
+
+    /* User management modal */
+    #users-modal .modal { width:600px; max-width:95vw; }
+    .users-table { width:100%; border-collapse:collapse; font-size:.85rem; margin-top:16px; }
+    .users-table th { padding:8px 10px; text-align:left; color:var(--muted); font-size:.72rem; text-transform:uppercase; border-bottom:1px solid var(--border); }
+    .users-table td { padding:8px 10px; border-bottom:1px solid var(--border); }
+    .users-table select { background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:4px 8px; font-size:.82rem; }
   </style>
 </head>
 <body>
+
+<!-- Loading Screen -->
+<div id="loading-screen">
+  <div class="spinner"></div>
+  <div style="color:var(--muted);font-size:.85rem;letter-spacing:.1em;text-transform:uppercase;">Loading D9 Edge…</div>
+</div>
+
+<!-- Pending Approval Screen -->
+<div id="pending-screen">
+  <span style="font-size:3rem;">⏳</span>
+  <h2>Account Pending Approval</h2>
+  <p>Your account has been created but is awaiting role assignment by an administrator. Please check back soon or contact your admin.</p>
+  <button class="auth-btn" style="max-width:200px;margin-top:8px;" onclick="firebase.auth().signOut()">Sign Out</button>
+</div>
+
+<!-- Auth Screen -->
+<div id="auth-screen">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <span style="font-size:2.5rem;">💰</span>
+      <h1>D9 EDGE</h1>
+      <p>Budget &amp; Payroll Tracker</p>
+    </div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="auth-tab-login" onclick="switchAuthTab('login')">Login</div>
+      <div class="auth-tab" id="auth-tab-signup" onclick="switchAuthTab('signup')">Sign Up</div>
+    </div>
+
+    <!-- Login Form -->
+    <div id="auth-login-form">
+      <div class="auth-field"><label>Email</label><input type="email" id="login-email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doLogin()" /></div>
+      <div class="auth-field"><label>Password</label><input type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" /></div>
+      <button class="auth-btn" onclick="doLogin()">Sign In</button>
+      <div class="auth-err" id="login-err"></div>
+    </div>
+
+    <!-- Sign Up Form -->
+    <div id="auth-signup-form" style="display:none;">
+      <div class="auth-field"><label>Email</label><input type="email" id="signup-email" placeholder="you@example.com" /></div>
+      <div class="auth-field"><label>Password</label><input type="password" id="signup-password" placeholder="At least 6 characters" /></div>
+      <div class="auth-field"><label>Confirm Password</label><input type="password" id="signup-confirm" placeholder="Repeat password" onkeydown="if(event.key==='Enter')doSignUp()" /></div>
+      <button class="auth-btn" onclick="doSignUp()">Create Account</button>
+      <div class="auth-err" id="signup-err"></div>
+      <div class="auth-msg" id="signup-msg" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="app-screen">
 
 <header>
   <div style="display:flex;flex-direction:column;flex:1;gap:2px;">
@@ -157,11 +249,12 @@
     </div>
   </div>
   <div class="admin-badge">
-    <div class="admin-active-pill" id="admin-active-pill">
-      🔓 Admin
-      <button onclick="adminLogout()" title="Log out">Sign out</button>
+    <div id="user-info-pill" style="display:none;align-items:center;gap:8px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.35);border-radius:8px;padding:6px 12px;font-size:.82rem;">
+      <span id="user-role-badge" style="color:var(--accent);font-weight:700;"></span>
+      <span id="user-email-display" style="color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+      <button id="users-mgmt-btn" onclick="openUsersModal()" style="display:none;background:transparent;border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:3px 8px;font-size:.75rem;cursor:pointer;font-weight:600;">Users</button>
+      <button onclick="doSignOut()" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.78rem;padding:0 4px;">Sign Out</button>
     </div>
-    <button class="admin-login-btn" id="admin-login-btn" onclick="openAdminModal()">🔒 Admin Login</button>
   </div>
 </header>
 
@@ -456,7 +549,6 @@
     <div class="locked-notice" id="budgets-locked-notice" style="display:none">
       <div class="lock-icon">🔒</div>
       <p>No job files have been uploaded yet.<br>Ask your administrator to upload job files.</p>
-      <button class="admin-login-btn" style="margin:0 auto;display:inline-flex;" onclick="openAdminModal()">Admin Login</button>
     </div>
     <div class="filters" style="margin-bottom:16px;">
       <input type="text" id="budgets-search" class="fi" placeholder="Search jobs…" oninput="renderBudgetsTable()" style="flex:1;min-width:180px;" />
@@ -523,7 +615,22 @@
       <button class="btn" style="margin-top:0;" onclick="doAdminLogin()">Login</button>
     </div>
   </div>
+
+<!-- Users Management Modal -->
+<div class="modal-overlay" id="users-modal">
+  <div class="modal" style="width:620px;max-width:95vw;">
+    <h2>👥 User Management</h2>
+    <p>Manage user roles. Pending users have signed up but await role assignment.</p>
+    <div id="users-modal-body">
+      <div style="text-align:center;padding:20px;color:var(--muted);">Loading users…</div>
+    </div>
+    <div style="margin-top:20px;text-align:right;">
+      <button class="btn btn-outline" style="margin-top:0;" onclick="document.getElementById('users-modal').classList.remove('open')">Close</button>
+    </div>
+  </div>
 </div>
+
+</div><!-- /app-screen -->
 
 <script>
 // ═══════════════════════════
@@ -620,46 +727,202 @@ const PAGE_SIZE = 20;
 let catChart = null, areaRemChart = null;
 
 // ═══════════════════════════
-//  ADMIN
+//  FIREBASE & AUTH
 // ═══════════════════════════
-function isAdmin() { return sessionStorage.getItem(SES_KEY) === '1'; }
-function getAdminPW() { return localStorage.getItem(ADMIN_KEY) || DEFAULT_PW; }
+const firebaseConfig = {
+  apiKey: "AIzaSyAvcgYqd52fqqALuTk6AuIyFLjXiJjMlTc",
+  authDomain: "d9-edge-3e279.firebaseapp.com",
+  projectId: "d9-edge-3e279",
+  storageBucket: "d9-edge-3e279.firebasestorage.app",
+  messagingSenderId: "865996013069",
+  appId: "1:865996013069:web:1a15b469159e713aed1f44"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 
-function openAdminModal() {
-  document.getElementById('admin-pw-input').value = '';
-  document.getElementById('admin-err').textContent = '';
-  document.getElementById('admin-modal').classList.add('open');
-  setTimeout(() => document.getElementById('admin-pw-input').focus(), 80);
+let _currentUserRole = null;
+let _currentUser     = null;
+
+function isAdmin()   { return _currentUserRole === 'admin'; }
+function isPM()      { return _currentUserRole === 'project_manager'; }
+function isForeman() { return _currentUserRole === 'foreman'; }
+function canEdit()   { return isAdmin() || isPM(); }
+
+// ─── Auth UI helpers ───
+function switchAuthTab(tab) {
+  document.getElementById('auth-login-form').style.display  = tab === 'login'  ? '' : 'none';
+  document.getElementById('auth-signup-form').style.display = tab === 'signup' ? '' : 'none';
+  document.getElementById('auth-tab-login').classList.toggle('active',  tab === 'login');
+  document.getElementById('auth-tab-signup').classList.toggle('active', tab === 'signup');
 }
-function closeAdminModal() { document.getElementById('admin-modal').classList.remove('open'); }
-function doAdminLogin() {
-  const pw = document.getElementById('admin-pw-input').value;
-  if (pw === getAdminPW()) {
-    sessionStorage.setItem(SES_KEY, '1');
-    closeAdminModal();
-    updateAdminUI();
-  } else {
-    document.getElementById('admin-err').textContent = 'Incorrect password.';
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pw    = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-err');
+  errEl.textContent = '';
+  if (!email || !pw) { errEl.textContent = 'Please enter email and password.'; return; }
+  try {
+    await firebase.auth().signInWithEmailAndPassword(email, pw);
+  } catch(e) {
+    errEl.textContent = friendlyAuthErr(e.code);
   }
 }
-function adminLogout() {
-  sessionStorage.removeItem(SES_KEY);
-  updateAdminUI();
+
+async function doSignUp() {
+  const email   = document.getElementById('signup-email').value.trim();
+  const pw      = document.getElementById('signup-password').value;
+  const confirm = document.getElementById('signup-confirm').value;
+  const errEl   = document.getElementById('signup-err');
+  const msgEl   = document.getElementById('signup-msg');
+  errEl.textContent = '';
+  msgEl.style.display = 'none';
+  if (!email || !pw) { errEl.textContent = 'Please fill in all fields.'; return; }
+  if (pw !== confirm) { errEl.textContent = 'Passwords do not match.'; return; }
+  if (pw.length < 6)  { errEl.textContent = 'Password must be at least 6 characters.'; return; }
+  try {
+    const cred = await firebase.auth().createUserWithEmailAndPassword(email, pw);
+    // First user in collection becomes admin
+    const snap    = await db.collection('users').get();
+    const isFirst = snap.docs.filter(d => d.id !== cred.user.uid).length === 0;
+    const role    = isFirst ? 'admin' : 'pending';
+    await db.collection('users').doc(cred.user.uid).set({ email, role, createdAt: new Date().toISOString() });
+    await cred.user.sendEmailVerification();
+    msgEl.textContent = isFirst
+      ? '✅ Account created! You\'re the first user and have been made Admin. Check your email to verify.'
+      : '✅ Account created! A verification email has been sent. An admin will assign your role.';
+    msgEl.style.display = 'block';
+  } catch(e) {
+    errEl.textContent = friendlyAuthErr(e.code);
+  }
 }
+
+function doSignOut() { firebase.auth().signOut(); }
+
+function friendlyAuthErr(code) {
+  const map = {
+    'auth/user-not-found':       'No account found with this email.',
+    'auth/wrong-password':       'Incorrect password.',
+    'auth/email-already-in-use': 'An account with this email already exists.',
+    'auth/invalid-email':        'Invalid email address.',
+    'auth/weak-password':        'Password must be at least 6 characters.',
+    'auth/too-many-requests':    'Too many attempts. Please try again later.',
+    'auth/invalid-credential':   'Invalid email or password.',
+  };
+  return map[code] || 'Something went wrong. Please try again.';
+}
+
+// ─── Auth State Listener ───
+firebase.auth().onAuthStateChanged(async user => {
+  if (!user) {
+    _currentUser = null;
+    _currentUserRole = null;
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('pending-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display     = 'none';
+    document.getElementById('auth-screen').style.display    = 'flex';
+    return;
+  }
+  _currentUser = user;
+  // Fetch role from Firestore
+  try {
+    let doc = await db.collection('users').doc(user.uid).get();
+    if (!doc.exists) {
+      await db.collection('users').doc(user.uid).set({ email: user.email, role: 'pending', createdAt: new Date().toISOString() });
+      doc = await db.collection('users').doc(user.uid).get();
+    }
+    _currentUserRole = doc.data().role || 'pending';
+  } catch(e) {
+    console.error('Role fetch error:', e);
+    _currentUserRole = 'pending';
+  }
+
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('auth-screen').style.display    = 'none';
+
+  if (_currentUserRole === 'pending') {
+    document.getElementById('pending-screen').style.display = 'flex';
+    document.getElementById('app-screen').style.display     = 'none';
+    return;
+  }
+
+  document.getElementById('pending-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display     = 'block';
+  updateUserPill();
+  appInit();
+});
+
+function updateUserPill() {
+  const pill = document.getElementById('user-info-pill');
+  if (!pill) return;
+  pill.style.display = 'flex';
+  const labels = { admin: 'Admin', project_manager: 'PM', foreman: 'Foreman' };
+  document.getElementById('user-role-badge').textContent    = labels[_currentUserRole] || _currentUserRole;
+  document.getElementById('user-email-display').textContent = _currentUser ? _currentUser.email : '';
+  const usersBtn = document.getElementById('users-mgmt-btn');
+  if (usersBtn) usersBtn.style.display = isAdmin() ? '' : 'none';
+}
+
+// ─── User Management ───
+async function openUsersModal() {
+  document.getElementById('users-modal').classList.add('open');
+  const body = document.getElementById('users-modal-body');
+  body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);">Loading users…</div>';
+  try {
+    const snap = await db.collection('users').get();
+    const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }))
+      .sort((a, b) => { const ord = { admin:0, project_manager:1, foreman:2, pending:3 }; return (ord[a.role]??4)-(ord[b.role]??4); });
+    const rows = users.map(u => `
+      <tr>
+        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${eh(u.email||u.uid)}</td>
+        <td>
+          <select onchange="updateUserRole('${u.uid}',this.value)" ${u.uid===_currentUser.uid?'disabled':''}>
+            <option value="pending"         ${u.role==='pending'?'selected':''}>Pending</option>
+            <option value="foreman"         ${u.role==='foreman'?'selected':''}>Foreman</option>
+            <option value="project_manager" ${u.role==='project_manager'?'selected':''}>Project Manager</option>
+            <option value="admin"           ${u.role==='admin'?'selected':''}>Admin</option>
+          </select>
+        </td>
+        <td style="color:var(--muted);font-size:.78rem;">${u.createdAt?new Date(u.createdAt).toLocaleDateString():'—'}</td>
+        <td>${u.uid===_currentUser.uid?'<span style="color:var(--accent);font-size:.78rem;">You</span>':''}</td>
+      </tr>`).join('');
+    body.innerHTML = `<table class="users-table">
+      <thead><tr><th>Email</th><th>Role</th><th>Joined</th><th></th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="4" style="text-align:center;color:var(--muted);">No users found.</td></tr>'}</tbody>
+    </table>`;
+  } catch(e) {
+    body.innerHTML = `<div style="color:var(--red);text-align:center;padding:20px;">Error: ${eh(e.message)}</div>`;
+  }
+}
+
+async function updateUserRole(uid, role) {
+  try {
+    await db.collection('users').doc(uid).update({ role });
+  } catch(e) {
+    alert('Error updating role: ' + e.message);
+  }
+}
+
+// ─── Legacy shims ───
+function openAdminModal()  { /* replaced by Firebase login */ }
+function closeAdminModal() { document.getElementById('admin-modal').classList.remove('open'); }
+function doAdminLogin()    { /* no-op */ }
+
 function updateAdminUI() {
   const admin = isAdmin();
-  // Header buttons
-  document.getElementById('admin-active-pill').style.display = admin ? 'flex'  : 'none';
-  document.getElementById('admin-login-btn').style.display   = admin ? 'none'  : 'inline-flex';
-  // Upload button in Budgets
   const uploadBtn = document.getElementById('budgets-upload-btn');
-  if (uploadBtn) uploadBtn.style.display = admin ? '' : 'none';
+  if (uploadBtn) uploadBtn.style.display = canEdit() ? '' : 'none';
   if (document.getElementById('budgets-content').style.display !== 'none') {
-    document.getElementById('budgets-upload-area').style.display = admin ? 'block' : 'none';
+    document.getElementById('budgets-upload-area').style.display = canEdit() ? 'block' : 'none';
     const hasFiles = getSavedCSVFiles().length > 0;
-    document.getElementById('budgets-locked-notice').style.display = (!admin && !hasFiles) ? 'flex' : 'none';
+    document.getElementById('budgets-locked-notice').style.display = (!canEdit() && !hasFiles) ? 'flex' : 'none';
   }
-  renderTabBar(); // re-render to show/hide ✕ buttons
+  // Foreman only sees Payroll tab
+  const budgetsTab = document.getElementById('budgets-tab');
+  const lcTab      = document.getElementById('lc-tab');
+  if (budgetsTab) budgetsTab.style.display = isForeman() ? 'none' : '';
+  if (lcTab)      lcTab.style.display      = isForeman() ? 'none' : '';
+  renderTabBar();
 }
 
 // ═══════════════════════════
@@ -1028,11 +1291,10 @@ function showPanel(name) {
   const map = { csv:'csv-content', payroll:'payroll-content', budgets:'budgets-content', lc:'lc-content' };
   if (map[name]) document.getElementById(map[name]).style.display = 'block';
   if (name === 'budgets') {
-    const admin = isAdmin();
     const hasFiles = getSavedCSVFiles().length > 0;
-    document.getElementById('budgets-upload-area').style.display  = admin ? 'block' : 'none';
-    document.getElementById('budgets-locked-notice').style.display = (!admin && !hasFiles) ? 'flex' : 'none';
-    document.getElementById('budgets-upload-btn').style.display   = admin ? '' : 'none';
+    document.getElementById('budgets-upload-area').style.display  = canEdit() ? 'block' : 'none';
+    document.getElementById('budgets-locked-notice').style.display = (!canEdit() && !hasFiles) ? 'flex' : 'none';
+    document.getElementById('budgets-upload-btn').style.display   = canEdit() ? '' : 'none';
   }
 }
 
@@ -1087,10 +1349,10 @@ document.getElementById('budgets-upload-btn').addEventListener('click', guardedF
 document.getElementById('budgets-content').addEventListener('dragover', e => e.preventDefault());
 document.getElementById('budgets-content').addEventListener('drop', e => { e.preventDefault(); guardedProcessFiles(e.dataTransfer.files); });
 fileInput.addEventListener('change', () => { if (fileInput.files.length) guardedProcessFiles(fileInput.files); fileInput.value = ''; });
-document.getElementById('load-demo-btn').addEventListener('click', () => { if (isAdmin()) loadDemo(); });
+document.getElementById('load-demo-btn').addEventListener('click', () => { if (canEdit()) loadDemo(); });
 
-function guardedFileClick() { if (!isAdmin()) { openAdminModal(); return; } fileInput.click(); }
-function guardedProcessFiles(list) { if (!isAdmin()) { openAdminModal(); return; } processFiles(list); }
+function guardedFileClick() { if (!canEdit()) { alert('Admin or Project Manager access required.'); return; } fileInput.click(); }
+function guardedProcessFiles(list) { if (!canEdit()) { alert('Admin or Project Manager access required.'); return; } processFiles(list); }
 
 function processFiles(list) {
   let last = null, pending = list.length;
@@ -1679,12 +1941,17 @@ document.getElementById('admin-modal').addEventListener('click', e => { if(e.tar
 // ═══════════════════════════
 //  INIT
 // ═══════════════════════════
-(function init(){
+function appInit() {
   updateAdminUI();
   populatePRDropdowns();
   renderWOTable();
   switchToBudgets();
-})();
+}
+
+// Users modal close on overlay click
+document.getElementById('users-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) document.getElementById('users-modal').classList.remove('open');
+});
 </script>
 </body>
 </html>
