@@ -656,6 +656,72 @@
       </div>
     </details>
 
+    <!-- Daily Input -->
+    <details id="ps-daily-details" style="margin-bottom:24px;" open>
+      <summary style="cursor:pointer;font-weight:600;font-size:.95rem;color:var(--accent);padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;list-style:none;display:flex;align-items:center;gap:8px;">
+        <span>📝</span><span>Daily Input</span>
+        <span id="di-saved-badge" style="margin-left:auto;font-size:.78rem;color:var(--green);display:none;">✓ Saved</span>
+      </summary>
+      <div style="margin-top:8px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:0 0 8px 8px;">
+
+        <!-- Controls -->
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
+          <div class="field" style="flex:0 0 auto;">
+            <label style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;">Date</label>
+            <input type="date" id="di-date" class="fi" style="width:160px;" />
+          </div>
+          <div class="field" style="flex:1;min-width:180px;">
+            <label style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;">Job</label>
+            <select id="di-job-select" class="fi" onchange="diJobChanged()">
+              <option value="">— Select Job —</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-end;">
+            <button class="btn" onclick="submitDailyInput()" style="margin-top:0;">Save Daily Input</button>
+          </div>
+        </div>
+
+        <!-- Crew tabs -->
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;" id="di-crew-tabs"></div>
+
+        <!-- Crew input table -->
+        <div style="overflow-x:auto;">
+          <table style="min-width:700px;width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:var(--surface2);">
+                <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);width:200px;">Employee Name</th>
+                <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Area Worked</th>
+                <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Labor Code</th>
+                <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Description</th>
+              </tr>
+            </thead>
+            <tbody id="di-crew-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Daily Log -->
+        <div style="margin-top:24px;">
+          <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Submission Log</div>
+          <div id="di-log-wrap" style="overflow-x:auto;">
+            <table style="min-width:700px;width:100%;border-collapse:collapse;font-size:.82rem;">
+              <thead>
+                <tr style="background:var(--surface2);">
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Date</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Job</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Crew</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Submitted By</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Employees</th>
+                  <th style="padding:8px 10px;border-bottom:1px solid var(--border);"></th>
+                </tr>
+              </thead>
+              <tbody id="di-log-tbody"><tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted);">No submissions yet.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </details>
+
     <!-- Printable paysheet -->
     <div id="paysheet-print-area" style="background:#fff;color:#000;border-radius:8px;padding:32px;max-width:960px;font-family:Arial,sans-serif;font-size:13px;">
 
@@ -2171,6 +2237,220 @@ function exportWOCSV() {
 document.getElementById('admin-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeAdminModal(); });
 
 // ═══════════════════════════
+//  DAILY INPUT
+// ═══════════════════════════
+const DI_CREWS    = 10;
+const DI_EMP_ROWS = 10;
+let _diActiveCrew = 1;
+// _diData[crew][row] = {employee, area, costCode, description}
+let _diData = {};
+for (let c=1; c<=DI_CREWS; c++) {
+  _diData[c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:''}));
+}
+
+function diInit() {
+  // Set today's date
+  const n = new Date();
+  document.getElementById('di-date').value =
+    `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+  diPopulateJobSelect();
+  diRenderCrewTabs();
+  diRenderCrewTable();
+  diLoadLog();
+}
+
+function diPopulateJobSelect() {
+  const sel = document.getElementById('di-job-select');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Select Job —</option>';
+  getSavedCSVFiles().forEach(f => {
+    const o = document.createElement('option');
+    o.value = f.name; o.textContent = f.name;
+    sel.appendChild(o);
+  });
+  if (cur) sel.value = cur;
+}
+
+function diJobChanged() { diRenderCrewTable(); }
+
+function diRenderCrewTabs() {
+  const wrap = document.getElementById('di-crew-tabs');
+  wrap.innerHTML = '';
+  for (let c=1; c<=DI_CREWS; c++) {
+    const btn = document.createElement('button');
+    btn.className = 'btn-sm' + (c === _diActiveCrew ? '' : ' btn-outline');
+    btn.style.cssText = c === _diActiveCrew
+      ? 'background:var(--accent);color:#000;border-color:var(--accent);font-weight:700;'
+      : '';
+    btn.textContent = `Crew ${c}`;
+    btn.onclick = () => { _diActiveCrew = c; diRenderCrewTabs(); diRenderCrewTable(); };
+    wrap.appendChild(btn);
+  }
+}
+
+function diRenderCrewTable() {
+  const jobName = document.getElementById('di-job-select').value;
+  const areas   = jobName ? psGetAreas(jobName) : [];
+  const tbody   = document.getElementById('di-crew-tbody');
+  const rows    = _diData[_diActiveCrew];
+
+  tbody.innerHTML = rows.map((row, i) => {
+    const areaOpts = ['<option value=""></option>',
+      ...areas.map(a => `<option value="${eh(a)}" ${row.area===a?'selected':''}>${eh(a)}</option>`)
+    ].join('');
+
+    let codeOpts = '<option value=""></option>';
+    if (jobName && row.area) {
+      PAYROLL_GROUPS.forEach(g => {
+        const {budget} = psGetAreaCodeData(jobName, row.area, g.code);
+        if (budget > 0 || row.costCode === g.code) {
+          codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
+        }
+      });
+    } else {
+      PAYROLL_GROUPS.forEach(g => {
+        codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
+      });
+    }
+
+    return `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:6px 8px;">
+        <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
+          oninput="_diData[${_diActiveCrew}][${i}].employee=this.value" />
+      </td>
+      <td style="padding:6px 8px;">
+        <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].area=this.value;diRenderCrewTable()">
+          ${areaOpts}
+        </select>
+      </td>
+      <td style="padding:6px 8px;">
+        <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value">
+          ${codeOpts}
+        </select>
+      </td>
+      <td style="padding:6px 8px;">
+        <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.description)}" placeholder="Description"
+          oninput="_diData[${_diActiveCrew}][${i}].description=this.value" />
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function submitDailyInput() {
+  const date    = document.getElementById('di-date').value;
+  const jobName = document.getElementById('di-job-select').value;
+  if (!date)    { alert('Please select a date.'); return; }
+  if (!jobName) { alert('Please select a job.'); return; }
+
+  // Build payload — only crews with at least one employee filled in
+  const crews = [];
+  for (let c=1; c<=DI_CREWS; c++) {
+    const entries = _diData[c].filter(r => r.employee.trim());
+    if (entries.length) crews.push({ crewNum: c, entries });
+  }
+  if (!crews.length) { alert('Please enter at least one employee name.'); return; }
+
+  const id  = `${date}_${jobName.replace(/[^\w-]/g,'_')}_${Date.now()}`;
+  const doc = {
+    id, date, job: jobName,
+    crews,
+    submittedBy: _currentUser ? _currentUser.email : 'unknown',
+    submittedAt: new Date().toISOString()
+  };
+
+  try {
+    await db.collection('dailyinput').doc(id).set(doc);
+    const badge = document.getElementById('di-saved-badge');
+    badge.style.display = '';
+    setTimeout(() => badge.style.display = 'none', 3000);
+    diLoadLog();
+  } catch(e) {
+    alert('Failed to save daily input: ' + e.message);
+  }
+}
+
+async function diLoadLog() {
+  const tbody = document.getElementById('di-log-tbody');
+  try {
+    const snap = await db.collection('dailyinput').orderBy('date','desc').limit(50).get();
+    if (snap.empty) {
+      tbody.innerHTML = '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted);">No submissions yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = snap.docs.map(d => {
+      const r = d.data();
+      const crewNums = r.crews.map(c => `Crew ${c.crewNum}`).join(', ');
+      const empCount = r.crews.reduce((s,c) => s+c.entries.length, 0);
+      return `<tr style="border-top:1px solid var(--border);">
+        <td style="padding:8px 10px;">${fmtDate(r.date)}</td>
+        <td style="padding:8px 10px;color:var(--accent);">${eh(r.job)}</td>
+        <td style="padding:8px 10px;">${crewNums}</td>
+        <td style="padding:8px 10px;color:var(--muted);">${eh(r.submittedBy)}</td>
+        <td style="padding:8px 10px;">${empCount} employee${empCount!==1?'s':''}</td>
+        <td style="padding:8px 10px;">
+          <button class="btn-sm" onclick="diViewSubmission('${r.id}')">View</button>
+          ${isAdmin()?`<button class="btn-sm btn-danger" style="margin-left:4px;" onclick="diDeleteSubmission('${r.id}')">Delete</button>`:''}
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    // orderBy requires an index — fallback without ordering
+    try {
+      const snap2 = await db.collection('dailyinput').get();
+      if (snap2.empty) { tbody.innerHTML='<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted);">No submissions yet.</td></tr>'; return; }
+      const docs = snap2.docs.map(d=>d.data()).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,50);
+      tbody.innerHTML = docs.map(r => {
+        const crewNums = r.crews.map(c=>`Crew ${c.crewNum}`).join(', ');
+        const empCount = r.crews.reduce((s,c)=>s+c.entries.length,0);
+        return `<tr style="border-top:1px solid var(--border);">
+          <td style="padding:8px 10px;">${fmtDate(r.date)}</td>
+          <td style="padding:8px 10px;color:var(--accent);">${eh(r.job)}</td>
+          <td style="padding:8px 10px;">${crewNums}</td>
+          <td style="padding:8px 10px;color:var(--muted);">${eh(r.submittedBy)}</td>
+          <td style="padding:8px 10px;">${empCount} employee${empCount!==1?'s':''}</td>
+          <td style="padding:8px 10px;">
+            <button class="btn-sm" onclick="diViewSubmission('${r.id}')">View</button>
+            ${isAdmin()?`<button class="btn-sm btn-danger" style="margin-left:4px;" onclick="diDeleteSubmission('${r.id}')">Delete</button>`:''}
+          </td>
+        </tr>`;
+      }).join('');
+    } catch(e2) { console.error(e2); }
+  }
+}
+
+function diViewSubmission(id) {
+  db.collection('dailyinput').doc(id).get().then(doc => {
+    if (!doc.exists) { alert('Submission not found.'); return; }
+    const r = doc.data();
+    let html = `<strong>${fmtDate(r.date)} — ${r.job}</strong><br><em>Submitted by ${r.submittedBy}</em><br><br>`;
+    r.crews.forEach(c => {
+      html += `<strong>Crew ${c.crewNum}</strong><br>`;
+      c.entries.forEach(e => {
+        html += `&nbsp;&nbsp;• ${e.employee} | ${e.area||'—'} | ${e.costCode||'—'} | ${e.description||'—'}<br>`;
+      });
+      html += '<br>';
+    });
+    // Show in a simple overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    overlay.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-top:2px solid var(--accent);border-radius:12px;padding:28px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;">
+      <div style="font-size:.85rem;line-height:1.8;">${html}</div>
+      <button class="btn btn-outline" style="margin-top:16px;" onclick="this.closest('div[style]').remove()">Close</button>
+    </div>`;
+    overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
+    document.body.appendChild(overlay);
+  });
+}
+
+async function diDeleteSubmission(id) {
+  if (!confirm('Delete this daily input submission?')) return;
+  try {
+    await db.collection('dailyinput').doc(id).delete();
+    diLoadLog();
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}
+
+// ═══════════════════════════
 //  PAYSHEET
 // ═══════════════════════════
 const PS_MAIN_ROWS  = 15;
@@ -2185,6 +2465,7 @@ function switchToPaysheet() {
   psPopulateAreaBudgetSelect();
   psRenderMainTable();
   psRenderCrewTable();
+  diInit();
 }
 
 function psPopulateJobSelect() {
