@@ -829,14 +829,14 @@
 <!-- Users Management Modal -->
 <!-- Load Paysheet Modal -->
 <div class="modal-overlay" id="ps-load-modal">
-  <div class="modal" style="width:680px;max-width:95vw;">
-    <h2>📂 Load Saved Paysheet</h2>
-    <p style="color:var(--muted);font-size:.85rem;">Select a saved paysheet to restore all crew data.</p>
-    <div style="margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-      <input id="ps-load-search" class="fi" placeholder="Search by job or week ending…" style="flex:1;min-width:180px;" oninput="renderPSLoadList()">
+  <div class="modal" style="width:760px;max-width:96vw;">
+    <h2>📁 Saved Paysheets</h2>
+    <p style="color:var(--muted);font-size:.85rem;margin-top:0;">Paysheets are organized by job. Auto-saved each time you submit daily input.</p>
+    <div style="margin-bottom:14px;display:flex;gap:10px;align-items:center;">
+      <input id="ps-load-search" class="fi" placeholder="Search by job, week ending, or foreman…" style="flex:1;" oninput="renderPSLoadList()">
     </div>
-    <div id="ps-load-list" style="max-height:360px;overflow-y:auto;"></div>
-    <div style="margin-top:20px;text-align:right;">
+    <div id="ps-load-list" style="max-height:420px;overflow-y:auto;padding-right:2px;"></div>
+    <div style="margin-top:16px;text-align:right;">
       <button class="btn btn-outline" onclick="document.getElementById('ps-load-modal').classList.remove('open')">Close</button>
     </div>
   </div>
@@ -2435,6 +2435,9 @@ function psAutoFillFromSubmission(crews, jobName, date) {
   psRenderMainTable();
   psRenderCrewTable();
 
+  // Auto-save paysheet silently to cloud so it appears in the Load folder
+  savePaysheetToCloud(true);
+
   // Scroll to paysheet
   const el = document.getElementById('paysheet-print-area');
   if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -2924,12 +2927,17 @@ function printPaysheet() {
 }
 
 // ─── Save paysheet to Firestore ───
-async function savePaysheetToCloud() {
+// silent=true → no alert (used for auto-save from daily input)
+async function savePaysheetToCloud(silent) {
   _psSaveHeaderFields();
-  const jobName  = document.getElementById('ps-job-select').value;
-  const weekEnd  = _ps().header.weekEnding || '';
-  if (!jobName)  { alert('Please select a job before saving.'); return; }
-  if (!weekEnd)  { alert('Please enter a Week Ending date before saving.'); return; }
+  const jobName = document.getElementById('ps-job-select').value;
+  // Use the first crew that has a weekEnding, or fall back to today
+  let weekEnd = '';
+  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+    if (_psState[c].header.weekEnding) { weekEnd = _psState[c].header.weekEnding; break; }
+  }
+  if (!jobName) { if (!silent) alert('Please select a job before saving.'); return; }
+  if (!weekEnd) { if (!silent) alert('Please enter a Week Ending date in the paysheet header before saving.'); return; }
 
   const docId = (jobName + '_' + weekEnd).replace(/[^\w-]/g, '_');
   const crews = {};
@@ -2952,39 +2960,119 @@ async function savePaysheetToCloud() {
     if (!_cache.paysheets) _cache.paysheets = [];
     const idx = _cache.paysheets.findIndex(p => p.id === docId);
     if (idx !== -1) _cache.paysheets[idx] = doc; else _cache.paysheets.push(doc);
-    alert(`Paysheet saved for "${jobName}" — Week Ending ${weekEnd}`);
+    if (!silent) alert(`Paysheet saved — "${jobName}" · Week Ending ${weekEnd}`);
+    return doc;
   } catch(e) {
-    alert('Save failed: ' + e.message);
+    if (!silent) alert('Save failed: ' + e.message);
   }
 }
 
 // ─── Load paysheet modal ───
+// Track which job folders are expanded
+let _psLoadOpenFolders = new Set();
+
 function openLoadPaysheetModal() {
+  // Auto-expand the active job folder
+  const activeJob = document.getElementById('ps-job-select').value;
+  if (activeJob) _psLoadOpenFolders.add(activeJob);
   renderPSLoadList();
   document.getElementById('ps-load-modal').classList.add('open');
 }
 
 function renderPSLoadList() {
   const list = document.getElementById('ps-load-list');
-  const q    = (document.getElementById('ps-load-search').value || '').toLowerCase();
+  const q    = (document.getElementById('ps-load-search').value || '').toLowerCase().trim();
   const all  = (_cache.paysheets || []).slice().sort((a,b) => (b.savedAt||'').localeCompare(a.savedAt||''));
-  const filt = q ? all.filter(p => (p.job||'').toLowerCase().includes(q) || (p.weekEnding||'').includes(q)) : all;
 
-  if (!filt.length) {
-    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);">No saved paysheets found.</div>';
+  if (!all.length) {
+    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);">No saved paysheets yet. Save a paysheet or submit daily input to create one.</div>';
     return;
   }
-  list.innerHTML = filt.map(p => {
-    const d   = p.savedAt ? new Date(p.savedAt).toLocaleString() : '';
-    const who = p.savedBy || '';
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);gap:12px;">
-      <div>
-        <div style="font-weight:600;font-size:.92rem;">${p.job || '—'}</div>
-        <div style="font-size:.78rem;color:var(--muted);margin-top:2px;">Week Ending: ${p.weekEnding || '—'} &nbsp;·&nbsp; Saved ${d} by ${who}</div>
+
+  // Group by job
+  const byJob = {};
+  all.forEach(p => {
+    const job = p.job || '(No Job)';
+    if (!byJob[job]) byJob[job] = [];
+    byJob[job].push(p);
+  });
+
+  // Filter: if searching, flatten and filter; otherwise show folder view
+  if (q) {
+    const filt = all.filter(p =>
+      (p.job||'').toLowerCase().includes(q) ||
+      (p.weekEnding||'').includes(q) ||
+      (p.savedBy||'').toLowerCase().includes(q)
+    );
+    if (!filt.length) {
+      list.innerHTML = `<div style="padding:24px;text-align:center;color:var(--muted);">No results for "${eh(q)}".</div>`;
+      return;
+    }
+    list.innerHTML = filt.map(p => _psLoadRow(p)).join('');
+    return;
+  }
+
+  // Folder view
+  list.innerHTML = Object.entries(byJob).map(([job, sheets]) => {
+    const isOpen = _psLoadOpenFolders.has(job);
+    const jobId  = 'psf_' + job.replace(/[^\w]/g,'_');
+    const crewsWithData = sheets.reduce((s, p) => {
+      if (!p.crews) return s;
+      return s + Object.values(p.crews).filter(c => c.rows && c.rows.some(r => r.employee || r.area)).length;
+    }, 0);
+    return `
+    <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden;">
+      <div onclick="psToggleFolder('${job.replace(/'/g,"\\'")}','${jobId}')"
+           style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;background:var(--surface2);user-select:none;">
+        <span style="font-size:1rem;">${isOpen ? '📂' : '📁'}</span>
+        <div style="flex:1;">
+          <div style="font-weight:700;font-size:.93rem;">${eh(job)}</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:1px;">${sheets.length} saved · ${crewsWithData} crew paysheets</div>
+        </div>
+        <span style="color:var(--muted);font-size:.85rem;">${isOpen ? '▲' : '▼'}</span>
       </div>
-      <button class="btn" style="white-space:nowrap;font-size:.8rem;" onclick="loadPaysheetFromCloud('${p.id}')">Load</button>
+      <div id="${jobId}" style="display:${isOpen?'block':'none'};">
+        ${sheets.map(p => _psLoadRow(p)).join('')}
+      </div>
     </div>`;
   }).join('');
+}
+
+function _psLoadRow(p) {
+  const d   = p.savedAt ? new Date(p.savedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
+  const t   = p.savedAt ? new Date(p.savedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : '';
+  const who = p.savedBy || '';
+  // Count crews with data
+  const crewCount = p.crews
+    ? Object.values(p.crews).filter(c => c.rows && c.rows.some(r => r.employee || r.area)).length
+    : 0;
+  return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px 10px 36px;border-top:1px solid var(--border);">
+    <div style="flex:1;">
+      <div style="font-weight:600;font-size:.88rem;">Week Ending: ${p.weekEnding || '—'}</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:2px;">${d} ${t} · ${who} · ${crewCount} crew${crewCount!==1?'s':''} with data</div>
+    </div>
+    <button class="btn" style="font-size:.78rem;padding:5px 12px;white-space:nowrap;" onclick="loadPaysheetFromCloud('${p.id}')">Load</button>
+    ${isAdmin()?`<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;border-color:#ef4444;color:#ef4444;white-space:nowrap;" onclick="deleteSavedPaysheet('${p.id}',event)">Delete</button>`:''}
+  </div>`;
+}
+
+function psToggleFolder(job, elId) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  if (open) { _psLoadOpenFolders.delete(job); el.style.display = 'none'; }
+  else      { _psLoadOpenFolders.add(job);    el.style.display = 'block'; }
+  renderPSLoadList();
+}
+
+async function deleteSavedPaysheet(docId, e) {
+  e.stopPropagation();
+  if (!confirm('Delete this saved paysheet? This cannot be undone.')) return;
+  try {
+    await db.collection('paysheets').doc(docId).delete();
+    if (_cache.paysheets) _cache.paysheets = _cache.paysheets.filter(p => p.id !== docId);
+    renderPSLoadList();
+  } catch(err) { alert('Delete failed: ' + err.message); }
 }
 
 async function loadPaysheetFromCloud(docId) {
