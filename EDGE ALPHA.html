@@ -953,20 +953,31 @@ function updateAdminUI() {
 // ─── CSV / Job Files ───
 function getSavedCSVFiles() { return _cache.jobs || []; }
 
-function saveCSVFile(name, rows) {
+async function saveCSVFile(name, rows) {
   if (!_cache.jobs) _cache.jobs = [];
   const entry = { name, rows, savedAt: new Date().toISOString(), count: rows.length };
   const idx = _cache.jobs.findIndex(f => f.name === name);
   if (idx !== -1) _cache.jobs[idx] = entry; else _cache.jobs.push(entry);
   const docId = name.replace(/[^\w-]/g, '_');
-  db.collection('jobs').doc(docId).set(entry).catch(e => console.error('jobs write:', e));
+  try {
+    await db.collection('jobs').doc(docId).set(entry);
+  } catch(e) {
+    console.error('jobs write:', e);
+    alert(`Failed to save "${name}" to cloud: ${e.message}\n\nCheck your Firestore rules.`);
+    return false;
+  }
   return true;
 }
 
-function removeCSVFile(name) {
+async function removeCSVFile(name) {
   if (_cache.jobs) _cache.jobs = _cache.jobs.filter(f => f.name !== name);
   const docId = name.replace(/[^\w-]/g, '_');
-  db.collection('jobs').doc(docId).delete().catch(e => console.error('jobs delete:', e));
+  try {
+    await db.collection('jobs').doc(docId).delete();
+  } catch(e) {
+    console.error('jobs delete:', e);
+    alert(`Failed to delete "${name}" from cloud: ${e.message}`);
+  }
 }
 
 // ─── Payroll Entries ───
@@ -1410,9 +1421,12 @@ function processFiles(list) {
   let last = null, pending = list.length;
   Array.from(list).forEach(file => {
     const reader = new FileReader();
-    reader.onload = e => {
-      try { const rows = parseCSV(e.target.result); saveCSVFile(file.name, rows); last = file.name; }
-      catch (err) { alert(`Could not parse "${file.name}": ${err.message}`); }
+    reader.onload = async e => {
+      try {
+        const rows = parseCSV(e.target.result);
+        const ok = await saveCSVFile(file.name, rows);
+        if (ok) last = file.name;
+      } catch (err) { alert(`Could not parse "${file.name}": ${err.message}`); }
       if (--pending === 0 && last) { switchToBudgets(); switchToCSV(last); }
     };
     reader.readAsText(file);
