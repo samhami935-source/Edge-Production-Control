@@ -2286,13 +2286,13 @@ function psRenderMainTable() {
   const areas   = jobName ? psGetAreas(jobName) : [];
 
   tbody.innerHTML = _psRows.map((row, i) => {
-    // Area dropdown
-    const areaOpts = ['<option value="">— Area —</option>',
+    // Area dropdown — blank placeholder if no selection
+    const areaOpts = ['<option value="" style="color:#aaa;">' + (row.area ? '— Area —' : '') + '</option>',
       ...areas.map(a => `<option value="${eh(a)}" ${row.area===a?'selected':''}>${eh(a)}</option>`)
     ].join('');
 
-    // Labor code dropdown — only codes that have budget in selected area
-    let codeOpts = '<option value="">— Code —</option>';
+    // Labor code dropdown — blank placeholder if no selection
+    let codeOpts = '<option value="" style="color:#aaa;">' + (row.costCode ? '— Code —' : '') + '</option>';
     if (jobName && row.area) {
       PAYROLL_GROUPS.forEach(g => {
         const {budget} = psGetAreaCodeData(jobName, row.area, g.code);
