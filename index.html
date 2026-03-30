@@ -2395,7 +2395,7 @@ function diRenderCrewTable() {
 }
 
 function diClearDropdowns() {
-  _diData[_diActiveCrew].forEach(row => { row.area = ''; row.costCode = ''; });
+  _diData[_diActiveCrew].forEach(row => { row.area = ''; row.costCode = ''; row.description = ''; });
   diRenderCrewTable();
 }
 
