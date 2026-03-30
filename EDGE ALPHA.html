@@ -1001,7 +1001,7 @@ async function removeCSVFile(name) {
 }
 
 // ─── Payroll Entries ───
-function getPayrollEntries() { return _cache.payroll || []; }
+function getPayrollEntries() { return (_cache.payroll || []).slice(); }
 
 function savePayrollEntries(newEntries) {
   const oldEntries = _cache.payroll || [];
@@ -1095,7 +1095,7 @@ function exportBudgetsCSV() {
 //  501 & 502 WORK ORDERS / CHANGE ORDERS
 // ═══════════════════════════
 // ─── Work Order Entries ───
-function getWOEntries() { return _cache.workorders || []; }
+function getWOEntries() { return (_cache.workorders || []).slice(); }
 
 function saveWOEntries(newEntries) {
   const oldEntries = _cache.workorders || [];
