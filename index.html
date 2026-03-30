@@ -2391,6 +2391,10 @@ async function submitDailyInput() {
 
   try {
     await db.collection('dailyinput').doc(id).set(doc);
+
+    // Auto-fill paysheet for each crew that has entries
+    psAutoFillFromSubmission(crews, jobName, date);
+
     const badge = document.getElementById('di-saved-badge');
     badge.style.display = '';
     setTimeout(() => badge.style.display = 'none', 3000);
@@ -2398,6 +2402,42 @@ async function submitDailyInput() {
   } catch(e) {
     alert('Failed to save daily input: ' + e.message);
   }
+}
+
+// Fill paysheet rows for each crew from a just-submitted daily input
+function psAutoFillFromSubmission(crews, jobName, date) {
+  crews.forEach(c => {
+    const crewNum = c.crewNum;
+    if (!_psState[crewNum]) return;
+    const state = _psState[crewNum];
+
+    // Set week ending and crew name in header (don't overwrite foreman/project)
+    if (!state.header.weekEnding) state.header.weekEnding = date;
+    if (!state.header.crewName)   state.header.crewName   = `Crew ${crewNum}`;
+    if (!state.header.foreman && _currentUser) state.header.foreman = _currentUser.email;
+
+    // Fill rows — preserve any existing W/E amounts and Amt Paid already entered
+    c.entries.slice(0, PS_MAIN_ROWS).forEach((e, i) => {
+      const row = state.rows[i];
+      row.employee = e.employee  || row.employee  || '';
+      row.area     = e.area      || row.area      || '';
+      row.costCode = e.costCode  || row.costCode  || '';
+      row.notes    = e.description || e.notes || row.notes || '';
+      // empNum: preserve if already set
+    });
+  });
+
+  // Switch paysheet view to the active daily input crew
+  _psSaveHeaderFields();
+  _psActiveCrew = _diActiveCrew;
+  psRenderCrewTabs();
+  psLoadHeaderFields();
+  psRenderMainTable();
+  psRenderCrewTable();
+
+  // Scroll to paysheet
+  const el = document.getElementById('paysheet-print-area');
+  if (el) el.scrollIntoView({ behavior: 'smooth' });
 }
 
 async function diLoadLog() {
@@ -2591,10 +2631,16 @@ function psRenderCrewTabs() {
   if (!wrap) return;
   wrap.innerHTML = '';
   for (let c=1; c<=PS_NUM_CREWS; c++) {
+    const hasData = _psState[c].rows.some(r => r.employee || r.area || r.weAmount);
+    const isActive = c === _psActiveCrew;
     const btn = document.createElement('button');
-    btn.className = 'btn-sm' + (c===_psActiveCrew?'':' btn-outline');
-    btn.style.cssText = c===_psActiveCrew ? 'background:var(--accent);color:#000;border-color:var(--accent);font-weight:700;' : '';
-    btn.textContent = `Crew ${c}`;
+    btn.className = 'btn-sm' + (isActive ? '' : ' btn-outline');
+    btn.style.cssText = isActive
+      ? 'background:var(--accent);color:#000;border-color:var(--accent);font-weight:700;position:relative;'
+      : 'position:relative;' + (hasData ? 'border-color:var(--green);color:var(--green);' : '');
+    btn.innerHTML = `Crew ${c}` + (hasData && !isActive
+      ? '<span style="position:absolute;top:3px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--green);"></span>'
+      : '');
     btn.onclick = () => psSwitchCrew(c);
     wrap.appendChild(btn);
   }
