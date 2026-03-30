@@ -731,77 +731,70 @@
     <div id="ps-crew-tab-bar" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;"></div>
 
     <!-- Printable paysheet -->
-    <div id="paysheet-print-area" style="background:#fff;color:#000;border-radius:8px;padding:32px;max-width:960px;font-family:Arial,sans-serif;font-size:13px;">
+    <div id="paysheet-print-area" style="background:#fff;color:#000;border-radius:8px;padding:32px;max-width:980px;font-family:Arial,sans-serif;font-size:13px;">
 
       <!-- Header fields -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-bottom:24px;">
-        <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-bottom:20px;">
+        <div style="display:flex;flex-direction:column;gap:9px;">
           <div style="display:flex;align-items:center;gap:8px;">
             <label style="min-width:120px;font-weight:700;">Project Name:</label>
-            <input id="ps-project" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:1px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
+            <input id="ps-project" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <label style="min-width:120px;font-weight:700;">Foreman Name:</label>
-            <input id="ps-foreman" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:1px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
+            <input id="ps-foreman" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <label style="min-width:120px;font-weight:700;">Crew Name:</label>
-            <input id="ps-crew" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:1px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
+            <input id="ps-crew" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <label style="min-width:120px;font-weight:700;">Week Ending:</label>
-            <input id="ps-weekending" type="date" class="ps-field" style="flex:1;border:none;border-bottom:1px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
+            <input id="ps-weekending" type="date" class="ps-field" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
           </div>
         </div>
         <div style="display:flex;align-items:flex-end;justify-content:flex-end;">
           <div style="display:flex;align-items:center;gap:8px;">
             <label style="font-weight:700;">Foreman Signature:</label>
-            <div style="width:200px;border-bottom:1px solid #000;height:24px;"></div>
+            <div style="width:220px;border-bottom:2px solid #000;height:24px;"></div>
           </div>
         </div>
       </div>
 
-      <!-- Main table -->
+      <!-- Main table: Area Worked | Labor Code | Budget | PTD | Remaining Budget || W/E Earned | % Complete -->
       <table id="ps-main-table" style="width:100%;border-collapse:collapse;margin-bottom:16px;">
         <thead>
           <tr style="background:#c9a84c;">
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:72px;">Emp #</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">Employee Name</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">Area Worked</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">Labor Code</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">Notes</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:110px;">Budget ($)</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:110px;">W/E Earned</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:110px;">Amt Paid</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;text-decoration:underline;">Area Worked</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;text-decoration:underline;">Labor Code</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:90px;text-decoration:underline;">Budget ($)</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:90px;text-decoration:underline;">PTD ($)</th>
+            <th style="border:1px solid #000;border-right:3px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:110px;text-decoration:underline;">Remaining Budget</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:115px;text-decoration:underline;">W/E Earned Amount</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:80px;text-decoration:underline;">% Complete</th>
           </tr>
         </thead>
         <tbody id="ps-main-tbody"></tbody>
       </table>
 
-      <!-- Totals row -->
-      <div style="display:flex;justify-content:flex-end;gap:32px;align-items:center;margin-bottom:24px;">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <span style="font-weight:700;">Total W/E Earned:</span>
-          <div style="border:1px solid #000;padding:6px 16px;min-width:130px;text-align:right;font-weight:700;" id="ps-total-display">$ —</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <span style="font-weight:700;">Total Paid:</span>
-          <div style="border:1px solid #000;padding:6px 16px;min-width:130px;text-align:right;font-weight:700;" id="ps-total-paid-display">$ —</div>
-        </div>
+      <!-- Total Amount -->
+      <div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-bottom:24px;">
+        <span style="font-weight:700;text-decoration:underline;">Total Amount:</span>
+        <div style="border:1px solid #000;padding:6px 16px;min-width:150px;text-align:right;font-weight:700;" id="ps-total-display">$ —</div>
       </div>
 
-      <!-- Per-Employee Summary table -->
+      <!-- Crew Splits table -->
       <table style="width:100%;border-collapse:collapse;">
         <thead>
           <tr style="background:#c9a84c;">
-            <th colspan="5" style="border:1px solid #000;padding:6px 8px;text-align:center;font-weight:700;">Employee Summary</th>
+            <th colspan="5" style="border:1px solid #000;padding:6px 8px;text-align:center;font-weight:700;">Crew Splits</th>
           </tr>
           <tr style="background:#d9d9d9;">
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:90px;">Employee #</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:80px;">Employee #</th>
             <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">Employee Name</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:120px;">Total Earned</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:120px;">Total Paid</th>
-            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:100px;">Initials</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:80px;">% Split</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:110px;">Amount</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:140px;">Employee Initials</th>
           </tr>
         </thead>
         <tbody id="ps-crew-tbody"></tbody>
@@ -811,6 +804,24 @@
   </div><!-- /paysheet-content -->
 
 </div><!-- /container -->
+
+<!-- Signature Pad Modal -->
+<div class="modal-overlay" id="ps-sig-modal">
+  <div class="modal" style="width:520px;max-width:96vw;">
+    <h2 style="margin-bottom:4px;">✍️ Employee Initials</h2>
+    <p style="color:var(--muted);font-size:.82rem;margin-bottom:14px;">Draw your initials using your finger, stylus, or mouse.</p>
+    <div style="border:2px solid var(--border);border-radius:8px;background:#fff;overflow:hidden;touch-action:none;">
+      <canvas id="ps-sig-canvas" style="display:block;width:100%;height:180px;cursor:crosshair;touch-action:none;"></canvas>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;">
+      <button class="btn btn-outline" style="margin-top:0;" onclick="psClearSigCanvas()">Clear</button>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-outline" style="margin-top:0;" onclick="psCancelSignature()">Cancel</button>
+        <button class="btn" style="margin-top:0;" onclick="psSaveSignature()">Save Initials</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Admin login modal -->
 <div class="modal-overlay" id="admin-modal">
@@ -2440,26 +2451,40 @@ async function submitDailyInput() {
   }
 }
 
-// Fill paysheet rows for each crew from a just-submitted daily input
+// Fill paysheet from a just-submitted daily input
 function psAutoFillFromSubmission(crews, jobName, date) {
   crews.forEach(c => {
     const crewNum = c.crewNum;
     if (!_psState[crewNum]) return;
     const state = _psState[crewNum];
 
-    // Set week ending and crew name in header (don't overwrite foreman/project)
+    // Set header fields if not already set
     if (!state.header.weekEnding) state.header.weekEnding = date;
     if (!state.header.crewName)   state.header.crewName   = `Crew ${crewNum}`;
     if (!state.header.foreman && _currentUser) state.header.foreman = _currentUser.email;
 
-    // Fill rows — preserve any existing W/E amounts and Amt Paid already entered
-    c.entries.slice(0, PS_MAIN_ROWS).forEach((e, i) => {
-      const row = state.rows[i];
-      row.employee = e.employee  || row.employee  || '';
-      row.area     = e.area      || row.area      || '';
-      row.costCode = e.costCode  || row.costCode  || '';
-      row.notes    = e.description || e.notes || row.notes || '';
-      // empNum: preserve if already set
+    const entries = c.entries || [];
+
+    // Fill splits: unique employees (preserve existing entries)
+    const seenEmp = new Set(state.splits.map(s => s.employee).filter(Boolean));
+    let si = state.splits.findIndex(s => !s.employee); // find next empty slot
+    entries.forEach(e => {
+      if (!e.employee || seenEmp.has(e.employee) || si < 0 || si >= PS_SPLIT_ROWS) return;
+      seenEmp.add(e.employee);
+      state.splits[si].employee = e.employee;
+      si = state.splits.findIndex((s, idx) => idx > si && !s.employee);
+    });
+
+    // Fill main rows: unique area+code combos (preserve existing)
+    const seenAC = new Set(state.rows.filter(r => r.area).map(r => r.area+'|||'+r.costCode));
+    let ri = state.rows.findIndex(r => !r.area);
+    entries.forEach(e => {
+      const key = (e.area||'') + '|||' + (e.costCode||'');
+      if (!e.area || seenAC.has(key) || ri < 0 || ri >= PS_MAIN_ROWS) return;
+      seenAC.add(key);
+      state.rows[ri].area     = e.area     || '';
+      state.rows[ri].costCode = e.costCode || '';
+      ri = state.rows.findIndex((r, idx) => idx > ri && !r.area);
     });
   });
 
@@ -2557,26 +2582,39 @@ async function diDeleteSubmission(id) {
   } catch(e) { alert('Delete failed: ' + e.message); }
 }
 
-// Auto-fill paysheet from current daily input state
+// Auto-fill paysheet from current daily input state (manual button)
 function psAutoFillFromDaily() {
   const jobName = document.getElementById('ps-job-select').value;
   if (!jobName) { alert('Please select a job using the "Active Job" selector at the top.'); return; }
 
-  // Fill each crew's paysheet from their daily input rows
   for (let c = 1; c <= DI_CREWS; c++) {
     const diRows = (_diData[c] || []).filter(r => r.employee.trim());
     if (!diRows.length) continue;
-    // Only overwrite if crew is empty
     const state = _psState[c];
-    const hasData = state.rows.some(r => r.employee || r.area || r.costCode);
-    if (!hasData) {
-      diRows.slice(0, PS_MAIN_ROWS).forEach((r, i) => {
-        state.rows[i].employee  = r.employee    || '';
-        state.rows[i].area      = r.area        || '';
-        state.rows[i].costCode  = r.costCode    || '';
-        state.rows[i].notes     = r.description || '';
-      });
-    }
+    const hasData = state.rows.some(r => r.area || r.costCode) || state.splits.some(s => s.employee);
+    if (hasData) continue;
+
+    // Fill splits with unique employees
+    const seenEmp = new Set();
+    let si = 0;
+    diRows.forEach(r => {
+      if (!r.employee || seenEmp.has(r.employee) || si >= PS_SPLIT_ROWS) return;
+      seenEmp.add(r.employee);
+      state.splits[si].employee = r.employee;
+      si++;
+    });
+
+    // Fill main rows with unique area+code combos
+    const seenAC = new Set();
+    let ri = 0;
+    diRows.forEach(r => {
+      const key = (r.area||'') + '|||' + (r.costCode||'');
+      if (!r.area || seenAC.has(key) || ri >= PS_MAIN_ROWS) return;
+      seenAC.add(key);
+      state.rows[ri].area     = r.area     || '';
+      state.rows[ri].costCode = r.costCode || '';
+      ri++;
+    });
   }
 
   psRenderMainTable();
@@ -2595,17 +2633,33 @@ function diAutoFillFromLog(id) {
     psJobSel.value = r.job;
     onJobChanged();
 
-    // Fill each crew's paysheet rows from the submission
+    // Fill each crew's paysheet from the submission
     (r.crews || []).forEach(c => {
       const crewNum = c.crewNum;
       if (!crewNum || !_psState[crewNum]) return;
       const state = _psState[crewNum];
       const entries = (c.entries || []).filter(e => e.employee);
-      entries.slice(0, PS_MAIN_ROWS).forEach((e, i) => {
-        state.rows[i].employee = e.employee  || '';
-        state.rows[i].area     = e.area      || '';
-        state.rows[i].costCode = e.costCode  || '';
-        state.rows[i].notes    = e.notes     || e.description || '';
+
+      // Splits: unique employees
+      const seenEmp = new Set();
+      let si = 0;
+      entries.forEach(e => {
+        if (!e.employee || seenEmp.has(e.employee) || si >= PS_SPLIT_ROWS) return;
+        seenEmp.add(e.employee);
+        state.splits[si].employee = e.employee;
+        si++;
+      });
+
+      // Main rows: unique area+code combos
+      const seenAC = new Set();
+      let ri = 0;
+      entries.forEach(e => {
+        const key = (e.area||'') + '|||' + (e.costCode||'');
+        if (!e.area || seenAC.has(key) || ri >= PS_MAIN_ROWS) return;
+        seenAC.add(key);
+        state.rows[ri].area     = e.area     || '';
+        state.rows[ri].costCode = e.costCode || '';
+        ri++;
       });
     });
 
@@ -2625,17 +2679,22 @@ function diAutoFillFromLog(id) {
 // ═══════════════════════════
 //  PAYSHEET
 // ═══════════════════════════
-const PS_MAIN_ROWS  = 20;
+const PS_MAIN_ROWS  = 15;
+const PS_SPLIT_ROWS = 10;
 const PS_NUM_CREWS  = 10;
 
 // Per-crew paysheet state
 let _psActiveCrew = 1;
-function _psEmptyRow()    { return {empNum:'', employee:'', area:'', costCode:'', notes:'', weAmount:'', amountPaid:''}; }
-function _psEmptyRows()   { return Array.from({length: PS_MAIN_ROWS}, () => _psEmptyRow()); }
+// Main table row: area/labor-code tracking
+function _psEmptyRow()    { return { area:'', costCode:'', ptd:'', weAmount:'', pctComplete:'' }; }
+// Crew splits row: employee distribution + signature
+function _psEmptySplit()  { return { empNum:'', employee:'', pctSplit:'', amount:'', signatureData:'' }; }
+function _psEmptyRows()   { return Array.from({length: PS_MAIN_ROWS},  () => _psEmptyRow()); }
+function _psEmptySplits() { return Array.from({length: PS_SPLIT_ROWS}, () => _psEmptySplit()); }
 function _psEmptyHeader() { return {project:'', foreman:'', crewName:'', weekEnding:''}; }
 let _psState = {};
 for (let c=1; c<=PS_NUM_CREWS; c++) {
-  _psState[c] = { rows: _psEmptyRows(), header: _psEmptyHeader() };
+  _psState[c] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
 }
 
 // Convenience accessor for current crew state
@@ -2671,7 +2730,8 @@ function psRenderCrewTabs() {
   if (!wrap) return;
   wrap.innerHTML = '';
   for (let c=1; c<=PS_NUM_CREWS; c++) {
-    const hasData = _psState[c].rows.some(r => r.employee || r.area || r.weAmount);
+    const hasData = _psState[c].rows.some(r => r.area || r.costCode || r.weAmount) ||
+                    _psState[c].splits.some(s => s.employee || s.empNum);
     const isActive = c === _psActiveCrew;
     const btn = document.createElement('button');
     btn.className = 'btn-sm' + (isActive ? '' : ' btn-outline');
@@ -2689,20 +2749,32 @@ function psRenderCrewTabs() {
 function psAutoFillCrewFromDaily(crewNum) {
   // Only auto-fill if this crew's rows are all empty
   const state = _psState[crewNum];
-  const hasData = state.rows.some(r => r.employee || r.area || r.costCode);
+  const hasData = state.rows.some(r => r.area || r.costCode) || state.splits.some(s => s.employee);
   if (hasData) return;
 
   const diRows = _diData[crewNum] ? _diData[crewNum].filter(r => r.employee.trim()) : [];
   if (!diRows.length) return;
 
-  const jobName = document.getElementById('ps-job-select').value;
+  // Fill splits with unique employees
+  const seenEmp = new Set();
+  let si = 0;
+  diRows.forEach(r => {
+    if (!r.employee || seenEmp.has(r.employee) || si >= PS_SPLIT_ROWS) return;
+    seenEmp.add(r.employee);
+    state.splits[si].employee = r.employee;
+    si++;
+  });
 
-  // Fill one row per daily input employee entry
-  diRows.slice(0, PS_MAIN_ROWS).forEach((r, i) => {
-    state.rows[i].employee  = r.employee  || '';
-    state.rows[i].area      = r.area      || '';
-    state.rows[i].costCode  = r.costCode  || '';
-    state.rows[i].notes     = r.description || '';
+  // Fill main rows with unique area+code combos
+  const seenAC = new Set();
+  let ri = 0;
+  diRows.forEach(r => {
+    const key = (r.area||'') + '|||' + (r.costCode||'');
+    if (!r.area || seenAC.has(key) || ri >= PS_MAIN_ROWS) return;
+    seenAC.add(key);
+    state.rows[ri].area     = r.area     || '';
+    state.rows[ri].costCode = r.costCode || '';
+    ri++;
   });
 
   psRenderMainTable();
@@ -2835,12 +2907,12 @@ function psRenderMainTable() {
 
   tbody.innerHTML = _ps().rows.map((row, i) => {
     // Area dropdown
-    const areaOpts = ['<option value="">' + (row.area ? '— Area —' : '') + '</option>',
+    const areaOpts = ['<option value=""></option>',
       ...areas.map(a => `<option value="${eh(a)}" ${row.area===a?'selected':''}>${eh(a)}</option>`)
     ].join('');
 
-    // Labor code dropdown
-    let codeOpts = '<option value="">' + (row.costCode ? '— Code —' : '') + '</option>';
+    // Labor code dropdown (filtered to codes with budget when area is selected)
+    let codeOpts = '<option value=""></option>';
     if (jobName && row.area) {
       PAYROLL_GROUPS.forEach(g => {
         const {budget} = psGetAreaCodeData(jobName, row.area, g.code);
@@ -2848,56 +2920,49 @@ function psRenderMainTable() {
           codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
         }
       });
+    } else {
+      PAYROLL_GROUPS.forEach(g => {
+        codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
+      });
     }
 
-    // Budget from job data
-    let budgetDisp = '';
+    // Budget, PTD, Remaining Budget
+    let budgetVal = 0;
     if (jobName && row.area && row.costCode) {
       const d = psGetAreaCodeData(jobName, row.area, row.costCode);
-      if (d.budget > 0) budgetDisp = '$' + d.budget.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+      budgetVal = d.budget || 0;
     }
+    const ptdVal   = parseFloat(row.ptd) || 0;
+    const remaining = budgetVal - ptdVal;
+    const budgetDisp  = budgetVal > 0 ? _fmt$(budgetVal) : '';
+    const remainColor = remaining < 0 ? '#ef4444' : '#333';
+    const remainDisp  = budgetVal > 0 || ptdVal > 0 ? _fmt$(remaining) : '';
 
-    const inp = 'style="width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:inherit;padding:0;"';
+    const numStyle = 'width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:inherit;padding:0;text-align:right;';
 
-    return `<tr style="border:1px solid #ccc;">
-      <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
-        <input ${inp} value="${eh(row.empNum)}" placeholder="—"
-          oninput="_ps().rows[${i}].empNum=this.value" style="text-align:center;width:64px;" />
-      </td>
-      <td style="border:1px solid #000;padding:2px 4px;">
-        <input ${inp} value="${eh(row.employee)}" placeholder="Employee name"
-          oninput="_ps().rows[${i}].employee=this.value;psRenderCrewTable()" />
-      </td>
+    return `<tr>
       <td style="border:1px solid #000;padding:2px 4px;">
         <select class="ps-area-select" onchange="psAreaChanged(${i},this.value)">${areaOpts}</select>
       </td>
       <td style="border:1px solid #000;padding:2px 4px;">
         <select class="ps-area-select" onchange="psCodeChanged(${i},this.value)">${codeOpts}</select>
       </td>
-      <td style="border:1px solid #000;padding:2px 4px;">
-        <input ${inp} value="${eh(row.notes)}" placeholder="Notes"
-          oninput="_ps().rows[${i}].notes=this.value" />
-      </td>
-      <td style="border:1px solid #000;padding:4px 8px;text-align:right;color:#444;font-size:11px;">${budgetDisp}</td>
+      <td style="border:1px solid #000;padding:4px 8px;text-align:right;font-size:12px;">${budgetDisp}</td>
       <td style="border:1px solid #000;padding:2px 5px;">
-        <div style="display:flex;align-items:center;gap:1px;">
-          <span style="color:#555;font-size:11px;">$</span>
-          <input type="number" class="ps-editable-cell" value="${row.weAmount}"
-            placeholder="0.00" min="0" step="0.01"
-            style="flex:1;text-align:right;font-weight:${row.weAmount?'700':'400'};"
-            oninput="_ps().rows[${i}].weAmount=this.value;psUpdateTotal()"
-            onchange="_ps().rows[${i}].weAmount=this.value;psUpdateTotal()" />
-        </div>
+        <input type="number" style="${numStyle}" value="${row.ptd||''}" placeholder="0.00" min="0" step="0.01"
+          oninput="_ps().rows[${i}].ptd=this.value;psUpdateTotal()"
+          onchange="_ps().rows[${i}].ptd=this.value;psUpdateTotal()" />
+      </td>
+      <td style="border:1px solid #000;border-right:3px solid #000;padding:4px 8px;text-align:right;font-weight:700;font-size:12px;color:${remainColor};">${remainDisp}</td>
+      <td style="border:1px solid #000;padding:2px 5px;">
+        <input type="number" style="${numStyle}" value="${row.weAmount||''}" placeholder="0.00" min="0" step="0.01"
+          oninput="_ps().rows[${i}].weAmount=this.value;psUpdateTotal()"
+          onchange="_ps().rows[${i}].weAmount=this.value;psUpdateTotal()" />
       </td>
       <td style="border:1px solid #000;padding:2px 5px;">
-        <div style="display:flex;align-items:center;gap:1px;">
-          <span style="color:#555;font-size:11px;">$</span>
-          <input type="number" class="ps-editable-cell" value="${row.amountPaid}"
-            placeholder="0.00" min="0" step="0.01"
-            style="flex:1;text-align:right;font-weight:${row.amountPaid?'700':'400'};"
-            oninput="_ps().rows[${i}].amountPaid=this.value;psUpdateTotal()"
-            onchange="_ps().rows[${i}].amountPaid=this.value;psUpdateTotal()" />
-        </div>
+        <input type="number" style="${numStyle}" value="${row.pctComplete||''}" placeholder="0" min="0" max="100" step="0.1"
+          oninput="_ps().rows[${i}].pctComplete=this.value"
+          onchange="_ps().rows[${i}].pctComplete=this.value" />
       </td>
     </tr>`;
   }).join('');
@@ -2917,46 +2982,54 @@ function psCodeChanged(i, code) {
 }
 
 function psUpdateTotal() {
-  const totalWE   = _ps().rows.reduce((s, r) => s + (parseFloat(r.weAmount)   || 0), 0);
-  const totalPaid = _ps().rows.reduce((s, r) => s + (parseFloat(r.amountPaid) || 0), 0);
-  document.getElementById('ps-total-display').textContent     = _fmt$(totalWE);
-  document.getElementById('ps-total-paid-display').textContent = _fmt$(totalPaid);
+  const total = _ps().rows.reduce((s, r) => s + (parseFloat(r.weAmount) || 0), 0);
+  document.getElementById('ps-total-display').textContent = _fmt$(total);
   psRenderCrewTable();
 }
 
 function psRenderCrewTable() {
-  const tbody = document.getElementById('ps-crew-tbody');
-  // Aggregate per-employee totals from rows
-  const empMap = {};
-  _ps().rows.forEach(r => {
-    if (!r.employee && !r.empNum) return;
-    const key = (r.empNum || '') + '|||' + (r.employee || '');
-    if (!empMap[key]) empMap[key] = {empNum: r.empNum||'', name: r.employee||'', earned:0, paid:0, initials:''};
-    empMap[key].earned += parseFloat(r.weAmount)   || 0;
-    empMap[key].paid   += parseFloat(r.amountPaid) || 0;
-  });
-  const emps = Object.values(empMap);
-  if (!emps.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="border:1px solid #000;padding:10px;text-align:center;color:#aaa;">No employees entered yet.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = emps.map((e, i) => `<tr>
-    <td style="border:1px solid #000;padding:4px 8px;text-align:center;">${eh(e.empNum)}</td>
-    <td style="border:1px solid #000;padding:4px 8px;">${eh(e.name)}</td>
-    <td style="border:1px solid #000;padding:4px 8px;text-align:right;font-weight:700;">${e.earned>0?'$'+e.earned.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):''}</td>
-    <td style="border:1px solid #000;padding:4px 8px;text-align:right;font-weight:700;">${e.paid>0?'$'+e.paid.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):''}</td>
+  const tbody  = document.getElementById('ps-crew-tbody');
+  const splits = _ps().splits;
+  const inp    = 'width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:inherit;padding:0;';
+
+  tbody.innerHTML = splits.map((s, i) => `<tr>
     <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
-      <input style="width:70px;background:transparent;border:none;outline:none;text-align:center;font-family:inherit;" placeholder="initials" />
+      <input style="${inp}text-align:center;" value="${eh(s.empNum)}" placeholder="—"
+        oninput="_ps().splits[${i}].empNum=this.value" />
+    </td>
+    <td style="border:1px solid #000;padding:2px 4px;">
+      <input style="${inp}" value="${eh(s.employee)}" placeholder="Employee name"
+        oninput="_ps().splits[${i}].employee=this.value" />
+    </td>
+    <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
+      <input type="number" style="${inp}text-align:center;" value="${s.pctSplit||''}" placeholder="0"
+        min="0" max="100" step="0.1"
+        oninput="_ps().splits[${i}].pctSplit=this.value" />
+    </td>
+    <td style="border:1px solid #000;padding:2px 5px;text-align:right;">
+      <input type="number" style="${inp}text-align:right;" value="${s.amount||''}" placeholder="0.00"
+        min="0" step="0.01"
+        oninput="_ps().splits[${i}].amount=this.value" />
+    </td>
+    <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
+      ${s.signatureData
+        ? `<div style="display:flex;align-items:center;gap:4px;justify-content:center;">
+             <img src="${s.signatureData}" style="height:28px;max-width:110px;" />
+             <button onclick="psClearSignature(${i})" style="border:none;background:transparent;color:#999;cursor:pointer;font-size:11px;padding:0 2px;">✕</button>
+           </div>`
+        : `<button onclick="psOpenSignature(${i})" style="border:1px solid #aaa;background:#f5f5f5;padding:4px 12px;font-size:11px;cursor:pointer;border-radius:4px;">Sign</button>`
+      }
     </td>
   </tr>`).join('');
 }
 
 function clearPaysheet() {
   if (!confirm(`Clear Crew ${_psActiveCrew} paysheet?`)) return;
-  _psState[_psActiveCrew] = { rows: _psEmptyRows(), header: _psEmptyHeader() };
+  _psState[_psActiveCrew] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
   psLoadHeaderFields();
   psRenderMainTable();
   psRenderCrewTable();
+  psRenderCrewTabs();
 }
 
 function printPaysheet() {
@@ -2982,6 +3055,11 @@ async function savePaysheetToCloud(silent) {
     crews[String(c)] = {
       header: Object.assign({}, _psState[c].header),
       rows:   _psState[c].rows.map(r => Object.assign({}, r)),
+      splits: _psState[c].splits.map(s => {
+        // Don't save signatureData to Firestore (large base64) — only store flag
+        const { signatureData, ...rest } = s;
+        return { ...rest, hasSig: !!signatureData };
+      }),
     };
   }
   const doc = {
@@ -3002,6 +3080,82 @@ async function savePaysheetToCloud(silent) {
   } catch(e) {
     if (!silent) alert('Save failed: ' + e.message);
   }
+}
+
+// ─── Signature Pad ───
+let _psSigRow     = -1;
+let _psSigDrawing = false;
+
+function psOpenSignature(rowIdx) {
+  _psSigRow = rowIdx;
+  document.getElementById('ps-sig-modal').classList.add('open');
+  // Wait one frame so the canvas is visible before we size it
+  requestAnimationFrame(() => {
+    const canvas = document.getElementById('ps-sig-canvas');
+    // Set actual pixel dimensions to match display size (important for retina/touch)
+    canvas.width  = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    _psInitSigCanvas(canvas);
+    psClearSigCanvas();
+  });
+}
+
+function psClearSigCanvas() {
+  const canvas = document.getElementById('ps-sig-canvas');
+  const ctx    = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function psCancelSignature() {
+  _psSigRow     = -1;
+  _psSigDrawing = false;
+  document.getElementById('ps-sig-modal').classList.remove('open');
+}
+
+function psSaveSignature() {
+  if (_psSigRow < 0) return;
+  const canvas = document.getElementById('ps-sig-canvas');
+  _ps().splits[_psSigRow].signatureData = canvas.toDataURL('image/png');
+  _psSigRow     = -1;
+  _psSigDrawing = false;
+  document.getElementById('ps-sig-modal').classList.remove('open');
+  psRenderCrewTable();
+}
+
+function psClearSignature(rowIdx) {
+  _ps().splits[rowIdx].signatureData = '';
+  psRenderCrewTable();
+}
+
+function _psInitSigCanvas(canvas) {
+  // Remove old listeners by replacing canvas clone
+  const fresh = canvas.cloneNode(true);
+  canvas.parentNode.replaceChild(fresh, canvas);
+  const ctx = fresh.getContext('2d');
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth   = 2.5;
+  ctx.lineCap     = 'round';
+  ctx.lineJoin    = 'round';
+
+  function _getPos(e) {
+    const r     = fresh.getBoundingClientRect();
+    const scaleX = fresh.width  / r.width;
+    const scaleY = fresh.height / r.height;
+    const src   = e.touches ? e.touches[0] : e;
+    return { x: (src.clientX - r.left) * scaleX, y: (src.clientY - r.top) * scaleY };
+  }
+  function _start(e) { e.preventDefault(); _psSigDrawing = true; const p = _getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); }
+  function _move(e)  { e.preventDefault(); if (!_psSigDrawing) return; const p = _getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); }
+  function _stop(e)  { e.preventDefault(); _psSigDrawing = false; }
+
+  fresh.addEventListener('mousedown',  _start);
+  fresh.addEventListener('mousemove',  _move);
+  fresh.addEventListener('mouseup',    _stop);
+  fresh.addEventListener('mouseleave', _stop);
+  fresh.addEventListener('touchstart', _start, { passive: false });
+  fresh.addEventListener('touchmove',  _move,  { passive: false });
+  fresh.addEventListener('touchend',   _stop,  { passive: false });
 }
 
 // ─── Load paysheet modal ───
@@ -3267,8 +3421,10 @@ async function loadPaysheetFromCloud(docId) {
     const saved = doc.crews && doc.crews[String(c)];
     if (saved) {
       _psState[c].header = Object.assign(_psEmptyHeader(), saved.header || {});
-      _psState[c].rows   = (saved.rows || []).map(r => Object.assign(_psEmptyRow(), r));
-      while (_psState[c].rows.length < PS_MAIN_ROWS) _psState[c].rows.push(_psEmptyRow());
+      _psState[c].rows   = (saved.rows   || []).map(r => Object.assign(_psEmptyRow(),   r));
+      _psState[c].splits = (saved.splits || []).map(s => Object.assign(_psEmptySplit(), s));
+      while (_psState[c].rows.length   < PS_MAIN_ROWS)  _psState[c].rows.push(_psEmptyRow());
+      while (_psState[c].splits.length < PS_SPLIT_ROWS) _psState[c].splits.push(_psEmptySplit());
     }
   }
 
@@ -3292,64 +3448,60 @@ async function loadPaysheetFromCloud(docId) {
 }
 
 function _buildCrewSheetData(crewNum, jobName) {
-  const state   = _psState[crewNum];
-  const h       = state.header;
-  const data    = [];
+  const state = _psState[crewNum];
+  const h     = state.header;
+  const data  = [];
 
   data.push(['D9 EDGE — Paysheet']);
   data.push([]);
-  data.push(['Job:',            jobName]);
-  data.push(['Project Name:',   h.project   || '']);
-  data.push(['Foreman Name:',   h.foreman   || '']);
-  data.push(['Crew Name:',      h.crewName  || `Crew ${crewNum}`]);
-  data.push(['Week Ending:',    h.weekEnding|| '']);
+  data.push(['Job:',               jobName]);
+  data.push(['Project Name:',      h.project    || '']);
+  data.push(['Foreman Name:',      h.foreman    || '']);
+  data.push(['Crew Name:',         h.crewName   || `Crew ${crewNum}`]);
+  data.push(['Week Ending:',       h.weekEnding || '']);
   data.push(['Foreman Signature:', '']);
   data.push([]);
-  data.push(['Emp #', 'Employee Name', 'Area', 'Labor Code', 'Notes', 'Budget ($)', 'W/E Earned ($)', 'Amt Paid ($)']);
 
-  let totalWE = 0, totalPaid = 0;
+  // Main table
+  data.push(['Area Worked', 'Labor Code', 'Budget ($)', 'PTD ($)', 'Remaining Budget', 'W/E Earned Amount', '% Complete']);
+  let totalWE = 0;
   state.rows.forEach(row => {
-    if (!row.employee && !row.area && !row.costCode && !row.weAmount) return;
+    if (!row.area && !row.costCode && !row.weAmount) return;
     let budgetVal = '';
     if (jobName && jobName !== '—' && row.area && row.costCode) {
       const d = psGetAreaCodeData(jobName, row.area, row.costCode);
       if (d.budget > 0) budgetVal = d.budget;
     }
-    const we   = parseFloat(row.weAmount)   || 0;
-    const paid = parseFloat(row.amountPaid) || 0;
-    totalWE   += we;
-    totalPaid += paid;
+    const ptdVal   = parseFloat(row.ptd)       || 0;
+    const remaining = budgetVal !== '' ? (budgetVal - ptdVal) : '';
+    const we       = parseFloat(row.weAmount)  || 0;
+    totalWE += we;
     data.push([
-      row.empNum   || '',
-      row.employee || '',
-      row.area     || '',
-      row.costCode || '',
-      row.notes    || '',
+      row.area        || '',
+      row.costCode    || '',
       budgetVal !== '' ? budgetVal : '',
-      we   > 0 ? we   : '',
-      paid > 0 ? paid : '',
+      ptdVal > 0 ? ptdVal : '',
+      remaining !== '' ? remaining : '',
+      we > 0 ? we : '',
+      row.pctComplete ? parseFloat(row.pctComplete) : '',
     ]);
   });
 
   data.push([]);
-  data.push(['', '', '', '', '', '', 'Total Earned:', totalWE]);
-  data.push(['', '', '', '', '', '', 'Total Paid:',   totalPaid]);
+  data.push(['', '', '', '', 'Total Amount:', totalWE]);
   data.push([]);
 
-  // Employee summary
-  const empMap = {};
-  state.rows.forEach(r => {
-    if (!r.employee && !r.empNum) return;
-    const key = (r.empNum||'')+'|||'+(r.employee||'');
-    if (!empMap[key]) empMap[key] = {empNum:r.empNum||'', name:r.employee||'', earned:0, paid:0};
-    empMap[key].earned += parseFloat(r.weAmount)   || 0;
-    empMap[key].paid   += parseFloat(r.amountPaid) || 0;
-  });
-  const emps = Object.values(empMap);
-  if (emps.length) {
-    data.push(['Employee Summary']);
-    data.push(['Employee #', 'Employee Name', 'Total Earned ($)', 'Total Paid ($)']);
-    emps.forEach(e => data.push([e.empNum, e.name, e.earned||'', e.paid||'']));
+  // Crew Splits
+  const splits = (state.splits || []).filter(s => s.employee || s.empNum);
+  if (splits.length) {
+    data.push(['Crew Splits']);
+    data.push(['Employee #', 'Employee Name', '% Split', 'Amount']);
+    splits.forEach(s => data.push([
+      s.empNum   || '',
+      s.employee || '',
+      s.pctSplit ? parseFloat(s.pctSplit) : '',
+      s.amount   ? parseFloat(s.amount)   : '',
+    ]));
   }
   return data;
 }
@@ -3363,7 +3515,8 @@ function exportPaysheetExcel() {
 
   for (let c = 1; c <= PS_NUM_CREWS; c++) {
     const state = _psState[c];
-    const hasData = state.rows.some(r => r.employee || r.area || r.costCode || r.weAmount);
+    const hasData = state.rows.some(r => r.area || r.costCode || r.weAmount) ||
+                    state.splits.some(s => s.employee || s.empNum);
     if (!hasData) continue;
 
     const data = _buildCrewSheetData(c, jobName);
@@ -3401,6 +3554,9 @@ document.getElementById('ps-load-modal').addEventListener('click', e => {
 });
 document.getElementById('ps-save-dest-modal').addEventListener('click', e => {
   if (e.target === e.currentTarget) psCancelSaveDest();
+});
+document.getElementById('ps-sig-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) psCancelSignature();
 });
 </script>
 </body>
