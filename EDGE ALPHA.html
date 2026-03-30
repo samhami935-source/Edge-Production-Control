@@ -178,6 +178,17 @@
     #pending-screen h2 { color:var(--accent); font-size:1.4rem; }
     #pending-screen p  { color:var(--muted); max-width:400px; line-height:1.6; }
 
+    /* Paysheet */
+    .ps-editable-cell { border:none; outline:none; width:100%; background:transparent; font-size:13px; font-family:Arial,sans-serif; text-align:right; padding:2px 4px; }
+    .ps-area-select { border:none; outline:none; width:100%; background:transparent; font-size:12px; font-family:Arial,sans-serif; cursor:pointer; }
+    .ps-readonly { color:#333; text-align:right; padding:4px 8px; }
+    @media print {
+      body > *:not(#paysheet-print-area) { display:none !important; }
+      #paysheet-print-area { display:block !important; padding:0; border-radius:0; box-shadow:none; }
+      .ps-area-select, .ps-editable-cell { border:none !important; }
+      select { -webkit-appearance:none; appearance:none; }
+    }
+
     /* User management modal */
     #users-modal .modal { width:600px; max-width:95vw; }
     .users-table { width:100%; border-collapse:collapse; font-size:.85rem; margin-top:16px; }
@@ -271,6 +282,9 @@
     </div>
     <div class="tab" id="lc-tab" onclick="switchToLaborCodes()">
       <span>📋</span><span class="tab-name">Labor Codes</span>
+    </div>
+    <div class="tab" id="paysheet-tab" onclick="switchToPaysheet()">
+      <span>📄</span><span class="tab-name">Paysheet</span>
     </div>
   </div>
 
@@ -601,6 +615,91 @@
       </table>
     </div>
   </div>
+
+  <!-- Paysheet content -->
+  <div id="paysheet-content" style="display:none;">
+
+    <!-- Header controls -->
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px;">
+      <select id="ps-job-select" class="fi" style="min-width:200px;" onchange="psJobChanged()">
+        <option value="">— Select Job —</option>
+      </select>
+      <button class="btn" onclick="printPaysheet()">🖨 Print / Export PDF</button>
+      <button class="btn btn-outline" onclick="clearPaysheet()">Clear Sheet</button>
+    </div>
+
+    <!-- Printable paysheet -->
+    <div id="paysheet-print-area" style="background:#fff;color:#000;border-radius:8px;padding:32px;max-width:960px;font-family:Arial,sans-serif;font-size:13px;">
+
+      <!-- Header fields -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-bottom:24px;">
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <label style="min-width:120px;font-weight:700;">Project Name:</label>
+            <input id="ps-project" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:1px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <label style="min-width:120px;font-weight:700;">Foreman Name:</label>
+            <input id="ps-foreman" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:1px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <label style="min-width:120px;font-weight:700;">Crew Name:</label>
+            <input id="ps-crew" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:1px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <label style="min-width:120px;font-weight:700;">Week Ending:</label>
+            <input id="ps-weekending" type="date" class="ps-field" style="flex:1;border:none;border-bottom:1px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-end;justify-content:flex-end;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <label style="font-weight:700;">Foreman Signature:</label>
+            <div style="width:200px;border-bottom:1px solid #000;height:24px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main table -->
+      <table id="ps-main-table" style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <thead>
+          <tr style="background:#c9a84c;">
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">Area Worked</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">Labor Code</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">Budget ($)</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">PTD ($)</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">Remaining Budget</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">W/E Earned Amount</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">% Complete</th>
+          </tr>
+        </thead>
+        <tbody id="ps-main-tbody"></tbody>
+      </table>
+
+      <!-- Total Amount -->
+      <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-bottom:24px;">
+        <span style="font-weight:700;">Total Amount:</span>
+        <div style="border:1px solid #000;padding:6px 16px;min-width:160px;text-align:right;font-weight:700;" id="ps-total-display">$ —</div>
+      </div>
+
+      <!-- Crew Splits table -->
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:#c9a84c;">
+            <th colspan="5" style="border:1px solid #000;padding:6px 8px;text-align:center;font-weight:700;">Crew Splits</th>
+          </tr>
+          <tr style="background:#d9d9d9;">
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:100px;">Employee #</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;">Employee Name</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:90px;">% Split</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:120px;">Amount</th>
+            <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:110px;">Employee Initials</th>
+          </tr>
+        </thead>
+        <tbody id="ps-crew-tbody"></tbody>
+      </table>
+
+    </div><!-- /paysheet-print-area -->
+  </div><!-- /paysheet-content -->
 
 </div><!-- /container -->
 
@@ -1387,7 +1486,7 @@ function exportLCCSV() {
 //  TAB ROUTING
 // ═══════════════════════════
 function showPanel(name) {
-  ['csv-content','payroll-content','budgets-content','lc-content'].forEach(id => document.getElementById(id).style.display = 'none');
+  ['csv-content','payroll-content','budgets-content','lc-content','paysheet-content'].forEach(id => document.getElementById(id).style.display = 'none');
   const map = { csv:'csv-content', payroll:'payroll-content', budgets:'budgets-content', lc:'lc-content' };
   if (map[name]) document.getElementById(map[name]).style.display = 'block';
   if (name === 'budgets') {
@@ -1399,9 +1498,10 @@ function showPanel(name) {
 }
 
 function renderTabBar() {
-  document.getElementById('payroll-tab').classList.toggle('active', activeTab === 'payroll');
-  document.getElementById('budgets-tab').classList.toggle('active', activeTab === 'budgets');
-  document.getElementById('lc-tab').classList.toggle('active', activeTab === 'lc');
+  document.getElementById('payroll-tab').classList.toggle('active',   activeTab === 'payroll');
+  document.getElementById('budgets-tab').classList.toggle('active',   activeTab === 'budgets');
+  document.getElementById('lc-tab').classList.toggle('active',        activeTab === 'lc');
+  document.getElementById('paysheet-tab').classList.toggle('active',  activeTab === 'paysheet');
 }
 
 function switchToPayroll() {
@@ -2041,6 +2141,195 @@ function exportWOCSV() {
 
 // Close modal on overlay click
 document.getElementById('admin-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeAdminModal(); });
+
+// ═══════════════════════════
+//  PAYSHEET
+// ═══════════════════════════
+const PS_MAIN_ROWS  = 15;
+const PS_CREW_ROWS  = 10;
+
+function switchToPaysheet() {
+  activeTab = 'paysheet';
+  renderTabBar();
+  ['csv-content','payroll-content','budgets-content','lc-content'].forEach(id => document.getElementById(id).style.display = 'none');
+  document.getElementById('paysheet-content').style.display = 'block';
+  psPopulateJobSelect();
+  psRenderMainTable();
+  psRenderCrewTable();
+}
+
+function psPopulateJobSelect() {
+  const sel = document.getElementById('ps-job-select');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Select Job —</option>';
+  getSavedCSVFiles().forEach(f => {
+    const o = document.createElement('option');
+    o.value = f.name; o.textContent = f.name;
+    sel.appendChild(o);
+  });
+  if (cur) sel.value = cur;
+}
+
+function psJobChanged() {
+  psRenderMainTable();
+}
+
+// Get all areas for a job from both CSV rows and payroll entries
+function psGetAreas(jobName) {
+  const f = getSavedCSVFiles().find(x => x.name === jobName);
+  const csvAreas = f ? [...new Set(f.rows.map(r => r.area).filter(a => a && a !== '—'))] : [];
+  const prAreas  = getPayrollEntries().filter(e => e.csvFile === jobName).map(e => e.area).filter(Boolean);
+  return [...new Set([...csvAreas, ...prAreas])].sort();
+}
+
+// Get budget/PTD/remaining for a job+area+costCode combo
+function psGetAreaCodeData(jobName, area, costCode) {
+  const f       = getSavedCSVFiles().find(x => x.name === jobName);
+  const entries = getPayrollEntries().filter(e => e.csvFile === jobName);
+  const budget  = f ? f.rows.filter(r => r.area === area && getCodeGroup(r.costCode) === costCode).reduce((s,r) => s + r.amount, 0) : 0;
+  const ptd     = entries.filter(e => e.area === area && e.costCode === costCode).reduce((s,e) => s + e.price, 0);
+  return { budget, ptd, remaining: budget - ptd };
+}
+
+// State: main table rows (area + costCode selections + WE amount)
+let _psRows = Array.from({length: PS_MAIN_ROWS}, () => ({ area:'', costCode:'', weAmount:'' }));
+
+function psRenderMainTable() {
+  const jobName = document.getElementById('ps-job-select').value;
+  const tbody   = document.getElementById('ps-main-tbody');
+  const areas   = jobName ? psGetAreas(jobName) : [];
+
+  tbody.innerHTML = _psRows.map((row, i) => {
+    // Area dropdown
+    const areaOpts = ['<option value="">— Area —</option>',
+      ...areas.map(a => `<option value="${eh(a)}" ${row.area===a?'selected':''}>${eh(a)}</option>`)
+    ].join('');
+
+    // Labor code dropdown — only codes that have budget in selected area
+    let codeOpts = '<option value="">— Code —</option>';
+    if (jobName && row.area) {
+      PAYROLL_GROUPS.forEach(g => {
+        const {budget} = psGetAreaCodeData(jobName, row.area, g.code);
+        if (budget > 0 || row.costCode === g.code) {
+          codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
+        }
+      });
+    }
+
+    // Auto-populated values
+    let budgetVal = '', ptdVal = '', remVal = '';
+    if (jobName && row.area && row.costCode) {
+      const d = psGetAreaCodeData(jobName, row.area, row.costCode);
+      budgetVal = d.budget > 0 ? d.budget.toFixed(2) : '';
+      ptdVal    = d.ptd    > 0 ? d.ptd.toFixed(2)    : '';
+      remVal    = d.remaining !== 0 ? d.remaining.toFixed(2) : (d.budget > 0 ? '0.00' : '');
+    }
+
+    const remColor = remVal && parseFloat(remVal) < 0 ? 'color:#ef4444;' : 'color:#222;';
+
+    return `<tr style="border:1px solid #ccc;">
+      <td style="border:1px solid #000;padding:2px 4px;">
+        <select class="ps-area-select" onchange="psAreaChanged(${i},this.value)">${areaOpts}</select>
+      </td>
+      <td style="border:1px solid #000;padding:2px 4px;">
+        <select class="ps-area-select" onchange="psCodeChanged(${i},this.value)">${codeOpts}</select>
+      </td>
+      <td style="border:1px solid #000;padding:4px 8px;text-align:right;color:#222;">${budgetVal?'$'+parseFloat(budgetVal).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):''}</td>
+      <td style="border:1px solid #000;padding:4px 8px;text-align:right;color:#222;">${ptdVal?'$'+parseFloat(ptdVal).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):''}</td>
+      <td style="border:1px solid #000;padding:4px 8px;text-align:right;${remColor}">${remVal?'$'+Math.abs(parseFloat(remVal)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+(parseFloat(remVal)<0?' (Over)':''):''}</td>
+      <td style="border:1px solid #000;padding:2px 4px;">
+        <input type="number" class="ps-editable-cell" value="${row.weAmount}" placeholder="0.00" min="0" step="0.01"
+          oninput="psWEChanged(${i},this.value)" onchange="psWEChanged(${i},this.value)" />
+      </td>
+      <td style="border:1px solid #000;padding:4px 8px;text-align:right;color:#222;" id="ps-pct-${i}">
+        ${psCalcPct(budgetVal, row.weAmount)}
+      </td>
+    </tr>`;
+  }).join('');
+
+  psUpdateTotal();
+}
+
+function psCalcPct(budgetStr, weStr) {
+  const b = parseFloat(budgetStr) || 0;
+  const w = parseFloat(weStr)    || 0;
+  if (!b || !w) return '';
+  return Math.round(w / b * 100) + '%';
+}
+
+function psAreaChanged(i, area) {
+  _psRows[i].area = area;
+  _psRows[i].costCode = ''; // reset code when area changes
+  psRenderMainTable();
+}
+
+function psCodeChanged(i, code) {
+  _psRows[i].costCode = code;
+  psRenderMainTable();
+}
+
+function psWEChanged(i, val) {
+  _psRows[i].weAmount = val;
+  psUpdateTotal();
+  // Update pct cell inline without full re-render
+  const jobName = document.getElementById('ps-job-select').value;
+  const row = _psRows[i];
+  let budgetVal = '';
+  if (jobName && row.area && row.costCode) {
+    const d = psGetAreaCodeData(jobName, row.area, row.costCode);
+    budgetVal = d.budget > 0 ? d.budget.toFixed(2) : '';
+  }
+  const pctEl = document.getElementById(`ps-pct-${i}`);
+  if (pctEl) pctEl.textContent = psCalcPct(budgetVal, val);
+}
+
+function psUpdateTotal() {
+  const total = _psRows.reduce((s, r) => s + (parseFloat(r.weAmount) || 0), 0);
+  document.getElementById('ps-total-display').textContent = total > 0
+    ? '$ ' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
+    : '$ —';
+  psUpdateCrewAmounts(total);
+}
+
+// Crew table state
+let _psCrew = Array.from({length: PS_CREW_ROWS}, () => ({ empNum:'', name:'', split:'', initials:'' }));
+
+function psRenderCrewTable() {
+  const tbody = document.getElementById('ps-crew-tbody');
+  const total = _psRows.reduce((s,r) => s + (parseFloat(r.weAmount)||0), 0);
+  tbody.innerHTML = _psCrew.map((c, i) => {
+    const amt = total > 0 && c.split ? (total * parseFloat(c.split) / 100) : 0;
+    return `<tr>
+      <td style="border:1px solid #000;padding:2px 4px;"><input class="ps-editable-cell" value="${c.empNum}" placeholder="" oninput="_psCrew[${i}].empNum=this.value" style="text-align:center;" /></td>
+      <td style="border:1px solid #000;padding:2px 4px;"><input class="ps-editable-cell" value="${c.name}"   placeholder="" oninput="_psCrew[${i}].name=this.value"   style="text-align:left;" /></td>
+      <td style="border:1px solid #000;padding:2px 4px;"><input class="ps-editable-cell" type="number" min="0" max="100" value="${c.split}"   placeholder="0" oninput="_psCrew[${i}].split=this.value;psUpdateTotal()" style="text-align:center;" /></td>
+      <td style="border:1px solid #000;padding:4px 8px;text-align:right;" id="ps-crew-amt-${i}">${amt>0?'$'+amt.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):''}</td>
+      <td style="border:1px solid #000;padding:2px 4px;"><input class="ps-editable-cell" value="${c.initials}" placeholder="" oninput="_psCrew[${i}].initials=this.value" style="text-align:center;" /></td>
+    </tr>`;
+  }).join('');
+}
+
+function psUpdateCrewAmounts(total) {
+  _psCrew.forEach((c, i) => {
+    const el = document.getElementById(`ps-crew-amt-${i}`);
+    if (!el) return;
+    const amt = total > 0 && c.split ? (total * parseFloat(c.split) / 100) : 0;
+    el.textContent = amt > 0 ? '$' + amt.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
+  });
+}
+
+function clearPaysheet() {
+  if (!confirm('Clear all paysheet entries?')) return;
+  _psRows = Array.from({length: PS_MAIN_ROWS}, () => ({ area:'', costCode:'', weAmount:'' }));
+  _psCrew = Array.from({length: PS_CREW_ROWS}, () => ({ empNum:'', name:'', split:'', initials:'' }));
+  ['ps-project','ps-foreman','ps-crew','ps-weekending'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  psRenderMainTable();
+  psRenderCrewTable();
+}
+
+function printPaysheet() {
+  window.print();
+}
 
 // ═══════════════════════════
 //  INIT
