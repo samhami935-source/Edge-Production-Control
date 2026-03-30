@@ -755,7 +755,14 @@ async function loadAllData() {
     db.collection('workorders').get(),
     db.collection('config').doc('laborcodes').get(),
   ]);
-  _cache.jobs       = jobsSnap.docs.map(d => d.data());
+  _cache.jobs = jobsSnap.docs.map(d => {
+    const data = d.data();
+    // New format: csvText stored — parse back to rows
+    if (data.csvText && !data.rows) {
+      try { data.rows = parseCSV(data.csvText); } catch(e) { data.rows = []; }
+    }
+    return data;
+  });
   _cache.payroll    = payrollSnap.docs.map(d => d.data());
   _cache.workorders = woSnap.docs.map(d => d.data());
   _cache.laborcodes = lcDoc.exists ? (lcDoc.data().codes || []) : [];
@@ -953,20 +960,33 @@ function updateAdminUI() {
 // ─── CSV / Job Files ───
 function getSavedCSVFiles() { return _cache.jobs || []; }
 
-async function saveCSVFile(name, rows) {
+async function saveCSVFile(name, rows, csvText) {
   if (!_cache.jobs) _cache.jobs = [];
   const entry = { name, rows, savedAt: new Date().toISOString(), count: rows.length };
   const idx = _cache.jobs.findIndex(f => f.name === name);
   if (idx !== -1) _cache.jobs[idx] = entry; else _cache.jobs.push(entry);
   const docId = name.replace(/[^\w-]/g, '_');
+  // Store raw CSV text (much smaller than JSON rows)
+  const text = csvText || rowsToCSV(rows);
+  const storeEntry = { name, csvText: text, savedAt: entry.savedAt, count: entry.count };
   try {
-    await db.collection('jobs').doc(docId).set(entry);
+    await db.collection('jobs').doc(docId).set(storeEntry);
   } catch(e) {
     console.error('jobs write:', e);
-    alert(`Failed to save "${name}" to cloud: ${e.message}\n\nCheck your Firestore rules.`);
+    alert(`Failed to save "${name}" to cloud: ${e.message}`);
     return false;
   }
   return true;
+}
+
+function rowsToCSV(rows) {
+  const headers = 'Area,Cost Code,Description,Quantity,UOM,Unit Cost,Amount';
+  const lines = rows.map(r =>
+    [r.area, r.costCode, r.description, r.quantity, r.uom, r.unitCost, r.amount]
+      .map(v => `"${String(v??'').replace(/"/g,'""')}"`)
+      .join(',')
+  );
+  return [headers, ...lines].join('\n');
 }
 
 async function removeCSVFile(name) {
@@ -1423,8 +1443,9 @@ function processFiles(list) {
     const reader = new FileReader();
     reader.onload = async e => {
       try {
-        const rows = parseCSV(e.target.result);
-        const ok = await saveCSVFile(file.name, rows);
+        const text = e.target.result;
+        const rows = parseCSV(text);
+        const ok = await saveCSVFile(file.name, rows, text);
         if (ok) last = file.name;
       } catch (err) { alert(`Could not parse "${file.name}": ${err.message}`); }
       if (--pending === 0 && last) { switchToBudgets(); switchToCSV(last); }
