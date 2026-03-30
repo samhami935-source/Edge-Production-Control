@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>D9 Edge — Budget Tracker</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -624,7 +625,8 @@
       <select id="ps-job-select" class="fi" style="min-width:200px;" onchange="psJobChanged()">
         <option value="">— Select Job —</option>
       </select>
-      <button class="btn" onclick="printPaysheet()">🖨 Print / Export PDF</button>
+      <button class="btn" onclick="printPaysheet()">🖨 Export PDF</button>
+      <button class="btn btn-outline" onclick="exportPaysheetExcel()">📊 Export Excel</button>
       <button class="btn btn-outline" onclick="clearPaysheet()">Clear Sheet</button>
     </div>
 
@@ -2329,6 +2331,79 @@ function clearPaysheet() {
 
 function printPaysheet() {
   window.print();
+}
+
+function exportPaysheetExcel() {
+  const jobName   = document.getElementById('ps-job-select').value || '—';
+  const project   = document.getElementById('ps-project').value    || '';
+  const foreman   = document.getElementById('ps-foreman').value    || '';
+  const crew      = document.getElementById('ps-crew').value       || '';
+  const weekEnd   = document.getElementById('ps-weekending').value || '';
+
+  const wb = XLSX.utils.book_new();
+
+  // ─── Main Sheet ───
+  const mainData = [];
+  mainData.push(['D9 EDGE — Paysheet']);
+  mainData.push([]);
+  mainData.push(['Job:', jobName]);
+  mainData.push(['Project Name:', project]);
+  mainData.push(['Foreman Name:', foreman]);
+  mainData.push(['Crew Name:', crew]);
+  mainData.push(['Week Ending:', weekEnd]);
+  mainData.push(['Foreman Signature:', '']);
+  mainData.push([]);
+  mainData.push(['Area Worked', 'Labor Code', 'Budget ($)', 'PTD ($)', 'Remaining Budget', 'W/E Earned Amount', '% Complete']);
+
+  let totalWE = 0;
+  _psRows.forEach(row => {
+    if (!row.area && !row.costCode && !row.weAmount) return;
+    let budgetVal = '', ptdVal = '', remVal = '', pctVal = '';
+    if (jobName && row.area && row.costCode) {
+      const d = psGetAreaCodeData(jobName, row.area, row.costCode);
+      budgetVal = d.budget;
+      ptdVal    = d.ptd;
+      remVal    = d.remaining;
+      const we  = parseFloat(row.weAmount) || 0;
+      pctVal    = d.budget > 0 && we > 0 ? Math.round(we / d.budget * 100) + '%' : '';
+    }
+    const we = parseFloat(row.weAmount) || 0;
+    totalWE += we;
+    mainData.push([
+      row.area || '',
+      row.costCode || '',
+      budgetVal !== '' ? budgetVal : '',
+      ptdVal    !== '' ? ptdVal    : '',
+      remVal    !== '' ? remVal    : '',
+      we > 0 ? we : '',
+      pctVal
+    ]);
+  });
+
+  mainData.push([]);
+  mainData.push(['', '', '', '', '', 'Total Amount:', totalWE]);
+  mainData.push([]);
+
+  // Crew splits
+  mainData.push(['Crew Splits']);
+  mainData.push(['Employee #', 'Employee Name', '% Split', 'Amount', 'Employee Initials']);
+  _psCrew.forEach(c => {
+    if (!c.empNum && !c.name) return;
+    const amt = totalWE > 0 && c.split ? (totalWE * parseFloat(c.split) / 100) : '';
+    mainData.push([c.empNum, c.name, c.split ? parseFloat(c.split) : '', amt || '', c.initials]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(mainData);
+
+  // Column widths
+  ws['!cols'] = [
+    {wch:20},{wch:30},{wch:14},{wch:14},{wch:18},{wch:18},{wch:12}
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Paysheet');
+
+  const fileName = `paysheet_${(weekEnd || 'export').replace(/-/g,'_')}.xlsx`;
+  XLSX.writeFile(wb, fileName);
 }
 
 // ═══════════════════════════
