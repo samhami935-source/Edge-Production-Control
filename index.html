@@ -708,6 +708,7 @@
           <div style="display:flex;align-items:center;gap:2px;padding:8px 10px;flex-shrink:0;">
             <button class="btn" onclick="submitDailyInput()" style="margin-top:0;padding:7px 16px;font-size:.83rem;white-space:nowrap;">💾 Save Daily Input</button>
             <button class="btn btn-outline" onclick="diSaveDraft()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="Save progress as a draft — does not create a paysheet">📌 Save Draft</button>
+            <button class="btn btn-outline" onclick="diOpenDraftsModal()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="View and load saved drafts" id="di-drafts-btn">📋 Drafts</button>
             <button class="btn btn-outline" onclick="openLoadPaysheetModal()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Load saved daily or weekly paysheets">📂 Saved Paysheets</button>
             <button class="btn btn-outline" onclick="diExportExcel()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Export daily input to Excel">📊 Export</button>
             <button class="btn btn-outline" onclick="diPrint()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Print daily input">🖨 Print</button>
@@ -833,6 +834,20 @@
         <button class="btn btn-outline" style="margin-top:0;" onclick="psCancelSignature()">Cancel</button>
         <button class="btn" style="margin-top:0;" onclick="psSaveSignature()">Save Initials</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Daily Input Drafts Modal -->
+<div class="modal-overlay" id="di-drafts-modal" onclick="if(event.target===this)diCloseDraftsModal()">
+  <div class="modal" style="width:560px;max-width:96vw;max-height:80vh;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <h2 style="margin:0;font-size:1.1rem;">📋 Saved Drafts</h2>
+      <button class="btn btn-outline" style="margin:0;padding:4px 12px;font-size:.82rem;" onclick="diCloseDraftsModal()">✕ Close</button>
+    </div>
+    <p style="color:var(--muted);font-size:.8rem;margin:0 0 12px;">Select a draft to load it into the Daily Input. Loading a draft will replace your current unsaved input.</p>
+    <div id="di-drafts-list" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;">
+      <p style="color:var(--muted);text-align:center;padding:20px;">No drafts saved yet.</p>
     </div>
   </div>
 </div>
@@ -2346,6 +2361,10 @@ function diInit() {
   diRenderCrewTabs();
   diRenderCrewTable();
   diLoadLog();
+  // Show draft count on button
+  const draftCount = Array.from({length: localStorage.length}, (_, i) => localStorage.key(i)).filter(k => k && k.startsWith('di_draft_')).length;
+  const dBtn = document.getElementById('di-drafts-btn');
+  if (dBtn && draftCount) dBtn.textContent = `📋 Drafts (${draftCount})`;
 }
 
 function diPopulateJobSelect() {
@@ -2498,6 +2517,10 @@ function diSaveDraft() {
   const draft = { date: document.getElementById('di-date').value, job: document.getElementById('ps-job-select').value, data: _diData };
   try {
     localStorage.setItem(key, JSON.stringify(draft));
+    // Update drafts button count
+    const draftCount = Array.from({length: localStorage.length}, (_, i) => localStorage.key(i)).filter(k => k && k.startsWith('di_draft_')).length;
+    const dBtn = document.getElementById('di-drafts-btn');
+    if (dBtn) dBtn.textContent = `📋 Drafts (${draftCount})`;
     // Show badge
     const badge = document.getElementById('di-draft-badge');
     badge.textContent = '📌 Draft saved';
@@ -2546,6 +2569,92 @@ function diAutoSaveDraft() {
 
 function diShowDraftBadge(show) {
   document.getElementById('di-draft-badge').style.display = show ? '' : 'none';
+}
+
+function diOpenDraftsModal() {
+  const list = document.getElementById('di-drafts-list');
+  // Collect all di_draft_ keys from localStorage
+  const drafts = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith('di_draft_')) continue;
+    try {
+      const d = JSON.parse(localStorage.getItem(key));
+      if (d && d.date && d.job) drafts.push({ key, date: d.date, job: d.job, data: d.data });
+    } catch(e) {}
+  }
+  // Sort newest date first
+  drafts.sort((a, b) => b.date.localeCompare(a.date));
+
+  if (!drafts.length) {
+    list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">No drafts saved yet.</p>';
+  } else {
+    list.innerHTML = drafts.map(d => {
+      const empCount = Object.values(d.data||{}).reduce((s, rows) =>
+        s + (rows||[]).filter(r => (r.employee||'').trim()).length, 0);
+      const crewsWithData = Object.keys(d.data||{}).filter(c =>
+        (d.data[c]||[]).some(r => r.employee.trim() || r.area.trim())).map(c => `Crew ${c}`).join(', ');
+      const dateDisp = d.date ? new Date(d.date + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+      return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:12px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:.88rem;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${eh(d.job)}</div>
+          <div style="font-size:.78rem;color:var(--muted);margin-top:2px;">${dateDisp}${crewsWithData ? ' · ' + crewsWithData : ''}${empCount ? ' · ' + empCount + ' employee' + (empCount!==1?'s':'') : ''}</div>
+        </div>
+        <button class="btn btn-outline" style="margin:0;padding:5px 14px;font-size:.78rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" onclick="diLoadDraftByKey('${d.key}')">Load</button>
+        <button class="btn btn-outline" style="margin:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;color:#ef4444;border-color:#ef4444;" onclick="diDeleteDraft('${d.key}',this)" title="Delete draft">✕</button>
+      </div>`;
+    }).join('');
+  }
+
+  // Update drafts button badge
+  const btn = document.getElementById('di-drafts-btn');
+  if (btn) btn.textContent = drafts.length ? `📋 Drafts (${drafts.length})` : '📋 Drafts';
+
+  document.getElementById('di-drafts-modal').classList.add('active');
+}
+
+function diCloseDraftsModal() {
+  document.getElementById('di-drafts-modal').classList.remove('active');
+}
+
+function diLoadDraftByKey(key) {
+  const raw = localStorage.getItem(key);
+  if (!raw) { alert('Draft not found.'); return; }
+  try {
+    const d = JSON.parse(raw);
+    // Set date and job
+    document.getElementById('di-date').value = d.date || '';
+    const psSel = document.getElementById('ps-job-select');
+    const diSel = document.getElementById('di-job-select');
+    if (psSel) psSel.value = d.job || '';
+    if (diSel) diSel.value = d.job || '';
+    // Restore crew data
+    for (let c = 1; c <= DI_CREWS; c++) {
+      _diData[c] = d.data[c] || Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:''}));
+    }
+    diRenderCrewTable();
+    diRenderLogRows();
+    diCloseDraftsModal();
+    // Show badge
+    const badge = document.getElementById('di-draft-badge');
+    badge.textContent = '📌 Draft loaded';
+    badge.style.display = '';
+    setTimeout(() => badge.style.display = 'none', 3000);
+  } catch(e) { alert('Could not load draft.'); }
+}
+
+function diDeleteDraft(key, btn) {
+  localStorage.removeItem(key);
+  const item = btn.closest('div[style]');
+  if (item) item.remove();
+  // Update count on button
+  const remaining = Array.from({length: localStorage.length}, (_, i) => localStorage.key(i)).filter(k => k && k.startsWith('di_draft_')).length;
+  const dBtn = document.getElementById('di-drafts-btn');
+  if (dBtn) dBtn.textContent = remaining ? `📋 Drafts (${remaining})` : '📋 Drafts';
+  const list = document.getElementById('di-drafts-list');
+  if (list && !list.querySelector('div[style]')) {
+    list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">No drafts saved yet.</p>';
+  }
 }
 
 async function submitDailyInput() {
