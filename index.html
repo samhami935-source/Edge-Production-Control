@@ -2346,11 +2346,35 @@ document.getElementById('admin-modal').addEventListener('click', e => { if(e.tar
 const DI_CREWS    = 10;
 const DI_EMP_ROWS = 10;
 let _diActiveCrew = 1;
-// _diData[crew][row] = {employee, area, costCode, description}
+// _diData[crew][row] = {employee, area, costCode, description} — always points to the current job's data
 let _diData = {};
-for (let c=1; c<=DI_CREWS; c++) {
-  _diData[c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:''}));
+// _diAllData[jobName][crew][row] — persists inputs per job while the session is open
+let _diAllData = {};
+
+function _diEmptyCrewData() {
+  const d = {};
+  for (let c=1; c<=DI_CREWS; c++) {
+    d[c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:''}));
+  }
+  return d;
 }
+
+function diSwitchJobData(jobName) {
+  if (!jobName) {
+    // No job selected — use blank data
+    const blank = _diEmptyCrewData();
+    for (let c=1; c<=DI_CREWS; c++) _diData[c] = blank[c];
+    return;
+  }
+  if (!_diAllData[jobName]) _diAllData[jobName] = _diEmptyCrewData();
+  for (let c=1; c<=DI_CREWS; c++) _diData[c] = _diAllData[jobName][c];
+}
+
+// Initialize with empty data for no job selected
+(function() {
+  const blank = _diEmptyCrewData();
+  for (let c=1; c<=DI_CREWS; c++) _diData[c] = blank[c];
+})();
 
 function diInit() {
   // Set today's date
@@ -2643,11 +2667,16 @@ async function diLoadDraftById(docId) {
     const diSel = document.getElementById('di-job-select');
     if (psSel) { psSel.value = d.job || ''; }
     if (diSel) { diSel.value = d.job || ''; }
-    // Restore all crew data
-    for (let c = 1; c <= DI_CREWS; c++) {
-      _diData[c] = (d.data && d.data[c])
-        ? d.data[c]
-        : Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:''}));
+    // Store draft data into the per-job store then switch to it
+    const jobName = d.job || '';
+    if (jobName) {
+      _diAllData[jobName] = {};
+      for (let c = 1; c <= DI_CREWS; c++) {
+        _diAllData[jobName][c] = (d.data && d.data[c])
+          ? d.data[c]
+          : Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:''}));
+      }
+      diSwitchJobData(jobName);
     }
     diRenderCrewTable();
     diRenderLogRows();
@@ -3238,6 +3267,8 @@ function onJobChanged() {
   // Update paysheet
   psPopulateAreaBudgetSelect();
   psRenderMainTable();
+  // Switch daily input data to the selected job
+  diSwitchJobData(jobName);
   // Update daily input
   diRenderCrewTable();
   diRenderLogRows(); // re-filter existing live data for the new job
