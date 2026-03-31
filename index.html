@@ -744,15 +744,6 @@
                 <tr style="background:var(--surface2);" id="di-log-filter-row">
                   <!-- Filter row — rendered by diRenderLogRows() -->
                 </tr>
-                <tr style="background:var(--surface2);">
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;">Date ▾</th>
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;">Time</th>
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;">Job ▾</th>
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;">Crew ▾</th>
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;">Foreman ▾</th>
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;">Employees ▾</th>
-                  <th style="padding:8px 10px;border-bottom:1px solid var(--border);"></th>
-                </tr>
                 <tr id="di-log-filter-inputs" style="background:var(--bg);">
                   <!-- inline filter inputs, injected by diRenderLogRows() -->
                 </tr>
@@ -770,6 +761,15 @@
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
       <div id="ps-crew-tab-bar" style="display:flex;gap:4px;flex-wrap:wrap;flex:1;"></div>
       <div id="ps-action-btns" style="display:flex;gap:6px;flex-shrink:0;"></div>
+    </div>
+
+    <!-- Summary paysheet filters (weekly only) -->
+    <div id="ps-filter-bar" style="display:none;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+      <label style="font-size:.8rem;color:var(--muted);white-space:nowrap;">Filter by Labor Code:</label>
+      <select id="ps-filter-code" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;padding:5px 10px;min-width:200px;" onchange="_psFilterCode=this.value;_psCurrentPage=0;psRenderMainTable()">
+        <option value="">All Labor Codes</option>
+      </select>
+      <button class="btn btn-outline" style="font-size:.78rem;padding:4px 12px;white-space:nowrap;" onclick="_psFilterCode='';_psCurrentPage=0;document.getElementById('ps-filter-code').value='';psRenderMainTable()">✕ Clear Filter</button>
     </div>
 
     <!-- Printable paysheet -->
@@ -2629,7 +2629,8 @@ function diRenderLogRows() {
   const allJobs     = uniq(docs.map(r => r.job));
   const allCrews    = uniq(docs.flatMap(r => (r.crews||[]).map(c => `Crew ${c.crewNum}`)));
   const allForemen  = uniq(docs.map(r => r.submittedBy));
-  const allEmpCounts= uniq(docs.map(r => String((r.crews||[]).reduce((s,c)=>s+(c.entries||[]).length,0))));
+  const countEmps = r => new Set((r.crews||[]).flatMap(c=>(c.entries||[]).map(e=>(e.employee||'').trim()).filter(Boolean))).size;
+  const allEmpCounts= uniq(docs.map(r => String(countEmps(r))));
 
   // Render Excel-style filter inputs row
   const selStyle = 'background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:.75rem;padding:3px 4px;width:100%;';
@@ -2656,7 +2657,7 @@ function diRenderLogRows() {
   if (_diLogFilters.job)      docs = docs.filter(r => r.job === _diLogFilters.job);
   if (_diLogFilters.crew)     docs = docs.filter(r => (r.crews||[]).some(c => `Crew ${c.crewNum}` === _diLogFilters.crew));
   if (_diLogFilters.foreman)  docs = docs.filter(r => r.submittedBy === _diLogFilters.foreman);
-  if (_diLogFilters.empCount) docs = docs.filter(r => String((r.crews||[]).reduce((s,c)=>s+(c.entries||[]).length,0)) === _diLogFilters.empCount);
+  if (_diLogFilters.empCount) docs = docs.filter(r => String(countEmps(r)) === _diLogFilters.empCount);
 
   if (!docs.length) {
     tbody.innerHTML = `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);">${jobName ? 'No submissions match filters.' : 'Select a job above to view the submission log.'}</td></tr>`;
@@ -2664,7 +2665,7 @@ function diRenderLogRows() {
   }
   tbody.innerHTML = docs.map(r => {
     const crewNums = (r.crews||[]).map(c => `Crew ${c.crewNum}`).join(', ');
-    const empCount = (r.crews||[]).reduce((s,c) => s + (c.entries||[]).length, 0);
+    const empCount = new Set((r.crews||[]).flatMap(c=>(c.entries||[]).map(e=>(e.employee||'').trim()).filter(Boolean))).size;
     return `<tr style="border-top:1px solid var(--border);">
       <td style="padding:8px 10px;">${fmtDate(r.date)}</td>
       <td style="padding:8px 10px;color:var(--muted);">${r.submittedTime||'—'}</td>
@@ -2886,12 +2887,15 @@ for (let c=1; c<=PS_NUM_CREWS; c++) {
 // 'weekly' = compiled or manually saved (full crew splits)
 let _psCurrentType = 'daily';
 let _psEditMode    = false;  // true = daily paysheet in edit mode (admin/PM only)
+let _psFilterCode  = '';     // active labor code filter (weekly only)
+let _psCurrentPage = 0;      // current page index for single-page navigation
 
 // Convenience accessor for current crew state
 function _ps() { return _psState[_psActiveCrew]; }
 
 function psSwitchCrew(n) {
   _psEditMode = false; // exit edit mode when switching crews
+  _psCurrentPage = 0;
   _psSaveHeaderFields();
   _psActiveCrew = n;
   psRenderCrewTabs();
@@ -3032,6 +3036,9 @@ function onJobChanged() {
   // Sync DI job select
   const diSel = document.getElementById('di-job-select');
   if (diSel && diSel.value !== jobName) diSel.value = jobName;
+  // Reset filters and page on job change
+  _psFilterCode = '';
+  _psCurrentPage = 0;
   // Update paysheet
   psPopulateAreaBudgetSelect();
   psRenderMainTable();
@@ -3212,34 +3219,75 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
 }
 
 function psRenderMainTable() {
-  const jobName  = document.getElementById('ps-job-select').value;
-  const areas    = jobName ? psGetAreas(jobName) : [];
-  const rows     = _ps().rows;
-  const numPages = Math.max(1, Math.ceil(rows.length / PS_PAGE_ROWS));
+  const jobName   = document.getElementById('ps-job-select').value;
+  const areas     = jobName ? psGetAreas(jobName) : [];
+  const allRows   = _ps().rows;
+  const isDaily   = _psCurrentType === 'daily';
   const container = document.getElementById('ps-pages-container');
-  const isDaily  = _psCurrentType === 'daily';
 
-  let html = '';
-  for (let pg = 0; pg < numPages; pg++) {
-    const start     = pg * PS_PAGE_ROWS;
-    const pageRows  = rows.slice(start, start + PS_PAGE_ROWS);
-    const isLast    = pg === numPages - 1;
-    const pageLabel = numPages > 1 ? `<div style="text-align:right;font-size:11px;color:#555;margin-top:4px;margin-bottom:2px;">Page ${pg+1} of ${numPages}</div>` : '';
-    const breakClass = isLast ? '' : ' ps-page-break';
+  // Filter bar: show only for weekly, populate labor code options
+  const filterBar = document.getElementById('ps-filter-bar');
+  if (filterBar) {
+    filterBar.style.display = isDaily ? 'none' : 'flex';
+    if (!isDaily) {
+      const codeSel = document.getElementById('ps-filter-code');
+      const usedCodes = [...new Set(allRows.map(r => r.costCode).filter(Boolean))].sort();
+      const curVal = _psFilterCode;
+      codeSel.innerHTML = '<option value="">All Labor Codes</option>' +
+        usedCodes.map(c => {
+          const g = PAYROLL_GROUPS.find(x => x.code === c);
+          const label = g ? c + ' – ' + g.description : c;
+          return `<option value="${eh(c)}" ${curVal===c?'selected':''}>${eh(label)}</option>`;
+        }).join('');
+    }
+  }
 
-    html += `<div class="ps-page${breakClass}" style="margin-bottom:${isLast?'0':'32px'};">
-      ${numPages > 1 && pg > 0 ? `<div style="font-size:10px;color:#888;margin-bottom:4px;font-style:italic;">Continued — Page ${pg+1} of ${numPages}</div>` : ''}
-      <table style="width:100%;border-collapse:collapse;margin-bottom:4px;">
-        <thead>${_psTableThead(isDaily)}</thead>
-        <tbody>${pageRows.map((row, j) => _psRenderRow(row, start + j, jobName, areas, isDaily)).join('')}</tbody>
-      </table>
-      ${pageLabel}
+  // Apply labor code filter (weekly only)
+  const rows = (!isDaily && _psFilterCode)
+    ? allRows.filter(r => r.costCode === _psFilterCode)
+    : allRows;
+
+  const totalFiltered = rows.length;
+  const numPages = Math.max(1, Math.ceil(totalFiltered / PS_PAGE_ROWS));
+  if (_psCurrentPage >= numPages) _psCurrentPage = numPages - 1;
+  if (_psCurrentPage < 0) _psCurrentPage = 0;
+  const pg = _psCurrentPage;
+
+  const start    = pg * PS_PAGE_ROWS;
+  const pageRows = rows.slice(start, start + PS_PAGE_ROWS);
+
+  // Page navigation bar
+  let navHtml = '';
+  if (numPages > 1) {
+    navHtml = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-outline" style="font-size:.78rem;padding:4px 14px;" ${pg===0?'disabled':''} onclick="_psCurrentPage--;psRenderMainTable()">&#8592; Prev</button>
+      <span style="font-size:.82rem;color:var(--muted);">Page ${pg+1} of ${numPages}${_psFilterCode?' (filtered)':''}</span>
+      <button class="btn btn-outline" style="font-size:.78rem;padding:4px 14px;" ${pg===numPages-1?'disabled':''} onclick="_psCurrentPage++;psRenderMainTable()">Next &#8594;</button>
     </div>`;
   }
 
-  // Total Amount after all pages (weekly only)
-  const total = rows.reduce((s, r) => s + (parseFloat(r.weAmount) || 0), 0);
+  let html = navHtml;
+  html += `<div class="ps-page" style="margin-bottom:0;">
+    ${pg > 0 ? `<div style="font-size:10px;color:#888;margin-bottom:4px;font-style:italic;">Continued — Page ${pg+1} of ${numPages}</div>` : ''}
+    <table style="width:100%;border-collapse:collapse;margin-bottom:4px;">
+      <thead>${_psTableThead(isDaily)}</thead>
+      <tbody>${pageRows.map((row, j) => _psRenderRow(row, start + j, jobName, areas, isDaily)).join('')}</tbody>
+    </table>
+    ${numPages > 1 ? `<div style="text-align:right;font-size:11px;color:#555;margin-top:4px;margin-bottom:2px;">Page ${pg+1} of ${numPages}</div>` : ''}
+  </div>`;
+
+  // Bottom navigation (repeated for convenience)
+  if (numPages > 1) {
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-outline" style="font-size:.78rem;padding:4px 14px;" ${pg===0?'disabled':''} onclick="_psCurrentPage--;psRenderMainTable()">&#8592; Prev</button>
+      <span style="font-size:.82rem;color:var(--muted);">Page ${pg+1} of ${numPages}</span>
+      <button class="btn btn-outline" style="font-size:.78rem;padding:4px 14px;" ${pg===numPages-1?'disabled':''} onclick="_psCurrentPage++;psRenderMainTable()">Next &#8594;</button>
+    </div>`;
+  }
+
+  // Total Amount (weekly only — uses all rows, not filtered)
   if (!isDaily) {
+    const total = allRows.reduce((s, r) => s + (parseFloat(r.weAmount) || 0), 0);
     html += `<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin:12px 0 24px;">
       <span style="font-weight:700;text-decoration:underline;">Total Amount:</span>
       <div id="ps-total-display" style="border:1px solid #000;padding:6px 16px;min-width:150px;text-align:right;font-weight:700;">${_fmt$(total)}</div>
