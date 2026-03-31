@@ -3011,10 +3011,14 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
     budgetVal = psGetAreaCodeData(jobName, row.area, row.costCode).budget || 0;
   }
   const ptdVal     = parseFloat(row.ptd) || 0;
+  const weAmount   = parseFloat(row.weAmount) || 0;
   const remaining  = budgetVal - ptdVal;
   const budgetDisp = budgetVal > 0 ? _fmt$(budgetVal) : '';
   const remainDisp = budgetVal > 0 || ptdVal > 0 ? _fmt$(remaining) : '';
   const rColor     = remaining < 0 ? '#ef4444' : '#333';
+  const pctComplete = budgetVal > 0 ? ((ptdVal + weAmount) / budgetVal * 100) : 0;
+  const pctDisp     = budgetVal > 0 ? pctComplete.toFixed(1) + '%' : '—';
+  const pctColor    = pctComplete > 100 ? '#ef4444' : pctComplete >= 80 ? '#c9a84c' : '#333';
   const n = 'width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:inherit;padding:0;text-align:right;';
 
   return `<tr>
@@ -3041,10 +3045,8 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
           onblur="const v=parseFloat(this.value)||0;_ps().rows[${i}].weAmount=v||'';this.value=v?v.toFixed(2):'';" />
       </div>
     </td>
-    <td style="border:1px solid #000;padding:2px 5px;">
-      <input type="number" style="${n}" value="${row.pctComplete||''}" placeholder="0" min="0" max="100" step="0.1"
-        oninput="_ps().rows[${i}].pctComplete=this.value"
-        onchange="_ps().rows[${i}].pctComplete=this.value" />
+    <td style="border:1px solid #000;padding:4px 8px;text-align:center;font-size:12px;font-weight:700;color:${pctColor};">
+      <span id="ps-pct-${i}">${pctDisp}</span>
     </td>`}
   </tr>`;
 }
@@ -3100,11 +3102,24 @@ function psCodeChanged(i, code) {
 }
 
 function psUpdateTotal() {
-  const total = _ps().rows.reduce((s, r) => s + (parseFloat(r.weAmount) || 0), 0);
-  const el = document.getElementById('ps-total-display');
+  const total   = _ps().rows.reduce((s, r) => s + (parseFloat(r.weAmount) || 0), 0);
+  const el      = document.getElementById('ps-total-display');
   if (el) el.textContent = _fmt$(total);
   // Recalculate split amounts whenever the total changes
   _psRecalcSplitAmounts(total);
+  // Update % Complete cells live
+  const jobName = document.getElementById('ps-job-select').value;
+  _ps().rows.forEach((row, i) => {
+    const pctEl = document.getElementById('ps-pct-' + i);
+    if (!pctEl) return;
+    let bv = 0;
+    if (jobName && row.area && row.costCode) bv = psGetAreaCodeData(jobName, row.area, row.costCode).budget || 0;
+    const ptd = parseFloat(row.ptd) || 0;
+    const we  = parseFloat(row.weAmount) || 0;
+    const pct = bv > 0 ? ((ptd + we) / bv * 100) : 0;
+    pctEl.textContent = bv > 0 ? pct.toFixed(1) + '%' : '—';
+    pctEl.parentElement.style.color = pct > 100 ? '#ef4444' : pct >= 80 ? '#c9a84c' : '#333';
+  });
   psRenderCrewTable();
 }
 
