@@ -737,29 +737,24 @@
 
         <!-- Daily Log -->
         <div style="margin-top:24px;">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-            <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;flex:1;">Submission Log</div>
-            <input type="date" id="di-log-filter-date" class="fi" style="padding:5px 8px;font-size:.8rem;width:150px;" placeholder="Filter by date" oninput="diRenderLogRows()" />
-            <select id="di-log-filter-crew" class="fi" style="padding:5px 8px;font-size:.8rem;" onchange="diRenderLogRows()">
-              <option value="">All Crews</option>
-              <option value="1">Crew 1</option><option value="2">Crew 2</option><option value="3">Crew 3</option>
-              <option value="4">Crew 4</option><option value="5">Crew 5</option><option value="6">Crew 6</option>
-              <option value="7">Crew 7</option><option value="8">Crew 8</option><option value="9">Crew 9</option>
-              <option value="10">Crew 10</option>
-            </select>
-            <button class="btn btn-outline" style="padding:5px 10px;font-size:.8rem;" onclick="diClearLogFilters()">Clear</button>
-          </div>
-          <div id="di-log-wrap" style="overflow-x:auto;">
+          <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Submission Log</div>
+          <div id="di-log-wrap" style="overflow-x:auto;position:relative;">
             <table style="min-width:700px;width:100%;border-collapse:collapse;font-size:.82rem;">
               <thead>
+                <tr style="background:var(--surface2);" id="di-log-filter-row">
+                  <!-- Filter row — rendered by diRenderLogRows() -->
+                </tr>
                 <tr style="background:var(--surface2);">
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Date</th>
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Time</th>
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Job</th>
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Crew</th>
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Foreman</th>
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Employees</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;">Date ▾</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;">Time</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;">Job ▾</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;">Crew ▾</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;">Foreman ▾</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;">Employees ▾</th>
                   <th style="padding:8px 10px;border-bottom:1px solid var(--border);"></th>
+                </tr>
+                <tr id="di-log-filter-inputs" style="background:var(--bg);">
+                  <!-- inline filter inputs, injected by diRenderLogRows() -->
                 </tr>
               </thead>
               <tbody id="di-log-tbody"><tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);">No submissions yet.</td></tr></tbody>
@@ -2616,17 +2611,52 @@ function diLoadLog() {
   } catch(e) { console.error('diLoadLog:', e); }
 }
 
+// Per-column filter state for submission log
+let _diLogFilters = { date:'', job:'', crew:'', foreman:'', empCount:'' };
+
 function diRenderLogRows() {
   const tbody    = document.getElementById('di-log-tbody');
+  const filterRow = document.getElementById('di-log-filter-inputs');
   if (!tbody) return;
-  const jobName  = document.getElementById('ps-job-select').value;
-  const filterDate  = (document.getElementById('di-log-filter-date')  ||{}).value || '';
-  const filterCrew  = (document.getElementById('di-log-filter-crew')  ||{}).value || '';
 
+  const jobName = document.getElementById('ps-job-select').value;
   let docs = _diLogDocs;
-  if (jobName)    docs = docs.filter(r => r.job === jobName);
-  if (filterDate) docs = docs.filter(r => r.date === filterDate);
-  if (filterCrew) docs = docs.filter(r => r.crews && r.crews.some(c => String(c.crewNum) === filterCrew));
+  if (jobName) docs = docs.filter(r => r.job === jobName);
+
+  // Build unique values for each column dropdown (from all docs for this job)
+  const uniq = arr => [...new Set(arr.filter(Boolean))].sort();
+  const allDates    = uniq(docs.map(r => r.date));
+  const allJobs     = uniq(docs.map(r => r.job));
+  const allCrews    = uniq(docs.flatMap(r => (r.crews||[]).map(c => `Crew ${c.crewNum}`)));
+  const allForemen  = uniq(docs.map(r => r.submittedBy));
+  const allEmpCounts= uniq(docs.map(r => String((r.crews||[]).reduce((s,c)=>s+(c.entries||[]).length,0))));
+
+  // Render Excel-style filter inputs row
+  const selStyle = 'background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:.75rem;padding:3px 4px;width:100%;';
+  const mkSel = (id, vals, key, label) => {
+    const active = _diLogFilters[key] ? 'color:var(--accent);' : '';
+    return `<td style="padding:4px 6px;">
+      <select style="${selStyle}${active}" onchange="_diLogFilters['${key}']=this.value;diRenderLogRows()">
+        <option value="">${label}</option>
+        ${vals.map(v=>`<option value="${eh(v)}" ${_diLogFilters[key]===v?'selected':''}>${eh(v)}</option>`).join('')}
+      </select>
+    </td>`;
+  };
+  if (filterRow) filterRow.innerHTML =
+    mkSel('date',    allDates,    'date',     'All Dates') +
+    `<td></td>` +
+    mkSel('job',     allJobs,     'job',      'All Jobs') +
+    mkSel('crew',    allCrews,    'crew',     'All Crews') +
+    mkSel('foreman', allForemen,  'foreman',  'All Foremen') +
+    mkSel('empCount',allEmpCounts,'empCount', 'Any Count') +
+    `<td style="padding:4px 6px;"><button class="btn-sm" onclick="diClearLogFilters()" style="white-space:nowrap;font-size:.7rem;padding:3px 8px;">✕ Clear</button></td>`;
+
+  // Apply active filters
+  if (_diLogFilters.date)     docs = docs.filter(r => r.date === _diLogFilters.date);
+  if (_diLogFilters.job)      docs = docs.filter(r => r.job === _diLogFilters.job);
+  if (_diLogFilters.crew)     docs = docs.filter(r => (r.crews||[]).some(c => `Crew ${c.crewNum}` === _diLogFilters.crew));
+  if (_diLogFilters.foreman)  docs = docs.filter(r => r.submittedBy === _diLogFilters.foreman);
+  if (_diLogFilters.empCount) docs = docs.filter(r => String((r.crews||[]).reduce((s,c)=>s+(c.entries||[]).length,0)) === _diLogFilters.empCount);
 
   if (!docs.length) {
     tbody.innerHTML = `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);">${jobName ? 'No submissions match filters.' : 'Select a job above to view the submission log.'}</td></tr>`;
@@ -2652,10 +2682,7 @@ function diRenderLogRows() {
 }
 
 function diClearLogFilters() {
-  const d = document.getElementById('di-log-filter-date');
-  const c = document.getElementById('di-log-filter-crew');
-  if (d) d.value = '';
-  if (c) c.value = '';
+  _diLogFilters = { date:'', job:'', crew:'', foreman:'', empCount:'' };
   diRenderLogRows();
 }
 
