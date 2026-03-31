@@ -2488,33 +2488,37 @@ function psAutoFillFromSubmission(crews, jobName, date) {
     if (!_psState[crewNum]) return;
     const state = _psState[crewNum];
 
-    // Set header fields if not already set
-    if (!state.header.weekEnding) state.header.weekEnding = date;
-    if (!state.header.crewName)   state.header.crewName   = `Crew ${crewNum}`;
+    // Reset rows and splits fresh for this day's snapshot
+    state.rows   = _psEmptyRows();
+    state.splits = _psEmptySplits();
+
+    // Set header fields
+    state.header.weekEnding = date;
+    if (!state.header.crewName) state.header.crewName = `Crew ${crewNum}`;
     if (!state.header.foreman && _currentUser) state.header.foreman = _currentUser.email;
 
     const entries = c.entries || [];
 
-    // Fill splits: unique employees (preserve existing entries)
-    const seenEmp = new Set(state.splits.map(s => s.employee).filter(Boolean));
-    let si = state.splits.findIndex(s => !s.employee); // find next empty slot
+    // Fill splits with unique employees
+    const seenEmp = new Set();
+    let si = 0;
     entries.forEach(e => {
-      if (!e.employee || seenEmp.has(e.employee) || si < 0 || si >= PS_SPLIT_ROWS) return;
+      if (!e.employee || seenEmp.has(e.employee) || si >= PS_SPLIT_ROWS) return;
       seenEmp.add(e.employee);
       state.splits[si].employee = e.employee;
-      si = state.splits.findIndex((s, idx) => idx > si && !s.employee);
+      si++;
     });
 
-    // Fill main rows: unique area+code combos (preserve existing)
-    const seenAC = new Set(state.rows.filter(r => r.area).map(r => r.area+'|||'+r.costCode));
-    let ri = state.rows.findIndex(r => !r.area);
+    // Fill main rows with unique area+code combos
+    const seenAC = new Set();
+    let ri = 0;
     entries.forEach(e => {
       const key = (e.area||'') + '|||' + (e.costCode||'');
-      if (!e.area || seenAC.has(key) || ri < 0 || ri >= PS_MAIN_ROWS) return;
+      if (!e.area || seenAC.has(key) || ri >= PS_MAIN_ROWS) return;
       seenAC.add(key);
       state.rows[ri].area     = e.area     || '';
       state.rows[ri].costCode = e.costCode || '';
-      ri = state.rows.findIndex((r, idx) => idx > ri && !r.area);
+      ri++;
     });
   });
 
@@ -3687,6 +3691,9 @@ async function psSaveToFolder(weekEnding) {
     : { type: 'weekly' };
   _psSavePendingData = null;
   await savePaysheetToCloud(false, opts);
+  // Scroll to paysheet preview after save
+  const psEl = document.getElementById('paysheet-print-area');
+  if (psEl) psEl.scrollIntoView({ behavior: 'smooth' });
 }
 
 async function psSaveToNewFolder() {
@@ -3704,9 +3711,26 @@ async function deleteSavedPaysheet(docId, e) {
   e.stopPropagation();
   if (!confirm('Delete this saved paysheet? This cannot be undone.')) return;
   try {
+    // Find the paysheet doc to check if it's a daily type
+    const ps = (_cache.paysheets || []).find(p => p.id === docId);
+    const isDaily = ps ? (ps.type === 'daily' || !!ps.date) : docId.startsWith('daily_');
+
+    // Delete paysheet
     await db.collection('paysheets').doc(docId).delete();
     if (_cache.paysheets) _cache.paysheets = _cache.paysheets.filter(p => p.id !== docId);
+
+    // If daily paysheet, also delete the matching daily input submission(s)
+    if (isDaily && ps && ps.job && ps.date) {
+      const snap = await db.collection('dailyinput')
+        .where('job', '==', ps.job)
+        .where('date', '==', ps.date)
+        .get();
+      const deletes = snap.docs.map(d => d.ref.delete());
+      await Promise.all(deletes);
+    }
+
     renderPSLoadList();
+    diLoadLog();
   } catch(err) { alert('Delete failed: ' + err.message); }
 }
 
