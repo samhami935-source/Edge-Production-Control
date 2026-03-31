@@ -732,10 +732,10 @@
       </div><!-- /details body -->
     </details>
 
-    <!-- Crew tab bar for paysheet + Save Paysheet button -->
+    <!-- Crew tab bar for paysheet + action buttons -->
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
       <div id="ps-crew-tab-bar" style="display:flex;gap:4px;flex-wrap:wrap;flex:1;"></div>
-      <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;flex-shrink:0;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>
+      <div id="ps-action-btns" style="display:flex;gap:6px;flex-shrink:0;"></div>
     </div>
 
     <!-- Printable paysheet -->
@@ -2783,11 +2783,13 @@ for (let c=1; c<=PS_NUM_CREWS; c++) {
 // 'daily' = auto-generated from daily input (no % split/amount/sign)
 // 'weekly' = compiled or manually saved (full crew splits)
 let _psCurrentType = 'daily';
+let _psEditMode    = false;  // true = daily paysheet in edit mode (admin/PM only)
 
 // Convenience accessor for current crew state
 function _ps() { return _psState[_psActiveCrew]; }
 
 function psSwitchCrew(n) {
+  _psEditMode = false; // exit edit mode when switching crews
   _psSaveHeaderFields();
   _psActiveCrew = n;
   psRenderCrewTabs();
@@ -2808,20 +2810,20 @@ function _psSaveHeaderFields() {
 
 function psLoadHeaderFields() {
   const h       = _ps().header;
-  const isDaily = _psCurrentType === 'daily';
+  const locked  = _psCurrentType === 'daily' && !_psEditMode;
   const map     = {project:'ps-project', foreman:'ps-foreman', crewName:'ps-crew', weekEnding:'ps-weekending'};
   Object.entries(map).forEach(([k, id]) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.value    = h[k] || '';
-    el.readOnly = isDaily;
-    el.style.pointerEvents = isDaily ? 'none' : '';
-    el.style.color         = isDaily ? '#555'  : '';
+    el.readOnly = locked;
+    el.style.pointerEvents = locked ? 'none' : '';
+    el.style.color         = locked ? '#555'  : '';
   });
 }
 
 function psRenderCrewTabs() {
-  let wrap = document.getElementById('ps-crew-tab-bar');
+  const wrap = document.getElementById('ps-crew-tab-bar');
   if (!wrap) return;
   wrap.innerHTML = '';
   for (let c=1; c<=PS_NUM_CREWS; c++) {
@@ -2838,6 +2840,27 @@ function psRenderCrewTabs() {
       : '');
     btn.onclick = () => psSwitchCrew(c);
     wrap.appendChild(btn);
+  }
+
+  // Render action buttons based on current type + edit mode + role
+  const actWrap  = document.getElementById('ps-action-btns');
+  if (!actWrap) return;
+  const isDaily  = _psCurrentType === 'daily';
+
+  if (_psEditMode) {
+    // Edit mode — show Save Edits + Cancel
+    actWrap.innerHTML = `
+      <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="psFinishEdit()">💾 Save Edits</button>
+      <button class="btn btn-outline" style="white-space:nowrap;" onclick="psCancelEdit()">✕ Cancel</button>`;
+  } else if (isDaily && canEdit()) {
+    // Daily paysheet, admin/PM — show Edit + Save Paysheet
+    actWrap.innerHTML = `
+      <button class="btn btn-outline" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);" onclick="psEnterEditMode()">✏️ Edit</button>
+      <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>`;
+  } else {
+    // Weekly or no edit permission — show Save Paysheet only
+    actWrap.innerHTML = `
+      <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>`;
   }
 }
 
@@ -3026,13 +3049,39 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
     : '';
   const cell = 'border:1px solid #000;padding:4px 8px;font-size:12px;';
 
-  if (isDaily) {
-    // Daily paysheet — fully read-only, plain text only
+  if (isDaily && !_psEditMode) {
+    // Daily paysheet read-only view — plain text
     return `<tr>
       <td style="${cell}">${eh(row.area||'')}</td>
       <td style="${cell}">${eh(codeLabel)}</td>
       <td style="${cell}text-align:right;">${budgetDisp}</td>
       <td style="${cell}text-align:right;">${ptdVal ? ptdVal.toFixed(2) : '0.00'}</td>
+      <td style="${cell}text-align:right;font-weight:700;color:${rColor};">${remainDisp}</td>
+    </tr>`;
+  }
+
+  if (isDaily && _psEditMode) {
+    // Daily paysheet edit mode — Area, Labor Code, PTD editable (no W/E Earned / % Complete)
+    const areaOpts = ['<option value=""></option>',
+      ...areas.map(a => `<option value="${eh(a)}" ${row.area===a?'selected':''}>${eh(a)}</option>`)
+    ].join('');
+    let codeOpts = '<option value=""></option>';
+    PAYROLL_GROUPS.forEach(g => {
+      codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
+    });
+    const n2 = 'width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:inherit;padding:0;text-align:right;';
+    return `<tr style="background:#fffbe6;">
+      <td style="border:1px solid #000;padding:2px 4px;">
+        <select class="ps-area-select" onchange="psAreaChanged(${i},this.value)">${areaOpts}</select>
+      </td>
+      <td style="border:1px solid #000;padding:2px 4px;">
+        <select class="ps-area-select" onchange="psCodeChanged(${i},this.value)">${codeOpts}</select>
+      </td>
+      <td style="${cell}text-align:right;">${budgetDisp}</td>
+      <td style="border:1px solid #000;padding:2px 5px;">
+        <input type="number" style="${n2}" value="${row.ptd||''}" placeholder="0.00" min="0" step="0.01"
+          oninput="_ps().rows[${i}].ptd=this.value" />
+      </td>
       <td style="${cell}text-align:right;font-weight:700;color:${rColor};">${remainDisp}</td>
     </tr>`;
   }
@@ -3110,6 +3159,49 @@ function psCodeChanged(i, code) {
   psRenderMainTable();
 }
 
+// ─── Daily Paysheet Edit Mode (Admin / PM only) ───
+let _psEditSnapshot = null; // deep copy of state before editing, for cancel
+
+function psEnterEditMode() {
+  if (!canEdit()) { alert('Admin or Project Manager access required to edit daily paysheets.'); return; }
+  // Snapshot current state for cancel
+  _psEditSnapshot = JSON.parse(JSON.stringify(_psState));
+  _psEditMode = true;
+  psLoadHeaderFields();
+  psRenderMainTable();
+  psRenderCrewTable();
+  psRenderCrewTabs();
+}
+
+async function psFinishEdit() {
+  _psSaveHeaderFields();
+  _psEditMode = false;
+  // Save to Firestore — overwrite the existing daily doc
+  await savePaysheetToCloud(false, {
+    type: 'daily',
+    dailyDate: _ps().header.weekEnding || document.getElementById('di-date').value,
+    submissionId: _psSavePendingData?.submissionId || null
+  });
+  _psEditSnapshot = null;
+  psLoadHeaderFields();
+  psRenderMainTable();
+  psRenderCrewTable();
+  psRenderCrewTabs();
+}
+
+function psCancelEdit() {
+  if (_psEditSnapshot) {
+    // Restore state from snapshot
+    Object.keys(_psEditSnapshot).forEach(k => { _psState[k] = _psEditSnapshot[k]; });
+    _psEditSnapshot = null;
+  }
+  _psEditMode = false;
+  psLoadHeaderFields();
+  psRenderMainTable();
+  psRenderCrewTable();
+  psRenderCrewTabs();
+}
+
 function psUpdateTotal() {
   const total   = _ps().rows.reduce((s, r) => s + (parseFloat(r.weAmount) || 0), 0);
   const el      = document.getElementById('ps-total-display');
@@ -3182,11 +3274,24 @@ function psRenderCrewTable() {
     </tr>`;
 
   const rows = splits.map((s, i) => {
-    if (isDaily) {
-      // Daily log — read-only, blank if not filled (no placeholder)
+    if (isDaily && !_psEditMode) {
+      // Daily log read-only — blank if not filled
       return `<tr>
         <td style="${cell}text-align:center;">—</td>
         <td style="${cell}">${eh(s.employee||'')}</td>
+      </tr>`;
+    }
+    if (isDaily && _psEditMode) {
+      // Daily log edit mode — allow editing employee # and name (highlighted)
+      return `<tr style="background:#fffbe6;">
+        <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
+          <input style="${inp}text-align:center;" value="${eh(s.empNum)}" placeholder="—"
+            oninput="_ps().splits[${i}].empNum=this.value" />
+        </td>
+        <td style="border:1px solid #000;padding:2px 4px;">
+          <input style="${inp}" value="${eh(s.employee)}"
+            oninput="_ps().splits[${i}].employee=this.value" />
+        </td>
       </tr>`;
     }
     // Weekly crew splits — Employee #/Name editable, % and Amount both independently editable
@@ -3804,6 +3909,7 @@ async function loadPaysheetFromCloud(docId) {
 
   // Set type for conditional rendering
   _psCurrentType = doc.type || 'weekly';
+  _psEditMode    = false;
 
   // Refresh current crew view
   psLoadHeaderFields();
