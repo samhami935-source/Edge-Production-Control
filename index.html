@@ -2482,7 +2482,7 @@ async function submitDailyInput() {
 }
 
 // Fill paysheet from a just-submitted daily input
-function psAutoFillFromSubmission(crews, jobName, date) {
+async function psAutoFillFromSubmission(crews, jobName, date) {
   crews.forEach(c => {
     const crewNum = c.crewNum;
     if (!_psState[crewNum]) return;
@@ -2530,15 +2530,26 @@ function psAutoFillFromSubmission(crews, jobName, date) {
   psRenderMainTable();
   psRenderCrewTable();
 
-  // Scroll to paysheet first so user can see it was filled
+  // Set daily layout before saving
+  _psCurrentType = 'daily';
+  psRenderMainTable();
+  psRenderCrewTable();
+
+  // Auto-save directly into the folder matching the daily input date
+  // (creates the folder if it doesn't exist yet — no modal needed)
+  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+    if (!_psState[c].header.weekEnding) _psState[c].header.weekEnding = date;
+  }
+  if (!_psFolders.includes(date)) {
+    _psFolders.push(date);
+    _psFolders.sort((a, b) => b.localeCompare(a));
+    localStorage.setItem('d9_ps_folders', JSON.stringify(_psFolders));
+  }
+  await savePaysheetToCloud(true, { type: 'daily', dailyDate: date });
+
+  // Scroll to paysheet so user can see it
   const el = document.getElementById('paysheet-print-area');
   if (el) el.scrollIntoView({ behavior: 'smooth' });
-
-  // Show folder picker — mark this as a daily save
-  _psCurrentType = 'daily';
-  psRenderCrewTable(); // re-render immediately with daily layout (no splits columns)
-  _psSavePendingData = { defaultDate: date, type: 'daily', dailyDate: date };
-  openSaveDestModal();
 }
 
 async function diLoadLog() {
