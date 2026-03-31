@@ -3651,6 +3651,8 @@ async function psMovePaysheetTo(docId, newWeekEnding, selectEl) {
     }
     _psLoadOpenFolders.add(newWeekEnding);
     renderPSLoadList();
+    // Load and preview the moved paysheet
+    await loadPaysheetFromCloud(newDocId);
   } catch(e) { alert('Move failed: ' + e.message); }
 }
 
@@ -3684,8 +3686,9 @@ function openSaveDestModal() {
 
 async function psSaveToFolder(weekEnding) {
   if (!weekEnding) return;
+  // Always force the selected folder's week ending onto all crew headers
   for (let c = 1; c <= PS_NUM_CREWS; c++) {
-    if (!_psState[c].header.weekEnding) _psState[c].header.weekEnding = weekEnding;
+    _psState[c].header.weekEnding = weekEnding;
   }
   document.getElementById('ps-save-dest-modal').classList.remove('open');
   if (!_psFolders.includes(weekEnding)) {
