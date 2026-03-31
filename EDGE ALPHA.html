@@ -1531,7 +1531,8 @@ function renderBurnLog() {
     const f=files.find(f=>f.name===e.csvFile);
     const budget=f?f.rows.filter(r=>r.area===e.area&&getCodeGroup(r.costCode)===(e.costCode||'')).reduce((s,r)=>s+r.amount,0):0;
     const paid=allEntries.filter(x=>x.csvFile===e.csvFile&&x.area===e.area&&x.costCode===(e.costCode||'')).reduce((s,x)=>s+x.price,0);
-    const rem=budget-paid;
+    const remRaw=budget-paid;
+    const rem=Math.abs(remRaw)<0.01?0:remRaw;
     if(rem<0){
       const lc=getLaborCodes().find(l=>l.code===e.costCode)||{description:e.description||''};
       rows.push({job:e.csvFile,area:e.area,code:e.costCode||'—',description:lc.description||e.description||'',budget,paid,over:Math.abs(rem)});
@@ -2127,8 +2128,9 @@ function renderPayrollTable() {
     const ce=files.find(f=>f.name===e.csvFile);
     const budget=ce?ce.rows.filter(r=>r.area===(e.area||'')&&getCodeGroup(r.costCode)===(e.costCode||'')).reduce((s,r)=>s+r.amount,0):e.amount;
     const{paid}=getPayrollTotals(e.csvFile,e.costCode||'',e.description,e.area||'');
-    const rem=budget-paid;
-    const rc=rem<0?'ar':rem===0?'ay':'ap';
+    const remRaw=budget-paid;
+    const rem=Math.abs(remRaw)<0.01?0:remRaw;
+    const rc=rem<0?'ar':rem===0?'':' ap';
     return`<tr>
       <td style="color:var(--muted);white-space:nowrap">${fmtDate(e.date)}${e.time?`<br><span style="font-size:.75rem;">${fmtTime(e.time)}</span>`:''}</td>
       <td><span class="pill">${eh(e.csvFile)}</span></td>
@@ -2137,7 +2139,7 @@ function renderPayrollTable() {
       <td>${eh(e.description)}</td>
       <td class="ap" style="text-align:right">${fm(budget)}</td>
       <td class="ay" style="text-align:right">${fm(e.price)}</td>
-      <td class="${rc}" style="text-align:right">${rem<0?'-':''}${fm(Math.abs(rem))}</td>
+      <td class="${rc}" style="text-align:right">${rem===0?'$0.00':rem<0?'-'+fm(Math.abs(rem)):fm(rem)}</td>
       ${admin?`<td style="text-align:center"><button class="btn-sm btn-danger" onclick="deletePayrollEntry(${e.id})">Delete</button></td>`:''}
     </tr>`;
   }).join('');
