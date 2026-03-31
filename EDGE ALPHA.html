@@ -2482,7 +2482,7 @@ async function submitDailyInput() {
 }
 
 // Fill paysheet from a just-submitted daily input
-async function psAutoFillFromSubmission(crews, jobName, date) {
+function psAutoFillFromSubmission(crews, jobName, date) {
   crews.forEach(c => {
     const crewNum = c.crewNum;
     if (!_psState[crewNum]) return;
@@ -2530,26 +2530,18 @@ async function psAutoFillFromSubmission(crews, jobName, date) {
   psRenderMainTable();
   psRenderCrewTable();
 
-  // Set daily layout before saving
+  // Set daily layout
   _psCurrentType = 'daily';
   psRenderMainTable();
   psRenderCrewTable();
 
-  // Auto-save directly into the folder matching the daily input date
-  // (creates the folder if it doesn't exist yet — no modal needed)
-  for (let c = 1; c <= PS_NUM_CREWS; c++) {
-    if (!_psState[c].header.weekEnding) _psState[c].header.weekEnding = date;
-  }
-  if (!_psFolders.includes(date)) {
-    _psFolders.push(date);
-    _psFolders.sort((a, b) => b.localeCompare(a));
-    localStorage.setItem('d9_ps_folders', JSON.stringify(_psFolders));
-  }
-  await savePaysheetToCloud(true, { type: 'daily', dailyDate: date });
-
-  // Scroll to paysheet so user can see it
+  // Scroll to paysheet so user can see it before choosing folder
   const el = document.getElementById('paysheet-print-area');
   if (el) el.scrollIntoView({ behavior: 'smooth' });
+
+  // Open folder picker so user can choose where to save
+  _psSavePendingData = { defaultDate: date, type: 'daily', dailyDate: date };
+  openSaveDestModal();
 }
 
 async function diLoadLog() {
@@ -2601,17 +2593,22 @@ function diViewSubmission(id) {
   db.collection('dailyinput').doc(id).get().then(async doc => {
     if (!doc.exists) { alert('Submission not found.'); return; }
     const r = doc.data();
-    // Build the daily paysheet docId from job + date and load it
-    const docId = 'daily_' + (r.job + '_' + r.date).replace(/[^\w-]/g, '_');
-    let ps = (_cache.paysheets || []).find(p => p.id === docId);
+    // Find the daily paysheet by job + date (works even if moved to another folder)
+    let ps = (_cache.paysheets || []).find(p => p.job === r.job && p.date === r.date);
     if (!ps) {
       try {
-        const snap = await db.collection('paysheets').doc(docId).get();
-        if (!snap.exists) {
+        const snap = await db.collection('paysheets')
+          .where('job', '==', r.job)
+          .where('date', '==', r.date)
+          .limit(1)
+          .get();
+        if (snap.empty) {
           alert('No saved paysheet found for this submission. Save daily input to a folder first.');
           return;
         }
-        ps = snap.data();
+        ps = snap.docs[0].data();
+        if (!_cache.paysheets) _cache.paysheets = [];
+        _cache.paysheets.push(ps);
       } catch(e) { alert('Load failed: ' + e.message); return; }
     }
     // Load the daily paysheet into the paysheet view
