@@ -2798,9 +2798,17 @@ function _psSaveHeaderFields() {
 }
 
 function psLoadHeaderFields() {
-  const h = _ps().header;
-  const map = {project:'ps-project', foreman:'ps-foreman', crewName:'ps-crew', weekEnding:'ps-weekending'};
-  Object.entries(map).forEach(([k,id]) => { const el=document.getElementById(id); if(el) el.value=h[k]||''; });
+  const h       = _ps().header;
+  const isDaily = _psCurrentType === 'daily';
+  const map     = {project:'ps-project', foreman:'ps-foreman', crewName:'ps-crew', weekEnding:'ps-weekending'};
+  Object.entries(map).forEach(([k, id]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value    = h[k] || '';
+    el.readOnly = isDaily;
+    el.style.pointerEvents = isDaily ? 'none' : '';
+    el.style.color         = isDaily ? '#555'  : '';
+  });
 }
 
 function psRenderCrewTabs() {
@@ -2991,23 +2999,6 @@ function _psTableThead(isDaily) {
 }
 
 function _psRenderRow(row, i, jobName, areas, isDaily) {
-  const areaOpts = ['<option value=""></option>',
-    ...areas.map(a => `<option value="${eh(a)}" ${row.area===a?'selected':''}>${eh(a)}</option>`)
-  ].join('');
-
-  let codeOpts = '<option value=""></option>';
-  if (jobName && row.area) {
-    PAYROLL_GROUPS.forEach(g => {
-      const {budget} = psGetAreaCodeData(jobName, row.area, g.code);
-      if (budget > 0 || row.costCode === g.code)
-        codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
-    });
-  } else {
-    PAYROLL_GROUPS.forEach(g => {
-      codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
-    });
-  }
-
   let budgetVal = 0;
   if (jobName && row.area && row.costCode) {
     budgetVal = psGetAreaCodeData(jobName, row.area, row.costCode).budget || 0;
@@ -3021,23 +3012,30 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
   const pctComplete = budgetVal > 0 ? ((ptdVal + weAmount) / budgetVal * 100) : 0;
   const pctDisp     = budgetVal > 0 ? pctComplete.toFixed(1) + '%' : '—';
   const pctColor    = pctComplete > 100 ? '#ef4444' : pctComplete >= 80 ? '#c9a84c' : '#333';
-  const n = 'width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:inherit;padding:0;text-align:right;';
+  const codeLabel   = row.costCode
+    ? (() => { const g = PAYROLL_GROUPS.find(x => x.code === row.costCode); return g ? row.costCode + ' – ' + g.description : row.costCode; })()
+    : '';
+  const cell = 'border:1px solid #000;padding:4px 8px;font-size:12px;';
 
+  if (isDaily) {
+    // Daily paysheet — fully read-only, plain text only
+    return `<tr>
+      <td style="${cell}">${eh(row.area||'')}</td>
+      <td style="${cell}">${eh(codeLabel)}</td>
+      <td style="${cell}text-align:right;">${budgetDisp}</td>
+      <td style="${cell}text-align:right;">${ptdVal ? ptdVal.toFixed(2) : '0.00'}</td>
+      <td style="${cell}text-align:right;font-weight:700;color:${rColor};">${remainDisp}</td>
+    </tr>`;
+  }
+
+  // Weekly / summary — Area, Labor Code, PTD locked; only W/E Earned is editable
+  const n = 'width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:inherit;padding:0;text-align:right;';
   return `<tr>
-    <td style="border:1px solid #000;padding:2px 4px;">
-      <select class="ps-area-select" onchange="psAreaChanged(${i},this.value)">${areaOpts}</select>
-    </td>
-    <td style="border:1px solid #000;padding:2px 4px;">
-      <select class="ps-area-select" onchange="psCodeChanged(${i},this.value)">${codeOpts}</select>
-    </td>
-    <td style="border:1px solid #000;padding:4px 8px;text-align:right;font-size:12px;">${budgetDisp}</td>
-    <td style="border:1px solid #000;padding:2px 5px;">
-      <input type="number" style="${n}" value="${row.ptd||''}" placeholder="0.00" min="0" step="0.01"
-        oninput="_ps().rows[${i}].ptd=this.value;psUpdateTotal()"
-        onchange="_ps().rows[${i}].ptd=this.value;psUpdateTotal()" />
-    </td>
-    <td style="border:1px solid #000;${isDaily?'':'border-right:3px solid #000;'}padding:4px 8px;text-align:right;font-weight:700;font-size:12px;color:${rColor};">${remainDisp}</td>
-    ${isDaily ? '' : `
+    <td style="${cell}">${eh(row.area||'')}</td>
+    <td style="${cell}">${eh(codeLabel)}</td>
+    <td style="${cell}text-align:right;">${budgetDisp}</td>
+    <td style="${cell}text-align:right;">${ptdVal ? ptdVal.toFixed(2) : '0.00'}</td>
+    <td style="${cell}border-right:3px solid #000;text-align:right;font-weight:700;color:${rColor};">${remainDisp}</td>
     <td style="border:1px solid #000;padding:2px 5px;">
       <div style="display:flex;align-items:center;gap:2px;">
         <span style="color:#555;font-size:12px;font-weight:700;">$</span>
@@ -3049,7 +3047,7 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
     </td>
     <td style="border:1px solid #000;padding:4px 8px;text-align:center;font-size:12px;font-weight:700;color:${pctColor};">
       <span id="ps-pct-${i}">${pctDisp}</span>
-    </td>`}
+    </td>
   </tr>`;
 }
 
@@ -3157,6 +3155,7 @@ function psRenderCrewTable() {
   const isDaily  = _psCurrentType === 'daily';
   const colspan  = isDaily ? 2 : 5;
   const inp      = 'width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:inherit;padding:0;';
+  const cell     = 'border:1px solid #000;padding:4px 8px;font-size:12px;';
 
   const thead = `
     <tr style="background:#c9a84c;">
@@ -3175,14 +3174,22 @@ function psRenderCrewTable() {
     </tr>`;
 
   const rows = splits.map((s, i) => {
-    const optCols = isDaily ? '' : `
+    if (isDaily) {
+      // Daily log — read-only, blank if not filled (no placeholder)
+      return `<tr>
+        <td style="${cell}text-align:center;">—</td>
+        <td style="${cell}">${eh(s.employee||'')}</td>
+      </tr>`;
+    }
+    // Weekly crew splits — Employee #/Name editable, % and Amount both independently editable
+    const optCols = `
       <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
         <input type="number" style="${inp}text-align:center;" value="${s.pctSplit||''}" placeholder="0"
           min="0" max="100" step="0.1" oninput="psSplitPctChanged(${i},this.value)" />
       </td>
       <td style="border:1px solid #000;padding:2px 5px;text-align:right;">
         <input type="number" id="ps-split-amt-${i}" style="${inp}text-align:right;" value="${s.amount||''}" placeholder="0.00"
-          min="0" step="0.01" oninput="_ps().splits[${i}].amount=this.value" />
+          min="0" step="0.01" oninput="psSplitAmtChanged(${i},this.value)" />
       </td>
       <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
         ${s.signatureData
@@ -3210,6 +3217,11 @@ function psRenderCrewTable() {
     <thead>${thead}</thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+function psSplitAmtChanged(i, val) {
+  // Amount typed manually — store it directly without back-calculating %
+  _ps().splits[i].amount = val;
 }
 
 function clearPaysheet() {
