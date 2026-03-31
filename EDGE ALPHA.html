@@ -798,10 +798,14 @@
             <input id="ps-weekending" type="date" class="ps-field" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
           </div>
         </div>
-        <div style="display:flex;align-items:flex-end;justify-content:flex-end;">
-          <div style="display:flex;align-items:center;gap:8px;">
+        <div id="ps-foreman-sig-wrap" style="display:none;align-items:flex-end;justify-content:flex-end;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <label style="font-weight:700;">Foreman Signature:</label>
-            <div style="width:220px;border-bottom:2px solid #000;height:24px;"></div>
+            <div id="ps-foreman-sig-area" style="width:220px;border-bottom:2px solid #000;height:38px;display:flex;align-items:center;cursor:pointer;padding:0 4px;" onclick="psOpenForemanSig()">
+              <span id="ps-foreman-sig-placeholder" style="color:#999;font-size:12px;">Click to sign</span>
+              <img id="ps-foreman-sig-img" style="display:none;height:34px;max-width:210px;object-fit:contain;" />
+            </div>
+            <button id="ps-foreman-sig-clear" onclick="psClearForemanSig()" style="display:none;padding:2px 7px;font-size:11px;color:#ef4444;border:1px solid #ef4444;border-radius:4px;background:transparent;cursor:pointer;line-height:1.4;">✕</button>
           </div>
         </div>
       </div>
@@ -3151,6 +3155,10 @@ function psLoadHeaderFields() {
     el.style.pointerEvents = locked ? 'none' : '';
     el.style.color         = locked ? '#555'  : '';
   });
+  // Foreman signature: only show on weekly paysheet
+  const sigWrap = document.getElementById('ps-foreman-sig-wrap');
+  if (sigWrap) sigWrap.style.display = (_psCurrentType === 'weekly') ? 'flex' : 'none';
+  if (_psCurrentType === 'weekly') _psUpdateForemanSigArea();
 }
 
 function psRenderCrewTabs() {
@@ -3809,6 +3817,7 @@ async function savePaysheetToCloud(silent, opts = {}) {
 // ─── Signature Pad ───
 let _psSigRow     = -1;
 let _psSigDrawing = false;
+let _psSigMode    = 'employee'; // 'employee' | 'foreman'
 
 function psOpenSignature(rowIdx) {
   _psSigRow = rowIdx;
@@ -3834,11 +3843,13 @@ function psClearSigCanvas() {
 function psCancelSignature() {
   _psSigRow     = -1;
   _psSigDrawing = false;
+  _psSigMode    = 'employee';
+  _psResetSigModalTitle();
   document.getElementById('ps-sig-modal').classList.remove('open');
 }
 
 function psSaveSignature() {
-  if (_psSigRow < 0) return;
+  if (_psSigRow < 0 && _psSigMode === 'employee') return;
   const canvas = document.getElementById('ps-sig-canvas');
   // Export as small JPEG (quality 0.7) to keep Firestore doc size small (~5-10KB)
   const offscreen = document.createElement('canvas');
@@ -3848,11 +3859,67 @@ function psSaveSignature() {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, 200, 60);
   ctx.drawImage(canvas, 0, 0, 200, 60);
-  _ps().splits[_psSigRow].signatureData = offscreen.toDataURL('image/jpeg', 0.7);
+  const dataUrl = offscreen.toDataURL('image/jpeg', 0.7);
+  if (_psSigMode === 'foreman') {
+    _ps().header.foremanSig = dataUrl;
+    _psUpdateForemanSigArea();
+  } else {
+    _ps().splits[_psSigRow].signatureData = dataUrl;
+    psRenderCrewTable();
+  }
   _psSigRow     = -1;
   _psSigDrawing = false;
+  _psSigMode    = 'employee';
+  _psResetSigModalTitle();
   document.getElementById('ps-sig-modal').classList.remove('open');
-  psRenderCrewTable();
+}
+
+function psOpenForemanSig() {
+  if (_psCurrentType !== 'weekly') return;
+  _psSigMode = 'foreman';
+  _psSigRow  = 0; // non-negative so the check passes
+  const modal = document.getElementById('ps-sig-modal');
+  modal.querySelector('h2').textContent = '✍️ Foreman Signature';
+  modal.querySelector('p').textContent  = 'Draw your signature using your finger, stylus, or mouse.';
+  modal.querySelector('button[onclick="psSaveSignature()"]').textContent = 'Save Signature';
+  modal.classList.add('open');
+  requestAnimationFrame(() => {
+    const canvas = document.getElementById('ps-sig-canvas');
+    canvas.width  = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    _psInitSigCanvas(canvas);
+    psClearSigCanvas();
+  });
+}
+
+function psClearForemanSig() {
+  if (_ps().header) _ps().header.foremanSig = '';
+  _psUpdateForemanSigArea();
+}
+
+function _psUpdateForemanSigArea() {
+  const img         = document.getElementById('ps-foreman-sig-img');
+  const placeholder = document.getElementById('ps-foreman-sig-placeholder');
+  const clearBtn    = document.getElementById('ps-foreman-sig-clear');
+  const sigData     = (_ps().header || {}).foremanSig;
+  if (sigData) {
+    img.src = sigData;
+    img.style.display         = 'block';
+    placeholder.style.display = 'none';
+    if (clearBtn) clearBtn.style.display = 'inline-block';
+  } else {
+    img.style.display         = 'none';
+    placeholder.style.display = 'inline';
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+}
+
+function _psResetSigModalTitle() {
+  const modal = document.getElementById('ps-sig-modal');
+  if (!modal) return;
+  modal.querySelector('h2').textContent = '✍️ Employee Initials';
+  modal.querySelector('p').textContent  = 'Draw your initials using your finger, stylus, or mouse.';
+  modal.querySelector('button[onclick="psSaveSignature()"]').textContent = 'Save Initials';
 }
 
 function psClearSignature(rowIdx) {
