@@ -621,20 +621,10 @@
   <!-- Paysheet content -->
   <div id="paysheet-content" style="display:none;">
 
-    <!-- Shared job selector — drives Daily Input + Paysheet -->
-    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;">
-      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;">Active Job</div>
-      <select id="ps-job-select" class="fi" style="min-width:220px;font-weight:600;" onchange="onJobChanged()">
-        <option value="">— Select Job —</option>
-      </select>
-      <div style="flex:1;"></div>
-      <button class="btn btn-outline" onclick="psAutoFillFromDaily()" title="Pull entries from Daily Input into Paysheet">⬇ Fill Paysheet from Daily Input</button>
-      <button class="btn" style="background:var(--green);color:#000;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>
-      <button class="btn btn-outline" onclick="openLoadPaysheetModal()">📂 Load Paysheet</button>
-      <button class="btn btn-outline" onclick="exportPaysheetExcel()">📊 Export Excel</button>
-      <button class="btn btn-outline" onclick="printPaysheet()">🖨 Print / PDF</button>
-      <button class="btn btn-outline" onclick="clearPaysheet()">Clear Sheet</button>
-    </div>
+    <!-- Hidden job selector — synced from di-job-select in Daily Input -->
+    <select id="ps-job-select" style="display:none;" onchange="onJobChanged()">
+      <option value="">— Select Job —</option>
+    </select>
 
     <!-- Budget by Area panel -->
     <details id="ps-area-budget-details" style="margin-bottom:24px;" open>
