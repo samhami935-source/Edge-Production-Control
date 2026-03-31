@@ -2949,20 +2949,20 @@ function psRenderCrewTabs() {
   if (!actWrap) return;
   const isDaily  = _psCurrentType === 'daily';
 
-  if (_psEditMode) {
-    // Edit mode — show Save Edits + Cancel
-    actWrap.innerHTML = `
-      <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="psFinishEdit()">💾 Save Edits</button>
-      <button class="btn btn-outline" style="white-space:nowrap;" onclick="psCancelEdit()">✕ Cancel</button>`;
-  } else if (isDaily && canEdit()) {
-    // Daily paysheet, admin/PM — show Edit + Save Paysheet
-    actWrap.innerHTML = `
-      <button class="btn btn-outline" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);" onclick="psEnterEditMode()">✏️ Edit</button>
-      <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>`;
+  if (!isDaily) {
+    // Summary (weekly) paysheet — Edit + Save Paysheet
+    if (_psEditMode) {
+      actWrap.innerHTML = `
+        <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="psFinishEdit()">💾 Save Edits</button>
+        <button class="btn btn-outline" style="white-space:nowrap;" onclick="psCancelEdit()">✕ Cancel</button>`;
+    } else {
+      actWrap.innerHTML = `
+        <button class="btn btn-outline" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);" onclick="psEnterEditMode()">✏️ Edit</button>
+        <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>`;
+    }
   } else {
-    // Weekly or no edit permission — show Save Paysheet only
-    actWrap.innerHTML = `
-      <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>`;
+    // Daily paysheet — no edit or save buttons
+    actWrap.innerHTML = '';
   }
 }
 
