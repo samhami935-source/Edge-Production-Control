@@ -2773,7 +2773,7 @@ for (let c=1; c<=PS_NUM_CREWS; c++) {
 
 // 'daily' = auto-generated from daily input (no % split/amount/sign)
 // 'weekly' = compiled or manually saved (full crew splits)
-let _psCurrentType = 'weekly';
+let _psCurrentType = 'daily';
 
 // Convenience accessor for current crew state
 function _ps() { return _psState[_psActiveCrew]; }
@@ -3227,7 +3227,7 @@ function psSplitAmtChanged(i, val) {
 function clearPaysheet() {
   if (!confirm(`Clear Crew ${_psActiveCrew} paysheet?`)) return;
   _psState[_psActiveCrew] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
-  _psCurrentType = 'weekly';
+  _psCurrentType = 'daily';
   psLoadHeaderFields();
   psRenderMainTable();
   psRenderCrewTable();
