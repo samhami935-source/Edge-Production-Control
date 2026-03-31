@@ -3133,7 +3133,6 @@ function psSplitPctChanged(i, val) {
   const total  = _psGetTotal();
   const amount = ((pct / 100) * total).toFixed(2);
   _ps().splits[i].amount = amount;
-  // Update the amount input directly without full re-render
   const amtEl = document.getElementById('ps-split-amt-' + i);
   if (amtEl) amtEl.value = amount;
 }
@@ -3184,7 +3183,7 @@ function psRenderCrewTable() {
     // Weekly crew splits — Employee #/Name editable, % and Amount both independently editable
     const optCols = `
       <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
-        <input type="number" style="${inp}text-align:center;" value="${s.pctSplit||''}" placeholder="0"
+        <input type="number" id="ps-split-pct-${i}" style="${inp}text-align:center;" value="${s.pctSplit||''}" placeholder="0"
           min="0" max="100" step="0.1" oninput="psSplitPctChanged(${i},this.value)" />
       </td>
       <td style="border:1px solid #000;padding:2px 5px;text-align:right;">
@@ -3206,7 +3205,7 @@ function psRenderCrewTable() {
           oninput="_ps().splits[${i}].empNum=this.value" />
       </td>
       <td style="border:1px solid #000;padding:2px 4px;">
-        <input style="${inp}" value="${eh(s.employee)}" placeholder="Employee name"
+        <input style="${inp}" value="${eh(s.employee)}"
           oninput="_ps().splits[${i}].employee=this.value" />
       </td>
       ${optCols}
@@ -3220,8 +3219,13 @@ function psRenderCrewTable() {
 }
 
 function psSplitAmtChanged(i, val) {
-  // Amount typed manually — store it directly without back-calculating %
   _ps().splits[i].amount = val;
+  // Back-calculate % from amount / total
+  const total = _psGetTotal();
+  const pct   = total > 0 ? ((parseFloat(val) || 0) / total * 100).toFixed(1) : '';
+  _ps().splits[i].pctSplit = pct;
+  const pctEl = document.getElementById('ps-split-pct-' + i);
+  if (pctEl) pctEl.value = pct;
 }
 
 function clearPaysheet() {
