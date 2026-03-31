@@ -689,7 +689,6 @@
           <!-- Action buttons -->
           <div style="display:flex;align-items:center;gap:2px;padding:8px 10px;flex-shrink:0;">
             <button class="btn" onclick="submitDailyInput()" style="margin-top:0;padding:7px 16px;font-size:.83rem;white-space:nowrap;">💾 Save Daily Input</button>
-            <button class="btn" style="margin-top:0;padding:7px 16px;font-size:.83rem;white-space:nowrap;background:var(--green);color:#000;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>
             <button class="btn btn-outline" onclick="openLoadPaysheetModal()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Load saved daily or weekly paysheets">📂 Saved Paysheets</button>
             <button class="btn btn-outline" onclick="diExportExcel()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Export daily input to Excel">📊 Export</button>
             <button class="btn btn-outline" onclick="diPrint()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Print daily input">🖨 Print</button>
@@ -743,8 +742,11 @@
       </div><!-- /details body -->
     </details>
 
-    <!-- Crew tab bar for paysheet -->
-    <div id="ps-crew-tab-bar" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;"></div>
+    <!-- Crew tab bar for paysheet + Save Paysheet button -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <div id="ps-crew-tab-bar" style="display:flex;gap:4px;flex-wrap:wrap;flex:1;"></div>
+      <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;flex-shrink:0;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>
+    </div>
 
     <!-- Printable paysheet -->
     <div id="paysheet-print-area" style="background:#fff;color:#000;border-radius:8px;padding:32px;max-width:980px;font-family:Arial,sans-serif;font-size:13px;">
@@ -2591,26 +2593,45 @@ async function diLoadLog() {
 }
 
 function diViewSubmission(id) {
-  db.collection('dailyinput').doc(id).get().then(doc => {
+  db.collection('dailyinput').doc(id).get().then(async doc => {
     if (!doc.exists) { alert('Submission not found.'); return; }
     const r = doc.data();
-    let html = `<strong>${fmtDate(r.date)} — ${r.job}</strong><br><em>Submitted by ${r.submittedBy}</em><br><br>`;
-    r.crews.forEach(c => {
-      html += `<strong>Crew ${c.crewNum}</strong><br>`;
-      c.entries.forEach(e => {
-        html += `&nbsp;&nbsp;• ${e.employee} | ${e.area||'—'} | ${e.costCode||'—'} | ${e.description||'—'}<br>`;
-      });
-      html += '<br>';
-    });
-    // Show in a simple overlay
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;';
-    overlay.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-top:2px solid var(--accent);border-radius:12px;padding:28px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;">
-      <div style="font-size:.85rem;line-height:1.8;">${html}</div>
-      <button class="btn btn-outline" style="margin-top:16px;" onclick="this.closest('div[style]').remove()">Close</button>
-    </div>`;
-    overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
-    document.body.appendChild(overlay);
+    // Build the daily paysheet docId from job + date and load it
+    const docId = 'daily_' + (r.job + '_' + r.date).replace(/[^\w-]/g, '_');
+    let ps = (_cache.paysheets || []).find(p => p.id === docId);
+    if (!ps) {
+      try {
+        const snap = await db.collection('paysheets').doc(docId).get();
+        if (!snap.exists) {
+          alert('No saved paysheet found for this submission. Save daily input to a folder first.');
+          return;
+        }
+        ps = snap.data();
+      } catch(e) { alert('Load failed: ' + e.message); return; }
+    }
+    // Load the daily paysheet into the paysheet view
+    for (let c = 1; c <= PS_NUM_CREWS; c++) {
+      const saved = ps.crews && ps.crews[String(c)];
+      if (saved) {
+        _psState[c].header = Object.assign(_psEmptyHeader(), saved.header || {});
+        _psState[c].rows   = _psPadRows((saved.rows || []).map(row => Object.assign(_psEmptyRow(), row)));
+        _psState[c].splits = (saved.splits || []).map(s => Object.assign(_psEmptySplit(), s));
+        while (_psState[c].splits.length < PS_SPLIT_ROWS) _psState[c].splits.push(_psEmptySplit());
+      }
+    }
+    const sel = document.getElementById('ps-job-select');
+    if (sel) {
+      for (let i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === ps.job) { sel.selectedIndex = i; break; }
+      }
+      onJobChanged();
+    }
+    _psCurrentType = 'daily';
+    psLoadHeaderFields();
+    psRenderMainTable();
+    psRenderCrewTable();
+    psRenderCrewTabs();
+    document.getElementById('paysheet-print-area').scrollIntoView({ behavior: 'smooth' });
   });
 }
 
@@ -3054,12 +3075,14 @@ function psRenderMainTable() {
     </div>`;
   }
 
-  // Total Amount after all pages
+  // Total Amount after all pages (weekly only)
   const total = rows.reduce((s, r) => s + (parseFloat(r.weAmount) || 0), 0);
-  html += `<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin:12px 0 24px;">
-    <span style="font-weight:700;text-decoration:underline;">Total Amount:</span>
-    <div id="ps-total-display" style="border:1px solid #000;padding:6px 16px;min-width:150px;text-align:right;font-weight:700;">${_fmt$(total)}</div>
-  </div>`;
+  if (!isDaily) {
+    html += `<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin:12px 0 24px;">
+      <span style="font-weight:700;text-decoration:underline;">Total Amount:</span>
+      <div id="ps-total-display" style="border:1px solid #000;padding:6px 16px;min-width:150px;text-align:right;font-weight:700;">${_fmt$(total)}</div>
+    </div>`;
+  }
 
   container.innerHTML = html;
   psRenderCrewTable();
