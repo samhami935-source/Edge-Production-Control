@@ -2517,15 +2517,8 @@ function diSaveDraft() {
   const draft = { date: document.getElementById('di-date').value, job: document.getElementById('ps-job-select').value, data: _diData };
   try {
     localStorage.setItem(key, JSON.stringify(draft));
-    // Update drafts button count
-    const draftCount = Array.from({length: localStorage.length}, (_, i) => localStorage.key(i)).filter(k => k && k.startsWith('di_draft_')).length;
-    const dBtn = document.getElementById('di-drafts-btn');
-    if (dBtn) dBtn.textContent = `📋 Drafts (${draftCount})`;
-    // Show badge
-    const badge = document.getElementById('di-draft-badge');
-    badge.textContent = '📌 Draft saved';
-    badge.style.display = '';
-    setTimeout(() => { if (badge.textContent === '📌 Draft saved') badge.style.display = 'none'; }, 3000);
+    // Open drafts modal to show the saved draft
+    diOpenDraftsModal();
   } catch(e) { alert('Could not save draft: ' + e.message); }
 }
 
