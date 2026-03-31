@@ -2470,7 +2470,7 @@ async function submitDailyInput() {
     await db.collection('dailyinput').doc(id).set(doc);
 
     // Auto-fill paysheet for each crew that has entries
-    psAutoFillFromSubmission(crews, jobName, date);
+    psAutoFillFromSubmission(crews, jobName, date, id);
 
     const badge = document.getElementById('di-saved-badge');
     badge.style.display = '';
@@ -2482,7 +2482,7 @@ async function submitDailyInput() {
 }
 
 // Fill paysheet from a just-submitted daily input
-function psAutoFillFromSubmission(crews, jobName, date) {
+function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
   crews.forEach(c => {
     const crewNum = c.crewNum;
     if (!_psState[crewNum]) return;
@@ -2540,7 +2540,7 @@ function psAutoFillFromSubmission(crews, jobName, date) {
   if (el) el.scrollIntoView({ behavior: 'smooth' });
 
   // Open folder picker so user can choose where to save
-  _psSavePendingData = { defaultDate: date, type: 'daily', dailyDate: date };
+  _psSavePendingData = { defaultDate: date, type: 'daily', dailyDate: date, submissionId: submissionId || null };
   openSaveDestModal();
 }
 
@@ -2593,15 +2593,24 @@ function diViewSubmission(id) {
   db.collection('dailyinput').doc(id).get().then(async doc => {
     if (!doc.exists) { alert('Submission not found.'); return; }
     const r = doc.data();
-    // Find the daily paysheet by job + date (works even if moved to another folder)
-    let ps = (_cache.paysheets || []).find(p => p.job === r.job && p.date === r.date);
+    // Find the daily paysheet — first try exact submissionId match, then fall back to job+date
+    let ps = (_cache.paysheets || []).find(p => p.submissionId === r.id)
+          || (_cache.paysheets || []).find(p => p.job === r.job && p.date === r.date);
     if (!ps) {
       try {
-        const snap = await db.collection('paysheets')
-          .where('job', '==', r.job)
-          .where('date', '==', r.date)
+        // Try by submissionId first (precise — handles multiple saves same day)
+        let snap = await db.collection('paysheets')
+          .where('submissionId', '==', r.id)
           .limit(1)
           .get();
+        if (snap.empty) {
+          // Fallback: query by job + date
+          snap = await db.collection('paysheets')
+            .where('job', '==', r.job)
+            .where('date', '==', r.date)
+            .limit(1)
+            .get();
+        }
         if (snap.empty) {
           alert('No saved paysheet found for this submission. Save daily input to a folder first.');
           return;
@@ -3261,9 +3270,11 @@ async function savePaysheetToCloud(silent, opts = {}) {
   if (!weekEnd && isDailyType) weekEnd = opts.dailyDate || '';
   if (!weekEnd) { if (!silent) alert('Please enter a Week Ending date in the paysheet header before saving.'); return; }
 
-  // Daily: one doc per day per job; Weekly/manual: one doc per job per weekEnding
+  // Daily: unique doc per submission (via submissionId); Weekly: one doc per job per weekEnding
   const docId = isDailyType
-    ? `daily_${(jobName + '_' + (opts.dailyDate || weekEnd)).replace(/[^\w-]/g, '_')}`
+    ? (opts.submissionId
+        ? 'daily_' + opts.submissionId.replace(/[^\w-]/g, '_')
+        : `daily_${(jobName + '_' + (opts.dailyDate || weekEnd) + '_' + Date.now()).replace(/[^\w-]/g, '_')}`)
     : (jobName + '_' + weekEnd).replace(/[^\w-]/g, '_');
 
   const crews = {};
@@ -3279,7 +3290,7 @@ async function savePaysheetToCloud(silent, opts = {}) {
     job: jobName,
     weekEnding: weekEnd,
     type,
-    ...(isDailyType ? { date: opts.dailyDate || weekEnd } : {}),
+    ...(isDailyType ? { date: opts.dailyDate || weekEnd, submissionId: opts.submissionId || null } : {}),
     savedAt: new Date().toISOString(),
     savedBy: _currentUser ? _currentUser.email : 'unknown',
     crews,
@@ -3712,9 +3723,9 @@ async function psSaveToFolder(weekEnding) {
     _psFolders.sort((a,b) => b.localeCompare(a));
     localStorage.setItem('d9_ps_folders', JSON.stringify(_psFolders));
   }
-  // Carry over type/date from pending save context
+  // Carry over type/date/submissionId from pending save context
   const opts = (_psSavePendingData && _psSavePendingData.type)
-    ? { type: _psSavePendingData.type, dailyDate: _psSavePendingData.dailyDate }
+    ? { type: _psSavePendingData.type, dailyDate: _psSavePendingData.dailyDate, submissionId: _psSavePendingData.submissionId || null }
     : { type: 'weekly' };
   _psSavePendingData = null;
   await savePaysheetToCloud(false, opts);
