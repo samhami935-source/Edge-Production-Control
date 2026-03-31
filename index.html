@@ -678,8 +678,10 @@
               <input type="date" id="di-date" class="fi" style="width:150px;padding:5px 8px;font-size:.85rem;" />
             </div>
             <div style="display:flex;flex-direction:column;gap:1px;flex:1;min-width:0;">
-              <label style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;white-space:nowrap;">Job (set above)</label>
-              <div id="di-job-label" class="fi" style="font-weight:600;color:var(--accent);background:var(--surface);cursor:default;padding:5px 10px;font-size:.85rem;min-height:32px;display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">— No job selected —</div>
+              <label style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;white-space:nowrap;">Active Job</label>
+              <select id="di-job-select" class="fi" style="font-weight:600;font-size:.85rem;color:var(--accent);min-width:180px;" onchange="diJobChanged()">
+                <option value="">— Select Job —</option>
+              </select>
             </div>
           </div>
           <!-- Divider -->
@@ -687,7 +689,8 @@
           <!-- Action buttons -->
           <div style="display:flex;align-items:center;gap:2px;padding:8px 10px;flex-shrink:0;">
             <button class="btn" onclick="submitDailyInput()" style="margin-top:0;padding:7px 16px;font-size:.83rem;white-space:nowrap;">💾 Save Daily Input</button>
-            <button class="btn btn-outline" onclick="openLoadPaysheetModal()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Load saved daily or weekly paysheets">📂 Load</button>
+            <button class="btn" style="margin-top:0;padding:7px 16px;font-size:.83rem;white-space:nowrap;background:var(--green);color:#000;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>
+            <button class="btn btn-outline" onclick="openLoadPaysheetModal()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Load saved daily or weekly paysheets">📂 Saved Paysheets</button>
             <button class="btn btn-outline" onclick="diExportExcel()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Export daily input to Excel">📊 Export</button>
             <button class="btn btn-outline" onclick="diPrint()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Print daily input">🖨 Print</button>
             <div style="width:1px;background:var(--border);margin:0 4px;height:24px;"></div>
@@ -2314,13 +2317,18 @@ function diInit() {
 
 function diPopulateJobSelect() {
   // Jobs are populated via psPopulateJobSelect (shared selector)
-  // Just sync the DI label
+  // Sync the DI select to the main select
   const jobName = document.getElementById('ps-job-select').value;
-  const lbl = document.getElementById('di-job-label');
-  if (lbl) lbl.textContent = jobName || '— No job selected —';
+  const diSel   = document.getElementById('di-job-select');
+  if (diSel && diSel.value !== jobName) diSel.value = jobName;
 }
 
-function diJobChanged() { diRenderCrewTable(); } // kept for compat
+function diJobChanged() {
+  // DI job select changed — sync to main select and fire shared handler
+  const val = document.getElementById('di-job-select').value;
+  document.getElementById('ps-job-select').value = val;
+  onJobChanged();
+}
 
 function diRenderCrewTabs() {
   const wrap = document.getElementById('di-crew-tabs');
@@ -2843,23 +2851,22 @@ function switchToPaysheet() {
 }
 
 function psPopulateJobSelect() {
-  const sel = document.getElementById('ps-job-select');
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">— Select Job —</option>';
-  getSavedCSVFiles().forEach(f => {
-    const o = document.createElement('option');
-    o.value = f.name; o.textContent = f.name;
-    sel.appendChild(o);
-  });
-  if (cur) { sel.value = cur; onJobChanged(); }
+  const sel   = document.getElementById('ps-job-select');
+  const diSel = document.getElementById('di-job-select');
+  const cur   = sel.value;
+  const opts  = '<option value="">— Select Job —</option>' +
+    getSavedCSVFiles().map(f => `<option value="${f.name}">${f.name}</option>`).join('');
+  sel.innerHTML   = opts;
+  if (diSel) diSel.innerHTML = opts;
+  if (cur) { sel.value = cur; if (diSel) diSel.value = cur; onJobChanged(); }
 }
 
 // Single handler for the shared job selector
 function onJobChanged() {
   const jobName = document.getElementById('ps-job-select').value;
-  // Update DI job label
-  const lbl = document.getElementById('di-job-label');
-  if (lbl) lbl.textContent = jobName || '— No job selected —';
+  // Sync DI job select
+  const diSel = document.getElementById('di-job-select');
+  if (diSel && diSel.value !== jobName) diSel.value = jobName;
   // Update paysheet
   psPopulateAreaBudgetSelect();
   psRenderMainTable();
