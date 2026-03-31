@@ -2361,10 +2361,11 @@ function diInit() {
   diRenderCrewTabs();
   diRenderCrewTable();
   diLoadLog();
-  // Show draft count on button
-  const draftCount = Array.from({length: localStorage.length}, (_, i) => localStorage.key(i)).filter(k => k && k.startsWith('di_draft_')).length;
-  const dBtn = document.getElementById('di-drafts-btn');
-  if (dBtn && draftCount) dBtn.textContent = `📋 Drafts (${draftCount})`;
+  // Show draft count on button (live from Firestore)
+  db.collection('drafts').get().then(snap => {
+    const dBtn = document.getElementById('di-drafts-btn');
+    if (dBtn && snap.size) dBtn.textContent = `📋 Drafts (${snap.size})`;
+  }).catch(() => {});
 }
 
 function diPopulateJobSelect() {
@@ -2505,149 +2506,164 @@ function diClearDropdowns() {
 
 // ─── Daily Input Draft (localStorage) ───────────────────────────────────────
 
-function _diDraftKey() {
+// ─── Daily Input Drafts (Firestore) ─────────────────────────────────────────
+
+let _diDraftsUnsub = null;
+let _diDraftsDocs  = [];
+
+function _diDraftDocId() {
   const date    = document.getElementById('di-date').value;
   const jobName = document.getElementById('ps-job-select').value;
-  return date && jobName ? `di_draft_${jobName}_${date}` : null;
+  return date && jobName ? ('draft_' + (jobName + '_' + date).replace(/[^\w-]/g, '_')) : null;
 }
 
-function diSaveDraft() {
-  const key = _diDraftKey();
-  if (!key) { alert('Please select a date and job before saving a draft.'); return; }
-  const draft = { date: document.getElementById('di-date').value, job: document.getElementById('ps-job-select').value, data: _diData };
+async function diSaveDraft() {
+  const docId   = _diDraftDocId();
+  const date    = document.getElementById('di-date').value;
+  const jobName = document.getElementById('ps-job-select').value;
+  if (!docId) { alert('Please select a date and job before saving a draft.'); return; }
+
+  const empCount = Object.values(_diData).reduce((s, rows) =>
+    s + (rows||[]).filter(r => (r.employee||'').trim()).length, 0);
+
+  const doc = {
+    id: docId,
+    date,
+    job: jobName,
+    savedAt: new Date().toISOString(),
+    savedBy: _currentUser ? _currentUser.email : 'unknown',
+    empCount,
+    data: _diData
+  };
   try {
-    localStorage.setItem(key, JSON.stringify(draft));
-    // Open drafts modal to show the saved draft
+    await db.collection('drafts').doc(docId).set(doc);
     diOpenDraftsModal();
   } catch(e) { alert('Could not save draft: ' + e.message); }
 }
 
-function diLoadDraftIfExists() {
-  const key = _diDraftKey();
-  if (!key) return;
-  const raw = localStorage.getItem(key);
-  if (!raw) { diShowDraftBadge(false); return; }
-  try {
-    const draft = JSON.parse(raw);
-    // Restore all crew data
-    for (let c=1; c<=DI_CREWS; c++) {
-      if (draft.data[c]) _diData[c] = draft.data[c];
-    }
-    diRenderCrewTable();
-    // Show persistent "draft loaded" badge
-    const badge = document.getElementById('di-draft-badge');
-    badge.textContent = '📌 Draft loaded';
-    badge.style.display = '';
-    setTimeout(() => badge.style.display = 'none', 3000);
-  } catch(e) { /* corrupt draft — ignore */ }
-}
-
-function diClearDraft() {
-  const key = _diDraftKey();
-  if (key) localStorage.removeItem(key);
+async function diClearDraft() {
+  const docId = _diDraftDocId();
+  if (docId) {
+    try { await db.collection('drafts').doc(docId).delete(); } catch(e) {}
+  }
   document.getElementById('di-draft-badge').style.display = 'none';
 }
 
-// Auto-save draft 2s after last change
+// Auto-save draft 2s after last change (silent, Firestore)
 let _diDraftTimer = null;
 function diAutoSaveDraft() {
   clearTimeout(_diDraftTimer);
-  _diDraftTimer = setTimeout(() => {
-    const key = _diDraftKey();
-    if (!key) return;
-    const draft = { date: document.getElementById('di-date').value, job: document.getElementById('ps-job-select').value, data: _diData };
-    try { localStorage.setItem(key, JSON.stringify(draft)); } catch(e) {}
+  _diDraftTimer = setTimeout(async () => {
+    const docId   = _diDraftDocId();
+    const date    = document.getElementById('di-date').value;
+    const jobName = document.getElementById('ps-job-select').value;
+    if (!docId) return;
+    const doc = {
+      id: docId, date, job: jobName,
+      savedAt: new Date().toISOString(),
+      savedBy: _currentUser ? _currentUser.email : 'unknown',
+      empCount: Object.values(_diData).reduce((s, rows) => s + (rows||[]).filter(r => (r.employee||'').trim()).length, 0),
+      data: _diData
+    };
+    try { await db.collection('drafts').doc(docId).set(doc); } catch(e) {}
   }, 2000);
 }
 
-function diShowDraftBadge(show) {
-  document.getElementById('di-draft-badge').style.display = show ? '' : 'none';
+function diLoadDraftIfExists() {
+  // No-op: drafts are loaded via the modal now
 }
 
 function diOpenDraftsModal() {
   const list = document.getElementById('di-drafts-list');
-  // Collect all di_draft_ keys from localStorage
-  const drafts = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (!key || !key.startsWith('di_draft_')) continue;
-    try {
-      const d = JSON.parse(localStorage.getItem(key));
-      if (d && d.date && d.job) drafts.push({ key, date: d.date, job: d.job, data: d.data });
-    } catch(e) {}
-  }
-  // Sort newest date first
-  drafts.sort((a, b) => b.date.localeCompare(a.date));
-
-  if (!drafts.length) {
-    list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">No drafts saved yet.</p>';
-  } else {
-    list.innerHTML = drafts.map(d => {
-      const empCount = Object.values(d.data||{}).reduce((s, rows) =>
-        s + (rows||[]).filter(r => (r.employee||'').trim()).length, 0);
-      const crewsWithData = Object.keys(d.data||{}).filter(c =>
-        (d.data[c]||[]).some(r => r.employee.trim() || r.area.trim())).map(c => `Crew ${c}`).join(', ');
-      const dateDisp = d.date ? new Date(d.date + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
-      return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:12px;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:600;font-size:.88rem;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${eh(d.job)}</div>
-          <div style="font-size:.78rem;color:var(--muted);margin-top:2px;">${dateDisp}${crewsWithData ? ' · ' + crewsWithData : ''}${empCount ? ' · ' + empCount + ' employee' + (empCount!==1?'s':'') : ''}</div>
-        </div>
-        <button class="btn btn-outline" style="margin:0;padding:5px 14px;font-size:.78rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" onclick="diLoadDraftByKey('${d.key}')">Load</button>
-        <button class="btn btn-outline" style="margin:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;color:#ef4444;border-color:#ef4444;" onclick="diDeleteDraft('${d.key}',this)" title="Delete draft">✕</button>
-      </div>`;
-    }).join('');
-  }
-
-  // Update drafts button badge
-  const btn = document.getElementById('di-drafts-btn');
-  if (btn) btn.textContent = drafts.length ? `📋 Drafts (${drafts.length})` : '📋 Drafts';
-
+  list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Loading drafts…</p>';
   document.getElementById('di-drafts-modal').classList.add('open');
+
+  // Unsubscribe previous listener
+  if (_diDraftsUnsub) { _diDraftsUnsub(); _diDraftsUnsub = null; }
+
+  _diDraftsUnsub = db.collection('drafts')
+    .orderBy('savedAt', 'desc')
+    .onSnapshot(snap => {
+      _diDraftsDocs = snap.docs.map(d => d.data());
+      _diRenderDraftsList();
+    }, () => {
+      // Fallback: no orderBy
+      _diDraftsUnsub = db.collection('drafts').onSnapshot(snap => {
+        _diDraftsDocs = snap.docs.map(d => d.data()).sort((a,b) => (b.savedAt||'').localeCompare(a.savedAt||''));
+        _diRenderDraftsList();
+      });
+    });
+}
+
+function _diRenderDraftsList() {
+  const list = document.getElementById('di-drafts-list');
+  if (!list) return;
+  const docs = _diDraftsDocs;
+
+  // Update button count
+  const btn = document.getElementById('di-drafts-btn');
+  if (btn) btn.textContent = docs.length ? `📋 Drafts (${docs.length})` : '📋 Drafts';
+
+  if (!docs.length) {
+    list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">No drafts saved yet.</p>';
+    return;
+  }
+
+  list.innerHTML = docs.map(d => {
+    const crewsWithData = Object.keys(d.data||{})
+      .filter(c => (d.data[c]||[]).some(r => (r.employee||'').trim() || (r.area||'').trim()))
+      .map(c => `Crew ${c}`).join(', ');
+    const dateDisp = d.date ? new Date(d.date + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+    const savedDisp = d.savedAt ? new Date(d.savedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}) : '';
+    const emp = d.empCount || 0;
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="diLoadDraftById('${eh(d.id)}')">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;font-size:.88rem;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${eh(d.job)}</div>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:2px;">${dateDisp}${savedDisp?' · Saved '+savedDisp:''}${crewsWithData?' · '+crewsWithData:''}${emp?' · '+emp+' employee'+(emp!==1?'s':''):''}</div>
+      </div>
+      <button class="btn btn-outline" style="margin:0;padding:5px 14px;font-size:.78rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" onclick="event.stopPropagation();diLoadDraftById('${eh(d.id)}')">Load</button>
+      <button class="btn btn-outline" style="margin:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;color:#ef4444;border-color:#ef4444;" onclick="event.stopPropagation();diDeleteDraftById('${eh(d.id)}')" title="Delete draft">✕</button>
+    </div>`;
+  }).join('');
 }
 
 function diCloseDraftsModal() {
   document.getElementById('di-drafts-modal').classList.remove('open');
+  if (_diDraftsUnsub) { _diDraftsUnsub(); _diDraftsUnsub = null; }
 }
 
-function diLoadDraftByKey(key) {
-  const raw = localStorage.getItem(key);
-  if (!raw) { alert('Draft not found.'); return; }
+async function diLoadDraftById(docId) {
   try {
-    const d = JSON.parse(raw);
+    const snap = await db.collection('drafts').doc(docId).get();
+    if (!snap.exists) { alert('Draft not found.'); return; }
+    const d = snap.data();
     // Set date and job
     document.getElementById('di-date').value = d.date || '';
     const psSel = document.getElementById('ps-job-select');
     const diSel = document.getElementById('di-job-select');
-    if (psSel) psSel.value = d.job || '';
-    if (diSel) diSel.value = d.job || '';
-    // Restore crew data
+    if (psSel) { psSel.value = d.job || ''; }
+    if (diSel) { diSel.value = d.job || ''; }
+    // Restore all crew data
     for (let c = 1; c <= DI_CREWS; c++) {
-      _diData[c] = d.data[c] || Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:''}));
+      _diData[c] = (d.data && d.data[c])
+        ? d.data[c]
+        : Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:''}));
     }
     diRenderCrewTable();
     diRenderLogRows();
     diCloseDraftsModal();
-    // Show badge
     const badge = document.getElementById('di-draft-badge');
     badge.textContent = '📌 Draft loaded';
     badge.style.display = '';
     setTimeout(() => badge.style.display = 'none', 3000);
-  } catch(e) { alert('Could not load draft.'); }
+  } catch(e) { alert('Could not load draft: ' + e.message); }
 }
 
-function diDeleteDraft(key, btn) {
-  localStorage.removeItem(key);
-  const item = btn.closest('div[style]');
-  if (item) item.remove();
-  // Update count on button
-  const remaining = Array.from({length: localStorage.length}, (_, i) => localStorage.key(i)).filter(k => k && k.startsWith('di_draft_')).length;
-  const dBtn = document.getElementById('di-drafts-btn');
-  if (dBtn) dBtn.textContent = remaining ? `📋 Drafts (${remaining})` : '📋 Drafts';
-  const list = document.getElementById('di-drafts-list');
-  if (list && !list.querySelector('div[style]')) {
-    list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">No drafts saved yet.</p>';
-  }
+async function diDeleteDraftById(docId) {
+  try {
+    await db.collection('drafts').doc(docId).delete();
+    // List updates automatically via onSnapshot
+  } catch(e) { alert('Could not delete draft: ' + e.message); }
 }
 
 async function submitDailyInput() {
@@ -2682,7 +2698,7 @@ async function submitDailyInput() {
     // Auto-fill paysheet for each crew that has entries
     psAutoFillFromSubmission(crews, jobName, date, id);
 
-    diClearDraft(); // draft promoted to real submission — remove it
+    await diClearDraft(); // draft promoted to real submission — remove it
     const badge = document.getElementById('di-saved-badge');
     badge.style.display = '';
     setTimeout(() => badge.style.display = 'none', 3000);
