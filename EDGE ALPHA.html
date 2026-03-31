@@ -733,10 +733,22 @@
             <tbody id="di-crew-tbody"></tbody>
           </table>
         </div>
+        <button class="btn btn-outline" style="margin-top:8px;font-size:.8rem;padding:5px 14px;" onclick="diAddRow()">+ Add Row</button>
 
         <!-- Daily Log -->
         <div style="margin-top:24px;">
-          <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Submission Log</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;flex:1;">Submission Log</div>
+            <input type="date" id="di-log-filter-date" class="fi" style="padding:5px 8px;font-size:.8rem;width:150px;" placeholder="Filter by date" oninput="diRenderLogRows()" />
+            <select id="di-log-filter-crew" class="fi" style="padding:5px 8px;font-size:.8rem;" onchange="diRenderLogRows()">
+              <option value="">All Crews</option>
+              <option value="1">Crew 1</option><option value="2">Crew 2</option><option value="3">Crew 3</option>
+              <option value="4">Crew 4</option><option value="5">Crew 5</option><option value="6">Crew 6</option>
+              <option value="7">Crew 7</option><option value="8">Crew 8</option><option value="9">Crew 9</option>
+              <option value="10">Crew 10</option>
+            </select>
+            <button class="btn btn-outline" style="padding:5px 10px;font-size:.8rem;" onclick="diClearLogFilters()">Clear</button>
+          </div>
           <div id="di-log-wrap" style="overflow-x:auto;">
             <table style="min-width:700px;width:100%;border-collapse:collapse;font-size:.82rem;">
               <thead>
@@ -750,7 +762,7 @@
                   <th style="padding:8px 10px;border-bottom:1px solid var(--border);"></th>
                 </tr>
               </thead>
-              <tbody id="di-log-tbody"><tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted);">No submissions yet.</td></tr></tbody>
+              <tbody id="di-log-tbody"><tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);">No submissions yet.</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -798,6 +810,9 @@
 
       <!-- Pages container — rendered dynamically by psRenderMainTable() -->
       <div id="ps-pages-container"></div>
+
+      <!-- Add rows button (outside print area, only in edit/weekly mode) -->
+      <div id="ps-add-rows-bar" style="display:flex;justify-content:flex-end;margin:4px 0 16px;"></div>
 
       <!-- Crew Splits — rendered dynamically by psRenderCrewTable() -->
       <div id="ps-crew-section"></div>
@@ -2573,49 +2588,80 @@ function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
   openSaveDestModal();
 }
 
-async function diLoadLog() {
-  const tbody   = document.getElementById('di-log-tbody');
-  const jobName = document.getElementById('ps-job-select').value;
+let _diLogDocs   = [];   // cached from real-time listener
+let _diLogUnsub  = null; // firestore unsubscribe handle
 
-  if (!jobName) {
-    tbody.innerHTML = '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);">Select a job above to view the submission log.</td></tr>';
+function diLoadLog() {
+  // Tear down previous listener
+  if (_diLogUnsub) { _diLogUnsub(); _diLogUnsub = null; }
+
+  const tbody   = document.getElementById('di-log-tbody');
+  if (!tbody) return;
+
+  // Real-time listener — updates automatically whenever docs change
+  try {
+    _diLogUnsub = db.collection('dailyinput')
+      .orderBy('submittedAt', 'desc')
+      .limit(300)
+      .onSnapshot(snap => {
+        _diLogDocs = snap.docs.map(d => d.data());
+        diRenderLogRows();
+      }, err => {
+        // Fallback without orderBy if index missing
+        _diLogUnsub = db.collection('dailyinput').onSnapshot(snap => {
+          _diLogDocs = snap.docs.map(d => d.data()).sort((a,b) => (b.submittedAt||'').localeCompare(a.submittedAt||''));
+          diRenderLogRows();
+        });
+      });
+  } catch(e) { console.error('diLoadLog:', e); }
+}
+
+function diRenderLogRows() {
+  const tbody    = document.getElementById('di-log-tbody');
+  if (!tbody) return;
+  const jobName  = document.getElementById('ps-job-select').value;
+  const filterDate  = (document.getElementById('di-log-filter-date')  ||{}).value || '';
+  const filterCrew  = (document.getElementById('di-log-filter-crew')  ||{}).value || '';
+
+  let docs = _diLogDocs;
+  if (jobName)    docs = docs.filter(r => r.job === jobName);
+  if (filterDate) docs = docs.filter(r => r.date === filterDate);
+  if (filterCrew) docs = docs.filter(r => r.crews && r.crews.some(c => String(c.crewNum) === filterCrew));
+
+  if (!docs.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);">${jobName ? 'No submissions match filters.' : 'Select a job above to view the submission log.'}</td></tr>`;
     return;
   }
+  tbody.innerHTML = docs.map(r => {
+    const crewNums = (r.crews||[]).map(c => `Crew ${c.crewNum}`).join(', ');
+    const empCount = (r.crews||[]).reduce((s,c) => s + (c.entries||[]).length, 0);
+    return `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:8px 10px;">${fmtDate(r.date)}</td>
+      <td style="padding:8px 10px;color:var(--muted);">${r.submittedTime||'—'}</td>
+      <td style="padding:8px 10px;color:var(--accent);">${eh(r.job)}</td>
+      <td style="padding:8px 10px;">${crewNums}</td>
+      <td style="padding:8px 10px;color:var(--muted);">${eh(r.submittedBy)}</td>
+      <td style="padding:8px 10px;">${empCount} employee${empCount!==1?'s':''}</td>
+      <td style="padding:8px 10px;white-space:nowrap;">
+        <button class="btn-sm" onclick="diViewSubmission('${r.id}')">View</button>
+        <button class="btn-sm" style="margin-left:4px;border-color:var(--accent);color:var(--accent);" onclick="diAutoFillFromLog('${r.id}')">→ Paysheet</button>
+        ${isAdmin()?`<button class="btn-sm btn-danger" style="margin-left:4px;" onclick="diDeleteSubmission('${r.id}')">Delete</button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+}
 
-  function _buildLogRows(docs) {
-    const filtered = docs.filter(r => r.job === jobName);
-    if (!filtered.length) {
-      return '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);">No submissions for this job yet.</td></tr>';
-    }
-    return filtered.map(r => {
-      const crewNums = r.crews.map(c => `Crew ${c.crewNum}`).join(', ');
-      const empCount = r.crews.reduce((s,c) => s + c.entries.length, 0);
-      return `<tr style="border-top:1px solid var(--border);">
-        <td style="padding:8px 10px;">${fmtDate(r.date)}</td>
-        <td style="padding:8px 10px;color:var(--muted);">${r.submittedTime||'—'}</td>
-        <td style="padding:8px 10px;color:var(--accent);">${eh(r.job)}</td>
-        <td style="padding:8px 10px;">${crewNums}</td>
-        <td style="padding:8px 10px;color:var(--muted);">${eh(r.submittedBy)}</td>
-        <td style="padding:8px 10px;">${empCount} employee${empCount!==1?'s':''}</td>
-        <td style="padding:8px 10px;">
-          <button class="btn-sm" onclick="diViewSubmission('${r.id}')">View</button>
-          <button class="btn-sm" style="margin-left:4px;border-color:var(--accent);color:var(--accent);" onclick="diAutoFillFromLog('${r.id}')">→ Paysheet</button>
-          ${isAdmin()?`<button class="btn-sm btn-danger" style="margin-left:4px;" onclick="diDeleteSubmission('${r.id}')">Delete</button>`:''}
-        </td>
-      </tr>`;
-    }).join('');
-  }
+function diClearLogFilters() {
+  const d = document.getElementById('di-log-filter-date');
+  const c = document.getElementById('di-log-filter-crew');
+  if (d) d.value = '';
+  if (c) c.value = '';
+  diRenderLogRows();
+}
 
-  try {
-    const snap = await db.collection('dailyinput').orderBy('date','desc').limit(200).get();
-    tbody.innerHTML = _buildLogRows(snap.docs.map(d => d.data()));
-  } catch(e) {
-    try {
-      const snap2 = await db.collection('dailyinput').get();
-      const docs = snap2.docs.map(d=>d.data()).sort((a,b)=>b.date.localeCompare(a.date));
-      tbody.innerHTML = _buildLogRows(docs);
-    } catch(e2) { console.error(e2); }
-  }
+function diAddRow() {
+  _diData[_diActiveCrew].push({employee:'', area:'', costCode:'', description:''});
+  diRenderCrewTable();
 }
 
 function diViewSubmission(id) {
@@ -2964,7 +3010,7 @@ function onJobChanged() {
   psRenderMainTable();
   // Update daily input
   diRenderCrewTable();
-  diLoadLog();
+  diRenderLogRows(); // re-filter existing live data for the new job
 }
 
 function psJobChanged() { onJobChanged(); }
@@ -3174,7 +3220,22 @@ function psRenderMainTable() {
   }
 
   container.innerHTML = html;
+
+  // Add Rows bar — visible when editable (weekly or daily edit mode)
+  const addBar = document.getElementById('ps-add-rows-bar');
+  if (addBar) {
+    const canAddRows = !isDaily || _psEditMode;
+    addBar.innerHTML = canAddRows
+      ? `<button class="btn btn-outline" style="font-size:.8rem;padding:5px 14px;color:#000;" onclick="psAddRows(5)">+ Add 5 Rows</button>`
+      : '';
+  }
+
   psRenderCrewTable();
+}
+
+function psAddRows(n) {
+  for (let i = 0; i < n; i++) _ps().rows.push(_psEmptyRow());
+  psRenderMainTable();
 }
 
 function psAreaChanged(i, area) {
