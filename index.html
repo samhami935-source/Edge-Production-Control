@@ -683,7 +683,8 @@
     <details id="ps-daily-details" style="margin-bottom:24px;" open>
       <summary style="cursor:pointer;font-weight:600;font-size:.95rem;color:var(--accent);padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;list-style:none;display:flex;align-items:center;gap:8px;">
         <span>📝</span><span>Daily Input</span>
-        <span id="di-saved-badge" style="margin-left:auto;font-size:.78rem;color:var(--green);display:none;">✓ Saved</span>
+        <span id="di-draft-badge" style="margin-left:auto;font-size:.78rem;color:#60a5fa;display:none;">📌 Draft saved</span>
+        <span id="di-saved-badge" style="font-size:.78rem;color:var(--green);display:none;">✓ Saved</span>
       </summary>
       <div style="margin-top:8px;padding:0;background:var(--surface);border:1px solid var(--border);border-radius:0 0 8px 8px;overflow:hidden;">
 
@@ -692,7 +693,7 @@
           <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;flex:1;min-width:0;">
             <div style="display:flex;flex-direction:column;gap:1px;">
               <label style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;white-space:nowrap;">Date</label>
-              <input type="date" id="di-date" class="fi" style="width:150px;padding:5px 8px;font-size:.85rem;" />
+              <input type="date" id="di-date" class="fi" style="width:150px;padding:5px 8px;font-size:.85rem;" onchange="diLoadDraftIfExists()" />
             </div>
             <div style="display:flex;flex-direction:column;gap:1px;flex:1;min-width:0;">
               <label style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;white-space:nowrap;">Active Job</label>
@@ -706,6 +707,7 @@
           <!-- Action buttons -->
           <div style="display:flex;align-items:center;gap:2px;padding:8px 10px;flex-shrink:0;">
             <button class="btn" onclick="submitDailyInput()" style="margin-top:0;padding:7px 16px;font-size:.83rem;white-space:nowrap;">💾 Save Daily Input</button>
+            <button class="btn btn-outline" onclick="diSaveDraft()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="Save progress as a draft — does not create a paysheet">📌 Save Draft</button>
             <button class="btn btn-outline" onclick="openLoadPaysheetModal()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Load saved daily or weekly paysheets">📂 Saved Paysheets</button>
             <button class="btn btn-outline" onclick="diExportExcel()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Export daily input to Excel">📊 Export</button>
             <button class="btn btn-outline" onclick="diPrint()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Print daily input">🖨 Print</button>
@@ -2404,21 +2406,24 @@ function diRenderCrewTable() {
     return `<tr style="border-top:1px solid var(--border);">
       <td style="padding:6px 8px;">
         <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
-          oninput="_diData[${_diActiveCrew}][${i}].employee=this.value" />
+          oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft()" />
       </td>
       <td style="padding:6px 8px;">
-        <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].area=this.value;diRenderCrewTable()">
+        <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].area=this.value;diRenderCrewTable();diAutoSaveDraft()">
           ${areaOpts}
         </select>
       </td>
       <td style="padding:6px 8px;">
-        <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value">
+        <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value;diAutoSaveDraft()">
           ${codeOpts}
         </select>
       </td>
       <td style="padding:6px 8px;">
         <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.description)}" placeholder="Notes"
-          oninput="_diData[${_diActiveCrew}][${i}].description=this.value" />
+          oninput="_diData[${_diActiveCrew}][${i}].description=this.value;diAutoSaveDraft()" />
+      </td>
+      <td style="padding:6px 4px;width:32px;text-align:center;">
+        <button onclick="diDeleteRow(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;" title="Delete row">✕</button>
       </td>
     </tr>`;
   }).join('');
@@ -2479,6 +2484,70 @@ function diClearDropdowns() {
   diRenderCrewTable();
 }
 
+// ─── Daily Input Draft (localStorage) ───────────────────────────────────────
+
+function _diDraftKey() {
+  const date    = document.getElementById('di-date').value;
+  const jobName = document.getElementById('ps-job-select').value;
+  return date && jobName ? `di_draft_${jobName}_${date}` : null;
+}
+
+function diSaveDraft() {
+  const key = _diDraftKey();
+  if (!key) { alert('Please select a date and job before saving a draft.'); return; }
+  const draft = { date: document.getElementById('di-date').value, job: document.getElementById('ps-job-select').value, data: _diData };
+  try {
+    localStorage.setItem(key, JSON.stringify(draft));
+    // Show badge
+    const badge = document.getElementById('di-draft-badge');
+    badge.textContent = '📌 Draft saved';
+    badge.style.display = '';
+    setTimeout(() => { if (badge.textContent === '📌 Draft saved') badge.style.display = 'none'; }, 3000);
+  } catch(e) { alert('Could not save draft: ' + e.message); }
+}
+
+function diLoadDraftIfExists() {
+  const key = _diDraftKey();
+  if (!key) return;
+  const raw = localStorage.getItem(key);
+  if (!raw) { diShowDraftBadge(false); return; }
+  try {
+    const draft = JSON.parse(raw);
+    // Restore all crew data
+    for (let c=1; c<=DI_CREWS; c++) {
+      if (draft.data[c]) _diData[c] = draft.data[c];
+    }
+    diRenderCrewTable();
+    // Show persistent "draft loaded" badge
+    const badge = document.getElementById('di-draft-badge');
+    badge.textContent = '📌 Draft loaded';
+    badge.style.display = '';
+    setTimeout(() => badge.style.display = 'none', 3000);
+  } catch(e) { /* corrupt draft — ignore */ }
+}
+
+function diClearDraft() {
+  const key = _diDraftKey();
+  if (key) localStorage.removeItem(key);
+  document.getElementById('di-draft-badge').style.display = 'none';
+}
+
+// Auto-save draft 2s after last change
+let _diDraftTimer = null;
+function diAutoSaveDraft() {
+  clearTimeout(_diDraftTimer);
+  _diDraftTimer = setTimeout(() => {
+    const key = _diDraftKey();
+    if (!key) return;
+    const draft = { date: document.getElementById('di-date').value, job: document.getElementById('ps-job-select').value, data: _diData };
+    try { localStorage.setItem(key, JSON.stringify(draft)); } catch(e) {}
+  }, 2000);
+}
+
+function diShowDraftBadge(show) {
+  document.getElementById('di-draft-badge').style.display = show ? '' : 'none';
+}
+
 async function submitDailyInput() {
   const date    = document.getElementById('di-date').value;
   const jobName = document.getElementById('ps-job-select').value;
@@ -2511,6 +2580,7 @@ async function submitDailyInput() {
     // Auto-fill paysheet for each crew that has entries
     psAutoFillFromSubmission(crews, jobName, date, id);
 
+    diClearDraft(); // draft promoted to real submission — remove it
     const badge = document.getElementById('di-saved-badge');
     badge.style.display = '';
     setTimeout(() => badge.style.display = 'none', 3000);
@@ -2690,6 +2760,14 @@ function diClearLogFilters() {
 function diAddRow() {
   _diData[_diActiveCrew].push({employee:'', area:'', costCode:'', description:''});
   diRenderCrewTable();
+  diAutoSaveDraft();
+}
+
+function diDeleteRow(crew, i) {
+  _diData[crew].splice(i, 1);
+  if (_diData[crew].length === 0) _diData[crew].push({employee:'', area:'', costCode:'', description:''});
+  diRenderCrewTable();
+  diAutoSaveDraft();
 }
 
 function diViewSubmission(id) {
@@ -3045,6 +3123,7 @@ function onJobChanged() {
   // Update daily input
   diRenderCrewTable();
   diRenderLogRows(); // re-filter existing live data for the new job
+  diLoadDraftIfExists();
 }
 
 function psJobChanged() { onJobChanged(); }
