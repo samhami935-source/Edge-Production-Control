@@ -2439,7 +2439,7 @@ function diPrint() {
   th,td{border:1px solid #000;padding:5px 8px;text-align:left;}
   thead{background:#c9a84c;}h2{margin:0 0 4px;}p{margin:0 0 16px;font-size:12px;color:#555;}</style></head><body>`;
   for (let c = 1; c <= DI_CREWS; c++) {
-    const rows = (_diData[c] || []).filter(r => r.employee.trim());
+    const rows = (_diData[c] || []).filter(r => r.employee.trim() || r.area.trim());
     if (!rows.length) continue;
     html += `<h2>Crew ${c}</h2><p>Date: ${date} &nbsp;|&nbsp; Job: ${jobName}</p>
     <table><thead><tr><th>Employee</th><th>Area Worked</th><th>Labor Code</th><th>Notes</th></tr></thead><tbody>
@@ -2461,7 +2461,7 @@ function diExportExcel() {
   const wb      = XLSX.utils.book_new();
   let   added   = 0;
   for (let c = 1; c <= DI_CREWS; c++) {
-    const rows = (_diData[c] || []).filter(r => r.employee.trim());
+    const rows = (_diData[c] || []).filter(r => r.employee.trim() || r.area.trim());
     if (!rows.length) continue;
     const data = [
       [`Daily Input — ${jobName}`],
@@ -2490,13 +2490,13 @@ async function submitDailyInput() {
   if (!date)    { alert('Please select a date.'); return; }
   if (!jobName) { alert('Please select a job using the "Active Job" selector at the top.'); return; }
 
-  // Build payload — only crews with at least one employee filled in
+  // Build payload — include rows with an employee name OR an area filled in
   const crews = [];
   for (let c=1; c<=DI_CREWS; c++) {
-    const entries = _diData[c].filter(r => r.employee.trim());
+    const entries = _diData[c].filter(r => r.employee.trim() || r.area.trim());
     if (entries.length) crews.push({ crewNum: c, entries });
   }
-  if (!crews.length) { alert('Please enter at least one employee name.'); return; }
+  if (!crews.length) { alert('Please enter at least one employee name or area.'); return; }
 
   const now = new Date();
   const timeStr = now.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:true});
