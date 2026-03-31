@@ -2610,11 +2610,11 @@ function diOpenDraftsModal() {
   const btn = document.getElementById('di-drafts-btn');
   if (btn) btn.textContent = drafts.length ? `📋 Drafts (${drafts.length})` : '📋 Drafts';
 
-  document.getElementById('di-drafts-modal').classList.add('active');
+  document.getElementById('di-drafts-modal').classList.add('open');
 }
 
 function diCloseDraftsModal() {
-  document.getElementById('di-drafts-modal').classList.remove('active');
+  document.getElementById('di-drafts-modal').classList.remove('open');
 }
 
 function diLoadDraftByKey(key) {
