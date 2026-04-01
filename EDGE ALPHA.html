@@ -2396,6 +2396,8 @@ let _diUnlockGrantsUnsub = null;
 let _diPendingReqUnsub = null;
 // Manual locks set by admin keyed by "date__job"
 let _diManualLocks = {};
+// Periodic lock-state refresh interval (checks 4 PM deadline every minute)
+let _diLockCheckInterval = null;
 
 
 function _diEmptyCrewData() {
@@ -2444,6 +2446,9 @@ function diInit() {
     const dBtn = document.getElementById('di-drafts-btn');
     if (dBtn && snap.size) dBtn.textContent = `📋 Drafts (${snap.size})`;
   }).catch(() => {});
+  // Refresh lock state every 60 s so the 4 PM deadline kicks in automatically
+  if (_diLockCheckInterval) clearInterval(_diLockCheckInterval);
+  _diLockCheckInterval = setInterval(diUpdateLockState, 60 * 1000);
 }
 
 function diPopulateJobSelect() {
@@ -4534,13 +4539,53 @@ function _diLockKey() {
 }
 
 function diIsLocked() {
-  const key = _diLockKey();
-  // Locked only if admin has manually locked this date+job
-  if (!_diManualLocks[key]) return false;
-  // Check if there's an active unlock grant for current user
+  // Admin and PM are never locked
+  if (isAdmin() || isPM()) return false;
+
+  const key  = _diLockKey();
+  const date = (document.getElementById('di-date') || {}).value || '';
+
+  // Active unlock grant overrides all automatic locks
   const grant = _diUnlockGrants[key];
-  if (grant && grant.expiresAt && new Date(grant.expiresAt) > new Date()) return false;
-  return true;
+  if (grant && grant.status === 'approved' && grant.expiresAt && new Date(grant.expiresAt) > new Date()) return false;
+
+  if (date) {
+    // Use noon to avoid DST edge cases
+    const d   = new Date(date + 'T12:00:00');
+    const dow = d.getDay(); // 0=Sun, 6=Sat
+    if (dow === 0 || dow === 6) return true; // weekends always locked
+
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    const dateMidnight = new Date(date + 'T00:00:00');
+
+    if (dateMidnight < todayMidnight) return true; // past dates always locked
+
+    // Today after 4:00 PM
+    if (dateMidnight.getTime() === todayMidnight.getTime() && new Date().getHours() >= 16) return true;
+  }
+
+  // Admin manual lock
+  if (_diManualLocks[key]) return true;
+
+  return false;
+}
+
+function _diLockReason() {
+  const date = (document.getElementById('di-date') || {}).value || '';
+  if (date) {
+    const d   = new Date(date + 'T12:00:00');
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) return '🔒 Daily inputs are closed on weekends.';
+    const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
+    const dateMidnight  = new Date(date + 'T00:00:00');
+    if (dateMidnight < todayMidnight) return '🔒 Past date — this entry is locked.';
+    if (dateMidnight.getTime() === todayMidnight.getTime() && new Date().getHours() >= 16)
+      return '🔒 Deadline passed — daily inputs were locked at 4:00 PM.';
+  }
+  const key = _diLockKey();
+  if (_diManualLocks[key]) return '🔒 This date has been locked by an admin.';
+  return '🔒 Daily inputs are currently locked.';
 }
 
 function diUpdateLockState() {
@@ -4564,17 +4609,14 @@ function diUpdateLockState() {
   }
 
   if (locked) {
-    if (msg) msg.textContent = '🔒 This date has been locked by an admin.';
+    if (msg) msg.textContent = _diLockReason();
     let actionHTML = '';
-    if (isAdmin() || isPM()) {
-      actionHTML = `<button onclick="diToggleManualLock()" style="padding:6px 14px;font-size:.83rem;background:none;border:1px solid #10b981;color:#10b981;border-radius:6px;cursor:pointer;white-space:nowrap;">🔓 Unlock</button>`;
+    // Foremen see request access button; admin/PM are never locked so this branch only runs for foremen
+    const existing = _diUnlockGrants[key];
+    if (existing && existing.status === 'pending') {
+      actionHTML = `<span style="font-size:.82rem;color:var(--muted);">Request pending…</span>`;
     } else {
-      const existing = _diUnlockGrants[key];
-      if (existing && existing.status === 'pending') {
-        actionHTML = `<span style="font-size:.82rem;color:var(--muted);">Request pending…</span>`;
-      } else {
-        actionHTML = `<button onclick="diRequestUnlock()" style="padding:6px 14px;font-size:.83rem;background:none;border:1px solid #f59e0b;color:#f59e0b;border-radius:6px;cursor:pointer;white-space:nowrap;">📬 Request Access</button>`;
-      }
+      actionHTML = `<button onclick="diRequestUnlock()" style="padding:6px 14px;font-size:.83rem;background:none;border:1px solid #f59e0b;color:#f59e0b;border-radius:6px;cursor:pointer;white-space:nowrap;">📬 Request Access</button>`;
     }
     if (actions) actions.innerHTML = actionHTML;
     if (banner) { banner.style.display = 'flex'; banner.style.background = '#1a1a2e'; banner.style.borderColor = '#f59e0b'; }
