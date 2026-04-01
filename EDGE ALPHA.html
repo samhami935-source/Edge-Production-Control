@@ -2440,10 +2440,11 @@ function diInit() {
   diRenderCrewTabs();
   diRenderCrewTable();
   diLoadLog();
-  // Show draft count on button (live from Firestore)
-  db.collection('drafts').get().then(snap => {
+  // Show draft count on button — only count this user's drafts
+  const _draftUid = _currentUser ? _currentUser.uid : 'anon';
+  db.collection('drafts').where('savedByUid', '==', _draftUid).get().then(snap => {
     const dBtn = document.getElementById('di-drafts-btn');
-    if (dBtn && snap.size) dBtn.textContent = `📋 Drafts (${snap.size})`;
+    if (dBtn) dBtn.textContent = snap.size ? `📋 Drafts (${snap.size})` : '📋 Drafts';
   }).catch(() => {});
   // Refresh lock state every 60 s so the 4 PM deadline kicks in automatically
   if (_diLockCheckInterval) clearInterval(_diLockCheckInterval);
@@ -2596,7 +2597,8 @@ let _diDraftsDocs  = [];
 function _diDraftDocId() {
   const date    = document.getElementById('di-date').value;
   const jobName = document.getElementById('ps-job-select').value;
-  return date && jobName ? ('draft_' + (jobName + '_' + date).replace(/[^\w-]/g, '_')) : null;
+  const uid     = _currentUser ? _currentUser.uid : 'anon';
+  return date && jobName ? ('draft_' + (uid + '_' + jobName + '_' + date).replace(/[^\w-]/g, '_')) : null;
 }
 
 async function diSaveDraft() {
@@ -2617,6 +2619,7 @@ async function diSaveDraft() {
     job: jobName,
     savedAt: new Date().toISOString(),
     savedBy: _currentUser ? _currentUser.email : 'unknown',
+    savedByUid: _currentUser ? _currentUser.uid : 'anon',
     empCount,
     data: _diData
   };
@@ -2666,6 +2669,7 @@ function diAutoSaveDraft() {
       id: docId, date, job: jobName,
       savedAt: new Date().toISOString(),
       savedBy: _currentUser ? _currentUser.email : 'unknown',
+      savedByUid: _currentUser ? _currentUser.uid : 'anon',
       empCount: Object.values(_diData).reduce((s, rows) => s + (rows||[]).filter(r => (r.employee||'').trim()).length, 0),
       data: _diData
     };
@@ -2685,15 +2689,18 @@ function diOpenDraftsModal() {
   // Unsubscribe previous listener
   if (_diDraftsUnsub) { _diDraftsUnsub(); _diDraftsUnsub = null; }
 
+  const uid = _currentUser ? _currentUser.uid : 'anon';
   _diDraftsUnsub = db.collection('drafts')
-    .orderBy('savedAt', 'desc')
+    .where('savedByUid', '==', uid)
     .onSnapshot(snap => {
-      _diDraftsDocs = snap.docs.map(d => d.data());
+      _diDraftsDocs = snap.docs.map(d => d.data()).sort((a,b) => (b.savedAt||'').localeCompare(a.savedAt||''));
       _diRenderDraftsList();
     }, () => {
-      // Fallback: no orderBy
-      _diDraftsUnsub = db.collection('drafts').onSnapshot(snap => {
-        _diDraftsDocs = snap.docs.map(d => d.data()).sort((a,b) => (b.savedAt||'').localeCompare(a.savedAt||''));
+      // Fallback if index missing: fetch all and filter client-side
+      db.collection('drafts').get().then(snap => {
+        _diDraftsDocs = snap.docs.map(d => d.data())
+          .filter(d => d.savedByUid === uid)
+          .sort((a,b) => (b.savedAt||'').localeCompare(a.savedAt||''));
         _diRenderDraftsList();
       });
     });
