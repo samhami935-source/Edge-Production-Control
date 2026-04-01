@@ -2625,11 +2625,21 @@ async function diSaveDraft() {
   };
   try {
     await db.collection('drafts').doc(docId).set(doc);
+
+    // Keep only the 10 most recent drafts for this user — delete the rest
+    const uid = _currentUser ? _currentUser.uid : 'anon';
+    const allSnap = await db.collection('drafts').where('savedByUid', '==', uid).get();
+    const allDocs = allSnap.docs.sort((a, b) => (b.data().savedAt || '').localeCompare(a.data().savedAt || ''));
+    if (allDocs.length > 10) {
+      const toDelete = allDocs.slice(10);
+      await Promise.all(toDelete.map(d => db.collection('drafts').doc(d.id).delete()));
+    }
+
     // Update Drafts button count
-    db.collection('drafts').get().then(snap => {
-      const btn = document.getElementById('di-drafts-btn');
-      if (btn) btn.textContent = snap.size ? `📋 Drafts (${snap.size})` : '📋 Drafts';
-    }).catch(() => {});
+    const remaining = Math.min(allDocs.length, 10);
+    const btn = document.getElementById('di-drafts-btn');
+    if (btn) btn.textContent = remaining ? `📋 Drafts (${remaining})` : '📋 Drafts';
+
     _diShowToast('Draft saved ✓');
   } catch(e) { alert('Could not save draft: ' + e.message); }
 }
