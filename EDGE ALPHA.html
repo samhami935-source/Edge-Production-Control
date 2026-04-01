@@ -4723,11 +4723,14 @@ function diSubscribeUnlockGrants() {
   _diUnlockGrantsUnsub = db.collection('unlockGrants')
     .where('grantedTo', '==', uid)
     .onSnapshot(snap => {
+      // Rebuild from scratch so deleted/revoked grants are removed immediately
+      const fresh = {};
       snap.docs.forEach(d => {
         const g = d.data();
         const key = g.date + '__' + (g.job || '');
-        _diUnlockGrants[key] = g;
+        fresh[key] = g;
       });
+      _diUnlockGrants = fresh;
       diUpdateLockState();
     }, () => {});
 }
@@ -4766,12 +4769,18 @@ async function diRenderUnlockRequestsList() {
     list.innerHTML = snap.docs.map(d => {
       const r = d.data();
       const at = r.requestedAt ? new Date(r.requestedAt).toLocaleString() : '';
-      const statusColor = r.status === 'approved' ? '#10b981' : r.status === 'denied' ? '#ef4444' : '#f59e0b';
-      const statusLabel = r.status === 'approved' ? 'Approved' : r.status === 'denied' ? 'Denied' : 'Pending';
-      const actions = r.status === 'pending' && (isAdmin() || isPM())
-        ? `<button onclick="diApproveUnlock('${r.id}')" style="padding:4px 12px;font-size:.8rem;background:none;border:1px solid #10b981;color:#10b981;border-radius:5px;cursor:pointer;margin-right:6px;">Approve</button>
-           <button onclick="diDenyUnlock('${r.id}')" style="padding:4px 12px;font-size:.8rem;background:none;border:1px solid #ef4444;color:#ef4444;border-radius:5px;cursor:pointer;">Deny</button>`
-        : '';
+      const now = new Date();
+      const isActiveGrant = r.status === 'approved' && r.expiresAt && new Date(r.expiresAt) > now;
+      const expStr = r.expiresAt ? new Date(r.expiresAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : '';
+      const statusColor = isActiveGrant ? '#10b981' : r.status === 'approved' ? '#6b7280' : r.status === 'denied' ? '#ef4444' : r.status === 'revoked' ? '#ef4444' : '#f59e0b';
+      const statusLabel = isActiveGrant ? `Active until ${expStr}` : r.status === 'approved' ? 'Expired' : r.status === 'denied' ? 'Denied' : r.status === 'revoked' ? 'Revoked' : 'Pending';
+      let actions = '';
+      if (r.status === 'pending' && (isAdmin() || isPM())) {
+        actions = `<button onclick="diApproveUnlock('${r.id}')" style="padding:4px 12px;font-size:.8rem;background:none;border:1px solid #10b981;color:#10b981;border-radius:5px;cursor:pointer;margin-right:6px;">Approve (20 min)</button>
+           <button onclick="diDenyUnlock('${r.id}')" style="padding:4px 12px;font-size:.8rem;background:none;border:1px solid #ef4444;color:#ef4444;border-radius:5px;cursor:pointer;">Deny</button>`;
+      } else if (isActiveGrant && (isAdmin() || isPM()) && r.grantDocId) {
+        actions = `<button onclick="diRevokeUnlock('${r.id}','${r.grantDocId}')" style="padding:4px 12px;font-size:.8rem;background:none;border:1px solid #ef4444;color:#ef4444;border-radius:5px;cursor:pointer;">Revoke Access</button>`;
+      }
       return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
           <div>
@@ -4797,12 +4806,14 @@ async function diApproveUnlock(reqId) {
     const snap = await db.collection('unlockRequests').doc(reqId).get();
     if (!snap.exists) return;
     const r = snap.data();
-    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    // Foremen get 20 minutes only
+    const expiresAt = new Date(Date.now() + 20 * 60 * 1000).toISOString();
     const key = r.date + '__' + (r.job || '');
-    const grant = { date: r.date, job: r.job || '', grantedTo: r.requestedBy, grantedBy: _currentUser ? _currentUser.email : '', grantedAt: new Date().toISOString(), expiresAt };
+    const grantDocId = (key + '__' + r.requestedBy).replace(/[^\w-]/g, '_');
+    const grant = { id: grantDocId, date: r.date, job: r.job || '', grantedTo: r.requestedBy, grantedToEmail: r.requestedByEmail || '', grantedBy: _currentUser ? _currentUser.email : '', grantedAt: new Date().toISOString(), expiresAt, requestId: reqId };
     await Promise.all([
-      db.collection('unlockGrants').doc(key.replace(/[^\w-]/g, '_') + '__' + r.requestedBy).set(grant),
-      db.collection('unlockRequests').doc(reqId).update({ status: 'approved', reviewedBy: _currentUser ? _currentUser.email : '', reviewedAt: new Date().toISOString(), expiresAt })
+      db.collection('unlockGrants').doc(grantDocId).set(grant),
+      db.collection('unlockRequests').doc(reqId).update({ status: 'approved', reviewedBy: _currentUser ? _currentUser.email : '', reviewedAt: new Date().toISOString(), expiresAt, grantDocId })
     ]);
     diRenderUnlockRequestsList();
   } catch(e) { alert('Approve failed: ' + e.message); }
@@ -4813,6 +4824,17 @@ async function diDenyUnlock(reqId) {
     await db.collection('unlockRequests').doc(reqId).update({ status: 'denied', reviewedBy: _currentUser ? _currentUser.email : '', reviewedAt: new Date().toISOString() });
     diRenderUnlockRequestsList();
   } catch(e) { alert('Deny failed: ' + e.message); }
+}
+
+async function diRevokeUnlock(reqId, grantDocId) {
+  if (!isAdmin() && !isPM()) return;
+  try {
+    await Promise.all([
+      db.collection('unlockGrants').doc(grantDocId).delete(),
+      db.collection('unlockRequests').doc(reqId).update({ status: 'revoked', revokedBy: _currentUser ? _currentUser.email : '', revokedAt: new Date().toISOString() })
+    ]);
+    diRenderUnlockRequestsList();
+  } catch(e) { alert('Revoke failed: ' + e.message); }
 }
 
 // ═══════════════════════════
