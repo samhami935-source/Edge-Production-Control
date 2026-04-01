@@ -4612,12 +4612,24 @@ function _diLockReason() {
 
 function diUpdateLockState() {
   const locked   = diIsLocked();
+  const key      = _diLockKey();
   const banner   = document.getElementById('di-lock-banner');
   const msg      = document.getElementById('di-lock-msg');
   const actions  = document.getElementById('di-lock-actions');
   const tableW   = document.getElementById('di-table-wrap');
   const saveBtn  = document.getElementById('di-save-btn');
   const addBtn   = document.getElementById('di-add-row-btn');
+  const lockBtn  = document.getElementById('di-admin-lock-btn');
+
+  // Update admin lock button label
+  if (lockBtn && (isAdmin() || isPM())) {
+    lockBtn.style.display  = 'inline-flex';
+    const isManuallyLocked = !!_diManualLocks[key];
+    lockBtn.textContent    = isManuallyLocked ? '🔓 Unlock Inputs' : '🔒 Lock Inputs';
+    lockBtn.style.borderColor = isManuallyLocked ? '#10b981' : '#ef4444';
+    lockBtn.style.color       = isManuallyLocked ? '#10b981' : '#ef4444';
+  }
+
   if (locked) {
     if (msg) msg.textContent = _diLockReason();
     let actionHTML = '';
