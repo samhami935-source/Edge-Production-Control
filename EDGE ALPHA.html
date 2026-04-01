@@ -1009,6 +1009,7 @@ const LABOR_CODES_DEFAULT = [
 const PAYROLL_GROUPS = [
   { code:'100', description:'Framing' },
   { code:'200', description:'Prelim' },
+  { code:'220', description:'Fire-Taping' },
   { code:'300', description:'Production' },
   { code:'400', description:'Taping' },
   { code:'500', description:'Over-Budget Labor' },
@@ -1028,6 +1029,7 @@ function getCodeGroup(codeStr) {
   if (!m) return String(codeStr||'');
   const n = parseInt(m[1], 10);
   if (n === 907)                  return '907'; // Exception: Supervision
+  if (n === 220)                  return '220'; // Exception: Fire Tape
   if (n >= 99  && n <= 199)       return '100'; // Framing
   if (n >= 200 && n <= 299)       return '200'; // Prelim
   if (n >= 300 && n <= 399)       return '300'; // Production
