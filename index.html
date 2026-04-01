@@ -728,7 +728,7 @@
             <button class="btn btn-outline" onclick="diPrint()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Print daily input">🖨 Print</button>
             <div style="width:1px;background:var(--border);margin:0 4px;height:24px;"></div>
             <button class="btn btn-outline" onclick="diClearDropdowns()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;color:var(--muted);" title="Clear areas, labor codes and notes">Clear</button>
-            <button id="di-admin-lock-btn" onclick="diToggleManualLock()" style="display:none;margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;background:none;border:1px solid #ef4444;color:#ef4444;border-radius:6px;cursor:pointer;" title="Lock inputs for this date/job">🔒 Lock Inputs</button>
+
             <button id="di-unlock-req-btn" onclick="diOpenUnlockRequestsModal()" style="display:none;position:relative;margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;background:none;border:1px solid #f59e0b;color:#f59e0b;border-radius:6px;cursor:pointer;" title="Access requests">🔓 Requests <span id="di-unlock-req-badge" style="display:none;background:#ef4444;color:#fff;border-radius:9px;padding:1px 6px;font-size:.72rem;margin-left:2px;font-weight:700;">0</span></button>
 
           </div>
@@ -2432,11 +2432,10 @@ function diInit() {
     `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
   diPopulateJobSelect();
 
+  diSubscribeUnlockGrants(); // load grants immediately on init for all roles
   diUpdateLockState();
   if (isAdmin() || isPM()) {
     diSubscribePendingRequests();
-    const adminLockBtn = document.getElementById('di-admin-lock-btn');
-    if (adminLockBtn) adminLockBtn.style.display = 'inline-flex';
   }
   diRenderCrewTabs();
   diRenderCrewTable();
@@ -2601,10 +2600,13 @@ function _diDraftDocId() {
 }
 
 async function diSaveDraft() {
-  const docId   = _diDraftDocId();
   const date    = document.getElementById('di-date').value;
   const jobName = document.getElementById('ps-job-select').value;
-  if (!docId) { alert('Please select a date and job before saving a draft.'); return; }
+  if (!date || !jobName) { alert('Please select a date and job before saving a draft.'); return; }
+
+  // Each manual save creates a new timestamped doc (never overwrites previous drafts)
+  const ts    = Date.now();
+  const docId = ('draft_' + (jobName + '_' + date + '_' + ts)).replace(/[^\w-]/g, '_');
 
   const empCount = Object.values(_diData).reduce((s, rows) =>
     s + (rows||[]).filter(r => (r.employee||'').trim()).length, 0);
@@ -2620,8 +2622,27 @@ async function diSaveDraft() {
   };
   try {
     await db.collection('drafts').doc(docId).set(doc);
-    diOpenDraftsModal();
+    // Update Drafts button count
+    db.collection('drafts').get().then(snap => {
+      const btn = document.getElementById('di-drafts-btn');
+      if (btn) btn.textContent = snap.size ? `📋 Drafts (${snap.size})` : '📋 Drafts';
+    }).catch(() => {});
+    _diShowToast('Draft saved ✓');
   } catch(e) { alert('Could not save draft: ' + e.message); }
+}
+
+function _diShowToast(msg) {
+  let toast = document.getElementById('di-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'di-toast';
+    toast.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;font-weight:700;font-size:.88rem;padding:10px 22px;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:9999;pointer-events:none;transition:opacity .4s;opacity:0;white-space:nowrap;';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.opacity = '1';
+  clearTimeout(toast._hideTimer);
+  toast._hideTimer = setTimeout(() => { toast.style.opacity = '0'; }, 2400);
 }
 
 async function diClearDraft() {
@@ -2696,13 +2717,14 @@ function _diRenderDraftsList() {
     const crewsWithData = Object.keys(d.data||{})
       .filter(c => (d.data[c]||[]).some(r => (r.employee||'').trim() || (r.area||'').trim()))
       .map(c => `Crew ${c}`).join(', ');
-    const dateDisp = d.date ? new Date(d.date + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
-    const savedDisp = d.savedAt ? new Date(d.savedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}) : '';
+    const dateDisp  = d.date ? new Date(d.date + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+    const savedDisp = d.savedAt ? new Date(d.savedAt).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true}) : '';
     const emp = d.empCount || 0;
     return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="diLoadDraftById('${eh(d.id)}')">
       <div style="flex:1;min-width:0;">
         <div style="font-weight:600;font-size:.88rem;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${eh(d.job)}</div>
-        <div style="font-size:.78rem;color:var(--muted);margin-top:2px;">${dateDisp}${savedDisp?' · Saved '+savedDisp:''}${crewsWithData?' · '+crewsWithData:''}${emp?' · '+emp+' employee'+(emp!==1?'s':''):''}</div>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:2px;">For: ${dateDisp}${crewsWithData?' · '+crewsWithData:''}${emp?' · '+emp+' employee'+(emp!==1?'s':''):''}</div>
+        ${savedDisp ? `<div style="font-size:.74rem;color:var(--muted);margin-top:1px;">Saved: ${savedDisp}</div>` : ''}
       </div>
       <button class="btn btn-outline" style="margin:0;padding:5px 14px;font-size:.78rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" onclick="event.stopPropagation();diLoadDraftById('${eh(d.id)}')">Load</button>
       <button class="btn btn-outline" style="margin:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;color:#ef4444;border-color:#ef4444;" onclick="event.stopPropagation();diDeleteDraftById('${eh(d.id)}')" title="Delete draft">✕</button>
@@ -4596,18 +4618,6 @@ function diUpdateLockState() {
   const tableW   = document.getElementById('di-table-wrap');
   const saveBtn  = document.getElementById('di-save-btn');
   const addBtn   = document.getElementById('di-add-row-btn');
-  const lockBtn  = document.getElementById('di-admin-lock-btn');
-  const key      = _diLockKey();
-  const isLocked = !!_diManualLocks[key];
-
-  // Update admin lock button label
-  if (lockBtn && (isAdmin() || isPM())) {
-    lockBtn.style.display = 'inline-flex';
-    lockBtn.textContent   = isLocked ? '🔓 Unlock Inputs' : '🔒 Lock Inputs';
-    lockBtn.style.borderColor = isLocked ? '#10b981' : '#ef4444';
-    lockBtn.style.color       = isLocked ? '#10b981' : '#ef4444';
-  }
-
   if (locked) {
     if (msg) msg.textContent = _diLockReason();
     let actionHTML = '';
