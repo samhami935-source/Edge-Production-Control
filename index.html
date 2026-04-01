@@ -4589,8 +4589,7 @@ function diIsLocked() {
   if (grant && grant.expiresAt && new Date(grant.expiresAt) > new Date()) return false;
 
   if (date) {
-    // Use noon to avoid DST edge cases
-    const d   = new Date(date + 'T12:00:00');
+    const d   = new Date(date + 'T12:00:00'); // noon avoids DST issues
     const dow = d.getDay(); // 0=Sun, 6=Sat
     if (dow === 0 || dow === 6) return true; // weekends always locked
 
@@ -4598,10 +4597,12 @@ function diIsLocked() {
     todayMidnight.setHours(0, 0, 0, 0);
     const dateMidnight = new Date(date + 'T00:00:00');
 
-    if (dateMidnight < todayMidnight) return true; // past dates always locked
+    // Past or future dates — not today — are locked
+    if (dateMidnight.getTime() !== todayMidnight.getTime()) return true;
 
-    // Today after 4:00 PM
-    if (dateMidnight.getTime() === todayMidnight.getTime() && new Date().getHours() >= 16) return true;
+    // Today: only open Mon–Fri between 4:00 AM and 4:00 PM
+    const hour = new Date().getHours();
+    if (hour < 4 || hour >= 16) return true;
   }
 
   // Admin manual lock
@@ -4618,9 +4619,10 @@ function _diLockReason() {
     if (dow === 0 || dow === 6) return '🔒 Daily inputs are closed on weekends.';
     const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
     const dateMidnight  = new Date(date + 'T00:00:00');
-    if (dateMidnight < todayMidnight) return '🔒 Past date — this entry is locked.';
-    if (dateMidnight.getTime() === todayMidnight.getTime() && new Date().getHours() >= 16)
-      return '🔒 Deadline passed — daily inputs were locked at 4:00 PM.';
+    if (dateMidnight.getTime() !== todayMidnight.getTime()) return '🔒 Inputs are only open for today\'s date.';
+    const hour = new Date().getHours();
+    if (hour < 4)  return '🔒 Daily inputs open at 4:00 AM.';
+    if (hour >= 16) return '🔒 Deadline passed — daily inputs were locked at 4:00 PM.';
   }
   const key = _diLockKey();
   if (_diManualLocks[key]) return '🔒 This date has been locked by an admin.';
