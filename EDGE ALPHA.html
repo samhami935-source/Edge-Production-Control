@@ -4547,7 +4547,7 @@ function diIsLocked() {
 
   // Active unlock grant overrides all automatic locks
   const grant = _diUnlockGrants[key];
-  if (grant && grant.status === 'approved' && grant.expiresAt && new Date(grant.expiresAt) > new Date()) return false;
+  if (grant && grant.expiresAt && new Date(grant.expiresAt) > new Date()) return false;
 
   if (date) {
     // Use noon to avoid DST edge cases
