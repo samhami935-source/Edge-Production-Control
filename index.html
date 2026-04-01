@@ -4650,8 +4650,9 @@ function diUpdateLockState() {
     banner.style.display  = 'flex';
     if (tableW)  { tableW.style.pointerEvents = 'none'; tableW.style.opacity = '0.45'; }
     if (saveBtn)  saveBtn.disabled  = true;
-    if (draftBtn) draftBtn.disabled = true;
     if (addBtn)   addBtn.disabled   = true;
+    // Save Draft stays enabled — foremen should always be able to save their progress
+    if (draftBtn) draftBtn.disabled = false;
 
   } else if (activeGrant && (isAdmin() || isPM())) {
     // Admin-unlocked state — show green banner with Lock button
