@@ -1291,11 +1291,13 @@ function updateAdminUI() {
     const hasFiles = getSavedCSVFiles().length > 0;
     document.getElementById('budgets-locked-notice').style.display = (!canEdit() && !hasFiles) ? 'flex' : 'none';
   }
-  // Foreman only sees Payroll tab
+  // Tab visibility by role
+  const payrollTab = document.getElementById('payroll-tab');
   const budgetsTab = document.getElementById('budgets-tab');
   const lcTab      = document.getElementById('lc-tab');
-  if (budgetsTab) budgetsTab.style.display = isForeman() ? 'none' : '';
-  if (lcTab)      lcTab.style.display      = isForeman() ? 'none' : '';
+  if (payrollTab) payrollTab.style.display = isForeman() ? 'none' : '';  // foremen can't see Payroll
+  if (budgetsTab) budgetsTab.style.display = isForeman() ? 'none' : '';  // foremen can't see Budgets
+  if (lcTab)      lcTab.style.display      = '';                         // everyone can see Labor Codes
   renderTabBar();
 }
 
@@ -1669,8 +1671,9 @@ function switchToLaborCodes() {
   renderTabBar();
   showPanel('lc');
   renderLCTable();
-  document.getElementById('lc-admin-form').style.display=isAdmin()?'block':'none';
-  document.getElementById('lc-action-col').textContent=isAdmin()?'Action':'';
+  const canEditLC = isAdmin() || isPM();
+  document.getElementById('lc-admin-form').style.display = canEditLC ? 'block' : 'none';
+  document.getElementById('lc-action-col').textContent   = canEditLC ? 'Action' : '';
 }
 
 function renderLCTable() {
