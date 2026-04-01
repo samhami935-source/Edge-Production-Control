@@ -693,7 +693,7 @@
           <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;flex:1;min-width:0;">
             <div style="display:flex;flex-direction:column;gap:1px;">
               <label style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;white-space:nowrap;">Date</label>
-              <input type="date" id="di-date" class="fi" style="width:150px;padding:5px 8px;font-size:.85rem;" onchange="diLoadDraftIfExists()" />
+              <input type="date" id="di-date" class="fi" style="width:150px;padding:5px 8px;font-size:.85rem;" onchange="diLoadDraftIfExists();diUpdateLockState();" />
             </div>
             <div style="display:flex;flex-direction:column;gap:1px;flex:1;min-width:0;">
               <label style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;white-space:nowrap;">Active Job</label>
@@ -706,23 +706,31 @@
           <div style="width:1px;background:var(--border);"></div>
           <!-- Action buttons -->
           <div style="display:flex;align-items:center;gap:2px;padding:8px 10px;flex-shrink:0;">
-            <button class="btn" onclick="submitDailyInput()" style="margin-top:0;padding:7px 16px;font-size:.83rem;white-space:nowrap;">💾 Save Daily Input</button>
-            <button class="btn btn-outline" onclick="diSaveDraft()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="Save progress as a draft — does not create a paysheet">📌 Save Draft</button>
+            <button id="di-save-btn" class="btn" onclick="submitDailyInput()" style="margin-top:0;padding:7px 16px;font-size:.83rem;white-space:nowrap;">💾 Save Daily Input</button>
+            <button id="di-draft-btn" class="btn btn-outline" onclick="diSaveDraft()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="Save progress as a draft — does not create a paysheet">📌 Save Draft</button>
             <button class="btn btn-outline" onclick="diOpenDraftsModal()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="View and load saved drafts" id="di-drafts-btn">📋 Drafts</button>
             <button class="btn btn-outline" onclick="openLoadPaysheetModal()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Load saved daily or weekly paysheets">📂 Saved Paysheets</button>
             <button class="btn btn-outline" onclick="diExportExcel()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Export daily input to Excel">📊 Export</button>
             <button class="btn btn-outline" onclick="diPrint()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Print daily input">🖨 Print</button>
             <div style="width:1px;background:var(--border);margin:0 4px;height:24px;"></div>
             <button class="btn btn-outline" onclick="diClearDropdowns()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;color:var(--muted);" title="Clear areas, labor codes and notes">Clear</button>
+            <button id="di-unlock-req-btn" onclick="diOpenUnlockRequestsModal()" style="display:none;position:relative;margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;background:none;border:1px solid #f59e0b;color:#f59e0b;border-radius:6px;cursor:pointer;" title="Pending unlock requests">🔓 Requests <span id="di-unlock-req-badge" style="background:#ef4444;color:#fff;border-radius:9px;padding:1px 6px;font-size:.72rem;margin-left:2px;font-weight:700;">0</span></button>
           </div>
         </div>
 
         <div style="padding:16px;padding-top:12px;">
 
+        <!-- Lock banner -->
+        <div id="di-lock-banner" style="display:none;align-items:center;gap:12px;background:#1a1a2e;border:1px solid #f59e0b;border-radius:8px;padding:10px 16px;margin-bottom:14px;flex-wrap:wrap;">
+          <span id="di-lock-msg" style="color:#f59e0b;font-weight:600;font-size:.88rem;flex:1;min-width:180px;">🔒 Locked</span>
+          <div id="di-lock-actions" style="display:flex;gap:8px;align-items:center;"></div>
+        </div>
+
         <!-- Crew tabs -->
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;" id="di-crew-tabs"></div>
 
         <!-- Crew input table -->
+        <div id="di-table-wrap">
         <div style="overflow-x:auto;">
           <table style="min-width:700px;width:100%;border-collapse:collapse;">
             <thead>
@@ -736,7 +744,8 @@
             <tbody id="di-crew-tbody"></tbody>
           </table>
         </div>
-        <button class="btn btn-outline" style="margin-top:8px;font-size:.8rem;padding:5px 14px;" onclick="diAddRow()">+ Add Row</button>
+        <button id="di-add-row-btn" class="btn btn-outline" style="margin-top:8px;font-size:.8rem;padding:5px 14px;" onclick="diAddRow()">+ Add Row</button>
+        </div><!-- /di-table-wrap -->
 
         <!-- Daily Log -->
         <div style="margin-top:24px;">
@@ -783,15 +792,15 @@
         <div style="display:flex;flex-direction:column;gap:9px;">
           <div style="display:flex;align-items:center;gap:8px;">
             <label style="min-width:120px;font-weight:700;">Project Name:</label>
-            <input id="ps-project" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
+            <input id="ps-project" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" oninput="diPersistHeaderToJobMeta()" />
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <label style="min-width:120px;font-weight:700;">Foreman Name:</label>
-            <input id="ps-foreman" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
+            <input id="ps-foreman" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" oninput="diPersistHeaderToJobMeta()" />
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <label style="min-width:120px;font-weight:700;">Crew Name:</label>
-            <input id="ps-crew" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
+            <input id="ps-crew" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" oninput="diPersistHeaderToJobMeta()" />
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <label style="min-width:120px;font-weight:700;">Week Ending:</label>
@@ -1066,6 +1075,11 @@ async function loadAllData() {
   _cache.workorders = woSnap.docs.map(d => d.data());
   _cache.laborcodes = lcDoc.exists ? (lcDoc.data().codes || []) : [];
   _cache.paysheets  = paysheetsSnap.docs.map(d => d.data());
+  // Load job metadata (project name, foreman, crew name per job)
+  try {
+    const metaSnap = await db.collection('jobmeta').get();
+    metaSnap.docs.forEach(d => { _jobMeta[d.id] = d.data(); });
+  } catch(e) { /* jobmeta collection may not exist yet */ }
 }
 
 function isAdmin()   { return _currentUserRole === 'admin'; }
@@ -2354,6 +2368,16 @@ let _diActiveCrew = 1;
 let _diData = {};
 // _diAllData[jobName][crew][row] — persists inputs per job while the session is open
 let _diAllData = {};
+// Per-job metadata (project, foreman, crewName) — loaded from Firestore jobmeta collection
+let _jobMeta = {};
+// Unlock grants keyed by "date__job" — populated by onSnapshot on unlockGrants collection
+let _diUnlockGrants = {};
+// onSnapshot unsub for unlock grants listener
+let _diUnlockGrantsUnsub = null;
+// onSnapshot unsub for pending requests (admin badge)
+let _diPendingReqUnsub = null;
+// Interval handle for 4pm lock check
+let _diLockCheckInterval = null;
 
 function _diEmptyCrewData() {
   const d = {};
@@ -2386,6 +2410,12 @@ function diInit() {
   document.getElementById('di-date').value =
     `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
   diPopulateJobSelect();
+  // Start lock state check (re-checks every 30s to catch 4pm transition)
+  if (_diLockCheckInterval) clearInterval(_diLockCheckInterval);
+  _diLockCheckInterval = setInterval(diUpdateLockState, 30000);
+  diUpdateLockState();
+  // Admin: subscribe to pending unlock requests for badge
+  if (isAdmin() || isPM()) diSubscribePendingRequests();
   diRenderCrewTabs();
   diRenderCrewTable();
   diLoadLog();
@@ -3272,6 +3302,8 @@ function onJobChanged() {
   // Reset filters and page on job change
   _psFilterCode = '';
   _psCurrentPage = 0;
+  // Auto-fill paysheet header from job metadata
+  if (jobName) diAutoFillPaysheetHeader(jobName);
   // Update paysheet
   psPopulateAreaBudgetSelect();
   psRenderMainTable();
@@ -3281,6 +3313,9 @@ function onJobChanged() {
   diRenderCrewTable();
   diRenderLogRows(); // re-filter existing live data for the new job
   diLoadDraftIfExists();
+  diUpdateLockState();
+  // Subscribe to unlock grants for current user + job
+  diSubscribeUnlockGrants();
 }
 
 function psJobChanged() { onJobChanged(); }
@@ -4470,6 +4505,276 @@ function exportPaysheetExcel() {
 }
 
 // ═══════════════════════════
+//  JOB METADATA (auto-fill)
+// ═══════════════════════════
+
+function diGetJobMeta(jobName) {
+  return _jobMeta[jobName] || { project: '', foreman: '', crewName: '' };
+}
+
+async function diSaveJobMeta(jobName, meta) {
+  if (!jobName) return;
+  _jobMeta[jobName] = Object.assign(_jobMeta[jobName] || {}, meta);
+  try {
+    await db.collection('jobmeta').doc(jobName.replace(/[^\w-]/g, '_')).set(_jobMeta[jobName], { merge: true });
+  } catch(e) { console.warn('jobmeta save failed', e); }
+}
+
+function diAutoFillPaysheetHeader(jobName) {
+  const meta = diGetJobMeta(jobName);
+  // Fill all crew state headers from job meta (don't overwrite if meta is empty)
+  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+    const h = _psState[c].header;
+    if (meta.project)  h.project  = meta.project;
+    if (meta.foreman)  h.foreman  = meta.foreman;
+    if (meta.crewName) h.crewName = meta.crewName;
+  }
+  // Update visible fields
+  const pEl = document.getElementById('ps-project');
+  const fEl = document.getElementById('ps-foreman');
+  const cEl = document.getElementById('ps-crew');
+  if (pEl && meta.project)  pEl.value = meta.project;
+  if (fEl && meta.foreman)  fEl.value = meta.foreman;
+  if (cEl && meta.crewName) cEl.value = meta.crewName;
+}
+
+// Call after user edits header fields on weekly paysheet to persist back to job meta
+function diPersistHeaderToJobMeta() {
+  const jobName = document.getElementById('ps-job-select').value;
+  if (!jobName || _psCurrentType !== 'weekly') return;
+  _psSaveHeaderFields();
+  const h = _ps().header;
+  diSaveJobMeta(jobName, { project: h.project, foreman: h.foreman, crewName: h.crewName });
+}
+
+// ═══════════════════════════
+//  DAILY INPUT LOCK / DEADLINE
+// ═══════════════════════════
+
+function _todayStr() {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+}
+
+function diIsLocked() {
+  const date = document.getElementById('di-date') ? document.getElementById('di-date').value : '';
+  if (!date) return false;
+  const today = _todayStr();
+  const now   = new Date();
+  const job   = (document.getElementById('ps-job-select') || {}).value || '';
+  const key   = date + '__' + job;
+  // Check active unlock grant
+  const grant = _diUnlockGrants[key];
+  if (grant && new Date(grant.expiresAt) > now) return false;
+  // Future date — locked
+  if (date > today) return true;
+  // Past date — locked
+  if (date < today) return true;
+  // Today after 4:00 PM
+  if (date === today && now.getHours() >= 16) return true;
+  return false;
+}
+
+function diGetLockReason() {
+  const date  = document.getElementById('di-date').value;
+  const today = _todayStr();
+  const now   = new Date();
+  if (date > today) return 'You cannot enter inputs for a future date.';
+  if (date < today) {
+    const d = new Date(date + 'T12:00:00');
+    return `The submission window for ${d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} has closed.`;
+  }
+  return 'The 4:00 PM deadline has passed for today\'s inputs.';
+}
+
+function diUpdateLockState() {
+  const locked  = diIsLocked();
+  const banner  = document.getElementById('di-lock-banner');
+  const msg     = document.getElementById('di-lock-msg');
+  const actions = document.getElementById('di-lock-actions');
+  const tableW  = document.getElementById('di-table-wrap');
+  const saveBtn = document.getElementById('di-save-btn');
+  const draftBtn= document.getElementById('di-draft-btn');
+  const addBtn  = document.getElementById('di-add-row-btn');
+  if (!banner) return;
+
+  if (locked) {
+    const reason = diGetLockReason();
+    const date   = document.getElementById('di-date').value;
+    const today  = _todayStr();
+    const now    = new Date();
+    const isPast = date < today || (date === today && now.getHours() >= 16);
+
+    if (msg) msg.textContent = '🔒 ' + reason;
+
+    let actionHTML = '';
+    if (isAdmin() || isPM()) {
+      actionHTML = `<button onclick="diAdminUnlock()" style="padding:6px 14px;font-size:.83rem;background:none;border:1px solid #10b981;color:#10b981;border-radius:6px;cursor:pointer;white-space:nowrap;">🔓 Unlock (2 hrs)</button>`;
+    } else if (isPast) {
+      const reqKey = (document.getElementById('di-date').value || '') + '__' + ((document.getElementById('ps-job-select')||{}).value||'');
+      const existing = _diUnlockGrants[reqKey];
+      if (existing && existing.status === 'pending') {
+        actionHTML = `<span style="font-size:.82rem;color:var(--muted);">Request pending…</span>`;
+      } else {
+        actionHTML = `<button onclick="diRequestUnlock()" style="padding:6px 14px;font-size:.83rem;background:none;border:1px solid #f59e0b;color:#f59e0b;border-radius:6px;cursor:pointer;white-space:nowrap;">📬 Request Access</button>`;
+      }
+    }
+    if (actions) actions.innerHTML = actionHTML;
+
+    banner.style.display  = 'flex';
+    if (tableW)  { tableW.style.pointerEvents = 'none'; tableW.style.opacity = '0.45'; }
+    if (saveBtn)  saveBtn.disabled  = true;
+    if (draftBtn) draftBtn.disabled = true;
+    if (addBtn)   addBtn.disabled   = true;
+  } else {
+    banner.style.display  = 'none';
+    if (tableW)  { tableW.style.pointerEvents = ''; tableW.style.opacity = ''; }
+    if (saveBtn)  saveBtn.disabled  = false;
+    if (draftBtn) draftBtn.disabled = false;
+    if (addBtn)   addBtn.disabled   = false;
+  }
+}
+
+async function diAdminUnlock() {
+  if (!isAdmin() && !isPM()) return;
+  const date   = document.getElementById('di-date').value;
+  const job    = (document.getElementById('ps-job-select')||{}).value || '';
+  if (!date) { alert('Please select a date first.'); return; }
+  const key      = date + '__' + job;
+  const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // +2 hours
+  const grant = { date, job, grantedTo: _currentUser ? _currentUser.uid : '', grantedBy: _currentUser ? _currentUser.email : '', grantedAt: new Date().toISOString(), expiresAt };
+  try {
+    await db.collection('unlockGrants').doc(key.replace(/[^\w-]/g, '_')).set(grant);
+    _diUnlockGrants[key] = grant;
+    diUpdateLockState();
+  } catch(e) { alert('Unlock failed: ' + e.message); }
+}
+
+async function diRequestUnlock() {
+  const date   = document.getElementById('di-date').value;
+  const job    = (document.getElementById('ps-job-select')||{}).value || '';
+  if (!date || !job) { alert('Please select a date and job first.'); return; }
+  const note = prompt('Reason for requesting access (required):', '');
+  if (note === null) return; // cancelled
+  if (!note.trim()) { alert('Please provide a reason.'); return; }
+  const reqId = ('req_' + date + '__' + job + '__' + (_currentUser ? _currentUser.uid : 'anon')).replace(/[^\w-]/g, '_');
+  const req = {
+    id: reqId, date, job,
+    requestedBy:    _currentUser ? _currentUser.uid    : '',
+    requestedByEmail: _currentUser ? _currentUser.email : '',
+    note: note.trim(),
+    requestedAt: new Date().toISOString(),
+    status: 'pending'
+  };
+  try {
+    await db.collection('unlockRequests').doc(reqId).set(req);
+    // Mark as pending in local state so button changes to "pending"
+    _diUnlockGrants[date + '__' + job] = { status: 'pending' };
+    diUpdateLockState();
+    alert('Access request sent. An admin will review it shortly.');
+  } catch(e) { alert('Request failed: ' + e.message); }
+}
+
+function diSubscribeUnlockGrants() {
+  if (_diUnlockGrantsUnsub) { _diUnlockGrantsUnsub(); _diUnlockGrantsUnsub = null; }
+  if (!_currentUser) return;
+  const uid = _currentUser.uid;
+  _diUnlockGrantsUnsub = db.collection('unlockGrants')
+    .where('grantedTo', '==', uid)
+    .onSnapshot(snap => {
+      snap.docs.forEach(d => {
+        const g = d.data();
+        const key = g.date + '__' + (g.job || '');
+        _diUnlockGrants[key] = g;
+      });
+      diUpdateLockState();
+    }, () => {});
+}
+
+function diSubscribePendingRequests() {
+  if (_diPendingReqUnsub) { _diPendingReqUnsub(); _diPendingReqUnsub = null; }
+  _diPendingReqUnsub = db.collection('unlockRequests')
+    .where('status', '==', 'pending')
+    .onSnapshot(snap => {
+      const count = snap.size;
+      const btn   = document.getElementById('di-unlock-req-btn');
+      const badge = document.getElementById('di-unlock-req-badge');
+      if (btn) btn.style.display = (isAdmin() || isPM()) && count > 0 ? 'inline-flex' : 'none';
+      if (badge) badge.textContent = count;
+    }, () => {});
+}
+
+function diOpenUnlockRequestsModal() {
+  document.getElementById('di-unlock-requests-modal').classList.add('open');
+  diRenderUnlockRequestsList();
+}
+
+function diCloseUnlockRequestsModal() {
+  document.getElementById('di-unlock-requests-modal').classList.remove('open');
+}
+
+async function diRenderUnlockRequestsList() {
+  const list = document.getElementById('di-unlock-requests-list');
+  list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:24px;">Loading…</p>';
+  try {
+    const snap = await db.collection('unlockRequests').orderBy('requestedAt', 'desc').limit(50).get();
+    if (snap.empty) {
+      list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:24px;">No requests found.</p>';
+      return;
+    }
+    list.innerHTML = snap.docs.map(d => {
+      const r = d.data();
+      const at = r.requestedAt ? new Date(r.requestedAt).toLocaleString() : '';
+      const statusColor = r.status === 'approved' ? '#10b981' : r.status === 'denied' ? '#ef4444' : '#f59e0b';
+      const statusLabel = r.status === 'approved' ? 'Approved' : r.status === 'denied' ? 'Denied' : 'Pending';
+      const actions = r.status === 'pending' && (isAdmin() || isPM())
+        ? `<button onclick="diApproveUnlock('${r.id}')" style="padding:4px 12px;font-size:.8rem;background:none;border:1px solid #10b981;color:#10b981;border-radius:5px;cursor:pointer;margin-right:6px;">Approve</button>
+           <button onclick="diDenyUnlock('${r.id}')" style="padding:4px 12px;font-size:.8rem;background:none;border:1px solid #ef4444;color:#ef4444;border-radius:5px;cursor:pointer;">Deny</button>`
+        : '';
+      return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+          <div>
+            <div style="font-weight:600;font-size:.88rem;">${r.requestedByEmail || r.requestedBy}</div>
+            <div style="color:var(--muted);font-size:.8rem;margin-top:2px;">${r.date} &nbsp;·&nbsp; ${r.job || 'No job'}</div>
+            <div style="font-size:.82rem;margin-top:6px;color:#ccc;">"${r.note}"</div>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:4px;">${at}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+            <span style="font-size:.78rem;font-weight:700;color:${statusColor};background:${statusColor}22;padding:3px 10px;border-radius:9px;">${statusLabel}</span>
+            <div>${actions}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    list.innerHTML = `<p style="color:#ef4444;text-align:center;padding:24px;">Error: ${e.message}</p>`;
+  }
+}
+
+async function diApproveUnlock(reqId) {
+  try {
+    const snap = await db.collection('unlockRequests').doc(reqId).get();
+    if (!snap.exists) return;
+    const r = snap.data();
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const key = r.date + '__' + (r.job || '');
+    const grant = { date: r.date, job: r.job || '', grantedTo: r.requestedBy, grantedBy: _currentUser ? _currentUser.email : '', grantedAt: new Date().toISOString(), expiresAt };
+    await Promise.all([
+      db.collection('unlockGrants').doc(key.replace(/[^\w-]/g, '_') + '__' + r.requestedBy).set(grant),
+      db.collection('unlockRequests').doc(reqId).update({ status: 'approved', reviewedBy: _currentUser ? _currentUser.email : '', reviewedAt: new Date().toISOString(), expiresAt })
+    ]);
+    diRenderUnlockRequestsList();
+  } catch(e) { alert('Approve failed: ' + e.message); }
+}
+
+async function diDenyUnlock(reqId) {
+  try {
+    await db.collection('unlockRequests').doc(reqId).update({ status: 'denied', reviewedBy: _currentUser ? _currentUser.email : '', reviewedAt: new Date().toISOString() });
+    diRenderUnlockRequestsList();
+  } catch(e) { alert('Deny failed: ' + e.message); }
+}
+
+// ═══════════════════════════
 //  INIT
 // ═══════════════════════════
 function appInit() {
@@ -4492,6 +4797,22 @@ document.getElementById('ps-save-dest-modal').addEventListener('click', e => {
 document.getElementById('ps-sig-modal').addEventListener('click', e => {
   if (e.target === e.currentTarget) psCancelSignature();
 });
+
+
 </script>
+
+<!-- Unlock Requests Modal (admin only) -->
+<div class="modal-overlay" id="di-unlock-requests-modal" onclick="if(event.target===this)diCloseUnlockRequestsModal()">
+  <div class="modal" style="width:600px;max-width:96vw;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 style="margin:0;">🔓 Unlock Requests</h2>
+      <button onclick="diCloseUnlockRequestsModal()" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:4px;">×</button>
+    </div>
+    <div id="di-unlock-requests-list" style="max-height:420px;overflow-y:auto;">
+      <p style="color:var(--muted);text-align:center;padding:24px;">Loading…</p>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
