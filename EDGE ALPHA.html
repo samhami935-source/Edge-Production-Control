@@ -4556,16 +4556,25 @@ function _todayStr() {
   return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
 }
 
+function _diActiveGrantKey() {
+  const date = document.getElementById('di-date') ? document.getElementById('di-date').value : '';
+  const job  = (document.getElementById('ps-job-select') || {}).value || '';
+  return date + '__' + job;
+}
+
+function diHasActiveGrant() {
+  const key   = _diActiveGrantKey();
+  const grant = _diUnlockGrants[key];
+  return (grant && grant.expiresAt && new Date(grant.expiresAt) > new Date()) ? grant : null;
+}
+
 function diIsLocked() {
   const date = document.getElementById('di-date') ? document.getElementById('di-date').value : '';
   if (!date) return false;
   const today = _todayStr();
   const now   = new Date();
-  const job   = (document.getElementById('ps-job-select') || {}).value || '';
-  const key   = date + '__' + job;
   // Check active unlock grant
-  const grant = _diUnlockGrants[key];
-  if (grant && new Date(grant.expiresAt) > now) return false;
+  if (diHasActiveGrant()) return false;
   // Future date — locked
   if (date > today) return true;
   // Past date — locked
@@ -4598,6 +4607,8 @@ function diUpdateLockState() {
   const addBtn  = document.getElementById('di-add-row-btn');
   if (!banner) return;
 
+  const activeGrant = diHasActiveGrant();
+
   if (locked) {
     const reason = diGetLockReason();
     const date   = document.getElementById('di-date').value;
@@ -4605,7 +4616,10 @@ function diUpdateLockState() {
     const now    = new Date();
     const isPast = date < today || (date === today && now.getHours() >= 16);
 
-    if (msg) msg.textContent = '🔒 ' + reason;
+    // Set locked banner styling
+    banner.style.background   = '#1a1a2e';
+    banner.style.borderColor  = '#f59e0b';
+    if (msg) { msg.style.color = '#f59e0b'; msg.textContent = '🔒 ' + reason; }
 
     let actionHTML = '';
     if (isAdmin() || isPM()) {
@@ -4626,6 +4640,21 @@ function diUpdateLockState() {
     if (saveBtn)  saveBtn.disabled  = true;
     if (draftBtn) draftBtn.disabled = true;
     if (addBtn)   addBtn.disabled   = true;
+
+  } else if (activeGrant && (isAdmin() || isPM())) {
+    // Admin-unlocked state — show green banner with Lock button
+    const exp  = new Date(activeGrant.expiresAt);
+    const hhmm = exp.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    banner.style.background  = '#0a2218';
+    banner.style.borderColor = '#10b981';
+    if (msg) { msg.style.color = '#10b981'; msg.textContent = `🔓 Admin-unlocked until ${hhmm}.`; }
+    if (actions) actions.innerHTML = `<button onclick="diAdminLock()" style="padding:6px 14px;font-size:.83rem;background:none;border:1px solid #ef4444;color:#ef4444;border-radius:6px;cursor:pointer;white-space:nowrap;">🔒 Lock</button>`;
+    banner.style.display  = 'flex';
+    if (tableW)  { tableW.style.pointerEvents = ''; tableW.style.opacity = ''; }
+    if (saveBtn)  saveBtn.disabled  = false;
+    if (draftBtn) draftBtn.disabled = false;
+    if (addBtn)   addBtn.disabled   = false;
+
   } else {
     banner.style.display  = 'none';
     if (tableW)  { tableW.style.pointerEvents = ''; tableW.style.opacity = ''; }
@@ -4648,6 +4677,18 @@ async function diAdminUnlock() {
     _diUnlockGrants[key] = grant;
     diUpdateLockState();
   } catch(e) { alert('Unlock failed: ' + e.message); }
+}
+
+async function diAdminLock() {
+  if (!isAdmin() && !isPM()) return;
+  const date = document.getElementById('di-date').value;
+  const job  = (document.getElementById('ps-job-select')||{}).value || '';
+  const key  = date + '__' + job;
+  try {
+    await db.collection('unlockGrants').doc(key.replace(/[^\w-]/g, '_')).delete();
+    delete _diUnlockGrants[key];
+    diUpdateLockState();
+  } catch(e) { alert('Lock failed: ' + e.message); }
 }
 
 async function diRequestUnlock() {
