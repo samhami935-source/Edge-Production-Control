@@ -2580,30 +2580,15 @@ function diAreaInput(input, crew, rowIdx) {
 }
 
 function diAreaBlur(input, crew, rowIdx) {
-  // Delay so mousedown on an option fires first
-  setTimeout(() => {
-    const dropdown = input.nextElementSibling;
-    if (dropdown) dropdown.style.display = 'none';
-    const q   = input.value.trim();
-    const all = _diAreaList();
-    if (q) {
-      // User typed something — match it or restore last saved value
-      const match = all.find(a => a.toLowerCase() === q.toLowerCase());
-      if (match) {
-        _diData[crew][rowIdx].area = match;
-        diRenderCrewTable();
-        diAutoSaveDraft();
-      } else {
-        // No match — restore previously saved value
-        input.value = _diData[crew][rowIdx].area || '';
-      }
-    }
-    // If q is empty, diAreaPick already handled it — don't overwrite
-  }, 150);
+  // Do NOT close the dropdown or clear text on blur.
+  // Closing is handled by the document-level outside-tap listener below.
+  // This allows the iPad keyboard to be dismissed without losing the dropdown or typed text.
 }
 
 function diAreaPick(area, crew, rowIdx) {
   _diData[crew][rowIdx].area = area;
+  // Close all open area dropdowns
+  document.querySelectorAll('.di-area-dropdown').forEach(d => d.style.display = 'none');
   diRenderCrewTable();
   diAutoSaveDraft();
 }
@@ -5012,8 +4997,14 @@ document.getElementById('ps-sig-modal').addEventListener('click', e => {
   if (e.target === e.currentTarget) psCancelSignature();
 });
 
-
-
+// Close area combobox dropdowns when tapping/clicking outside the combobox
+['mousedown', 'touchstart'].forEach(evt => {
+  document.addEventListener(evt, e => {
+    if (!e.target.closest('.di-area-wrap')) {
+      document.querySelectorAll('.di-area-dropdown').forEach(d => d.style.display = 'none');
+    }
+  }, { passive: true });
+});
 
 </script>
 
