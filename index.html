@@ -2584,23 +2584,21 @@ function diAreaBlur(input, crew, rowIdx) {
   setTimeout(() => {
     const dropdown = input.nextElementSibling;
     if (dropdown) dropdown.style.display = 'none';
-    // If typed value matches an area exactly (case-insensitive), save it; otherwise keep previous
-    const q    = input.value.trim();
-    const all  = _diAreaList();
-    const match = all.find(a => a.toLowerCase() === q.toLowerCase());
-    if (match) {
-      _diData[crew][rowIdx].area = match;
-      input.value = match;
-      diRenderCrewTable();
-      diAutoSaveDraft();
-    } else if (!q) {
-      _diData[crew][rowIdx].area = '';
-      diRenderCrewTable();
-      diAutoSaveDraft();
-    } else {
-      // Restore last saved value
-      input.value = _diData[crew][rowIdx].area || '';
+    const q   = input.value.trim();
+    const all = _diAreaList();
+    if (q) {
+      // User typed something — match it or restore last saved value
+      const match = all.find(a => a.toLowerCase() === q.toLowerCase());
+      if (match) {
+        _diData[crew][rowIdx].area = match;
+        diRenderCrewTable();
+        diAutoSaveDraft();
+      } else {
+        // No match — restore previously saved value
+        input.value = _diData[crew][rowIdx].area || '';
+      }
     }
+    // If q is empty, diAreaPick already handled it — don't overwrite
   }, 150);
 }
 
