@@ -2559,8 +2559,15 @@ function _diAreaRenderDropdown(input, crew, rowIdx) {
   const filtered = q ? all.filter(a => a.toLowerCase().includes(q)) : all;
   if (!filtered.length) { dropdown.style.display = 'none'; return; }
   dropdown.innerHTML = filtered.map(a =>
-    `<div class="di-area-opt" onmousedown="diAreaPick(this,'${eh(a)}',${crew},${rowIdx})">${eh(a)}</div>`
+    `<div class="di-area-opt" data-area="${eh(a)}" data-crew="${crew}" data-row="${rowIdx}">${eh(a)}</div>`
   ).join('');
+  // Attach mousedown listeners directly so special chars in area names don't break anything
+  dropdown.querySelectorAll('.di-area-opt').forEach(el => {
+    el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      diAreaPick(el.dataset.area, parseInt(el.dataset.crew), parseInt(el.dataset.row));
+    });
+  });
   dropdown.style.display = 'block';
 }
 
@@ -2597,7 +2604,7 @@ function diAreaBlur(input, crew, rowIdx) {
   }, 150);
 }
 
-function diAreaPick(el, area, crew, rowIdx) {
+function diAreaPick(area, crew, rowIdx) {
   _diData[crew][rowIdx].area = area;
   diRenderCrewTable();
   diAutoSaveDraft();
@@ -2622,7 +2629,8 @@ function diAreaKey(e, input) {
     opts[hi].scrollIntoView({ block:'nearest' });
   } else if (e.key === 'Enter' && hi >= 0) {
     e.preventDefault();
-    opts[hi].dispatchEvent(new MouseEvent('mousedown'));
+    const el = opts[hi];
+    diAreaPick(el.dataset.area, parseInt(el.dataset.crew), parseInt(el.dataset.row));
   } else if (e.key === 'Escape') {
     dropdown.style.display = 'none';
   }
