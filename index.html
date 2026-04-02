@@ -157,6 +157,13 @@
     /* Section visibility */
     #csv-content{display:none;} #payroll-content{display:none;} #budgets-content{display:none;} #lc-content{display:none;}
 
+    /* ── DI Area searchable combobox ── */
+    .di-area-wrap { position:relative; width:100%; }
+    .di-area-wrap input { width:100%; }
+    .di-area-dropdown { position:absolute; top:100%; left:0; right:0; background:var(--surface2); border:1px solid var(--accent); border-top:none; border-radius:0 0 8px 8px; max-height:220px; overflow-y:auto; z-index:999; display:none; }
+    .di-area-opt { padding:7px 12px; font-size:.83rem; cursor:pointer; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .di-area-opt:hover, .di-area-opt.hi { background:var(--accent); color:#000; font-weight:600; }
+
     /* ── Auth Screen ── */
     #auth-screen { position:fixed; inset:0; background:var(--bg); z-index:9999; display:none; align-items:center; justify-content:center; padding:24px; }
     #app-screen  { display:none; }
@@ -2493,9 +2500,6 @@ function diRenderCrewTable() {
   const rows    = _diData[_diActiveCrew];
 
   tbody.innerHTML = rows.map((row, i) => {
-    const areaOpts = ['<option value=""></option>',
-      ...areas.map(a => `<option value="${eh(a)}" ${row.area===a?'selected':''}>${eh(a)}</option>`)
-    ].join('');
 
     let codeOpts = '<option value=""></option>';
     if (jobName && row.area) {
@@ -2517,9 +2521,14 @@ function diRenderCrewTable() {
           oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft()" />
       </td>
       <td style="padding:6px 8px;">
-        <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].area=this.value;diRenderCrewTable();diAutoSaveDraft()">
-          ${areaOpts}
-        </select>
+        <div class="di-area-wrap">
+          <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.area)}" placeholder="Search area…"
+            oninput="diAreaInput(this,${_diActiveCrew},${i})"
+            onfocus="diAreaOpen(this,${_diActiveCrew},${i})"
+            onblur="diAreaBlur(this,${_diActiveCrew},${i})"
+            onkeydown="diAreaKey(event,this)" autocomplete="off" />
+          <div class="di-area-dropdown"></div>
+        </div>
       </td>
       <td style="padding:6px 8px;">
         <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value;diAutoSaveDraft()">
@@ -2535,6 +2544,88 @@ function diRenderCrewTable() {
       </td>
     </tr>`;
   }).join('');
+}
+
+// ── Area combobox helpers ──
+function _diAreaList() {
+  const jobName = document.getElementById('ps-job-select').value;
+  return jobName ? psGetAreas(jobName) : [];
+}
+
+function _diAreaRenderDropdown(input, crew, rowIdx) {
+  const q        = input.value.trim().toLowerCase();
+  const dropdown = input.nextElementSibling;
+  const all      = _diAreaList();
+  const filtered = q ? all.filter(a => a.toLowerCase().includes(q)) : all;
+  if (!filtered.length) { dropdown.style.display = 'none'; return; }
+  dropdown.innerHTML = filtered.map(a =>
+    `<div class="di-area-opt" onmousedown="diAreaPick(this,'${eh(a)}',${crew},${rowIdx})">${eh(a)}</div>`
+  ).join('');
+  dropdown.style.display = 'block';
+}
+
+function diAreaOpen(input, crew, rowIdx) {
+  _diAreaRenderDropdown(input, crew, rowIdx);
+}
+
+function diAreaInput(input, crew, rowIdx) {
+  _diAreaRenderDropdown(input, crew, rowIdx);
+}
+
+function diAreaBlur(input, crew, rowIdx) {
+  // Delay so mousedown on an option fires first
+  setTimeout(() => {
+    const dropdown = input.nextElementSibling;
+    if (dropdown) dropdown.style.display = 'none';
+    // If typed value matches an area exactly (case-insensitive), save it; otherwise keep previous
+    const q    = input.value.trim();
+    const all  = _diAreaList();
+    const match = all.find(a => a.toLowerCase() === q.toLowerCase());
+    if (match) {
+      _diData[crew][rowIdx].area = match;
+      input.value = match;
+      diRenderCrewTable();
+      diAutoSaveDraft();
+    } else if (!q) {
+      _diData[crew][rowIdx].area = '';
+      diRenderCrewTable();
+      diAutoSaveDraft();
+    } else {
+      // Restore last saved value
+      input.value = _diData[crew][rowIdx].area || '';
+    }
+  }, 150);
+}
+
+function diAreaPick(el, area, crew, rowIdx) {
+  _diData[crew][rowIdx].area = area;
+  diRenderCrewTable();
+  diAutoSaveDraft();
+}
+
+function diAreaKey(e, input) {
+  const dropdown = input.nextElementSibling;
+  if (!dropdown || dropdown.style.display === 'none') return;
+  const opts = dropdown.querySelectorAll('.di-area-opt');
+  let hi = [...opts].findIndex(o => o.classList.contains('hi'));
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (hi >= 0) opts[hi].classList.remove('hi');
+    hi = Math.min(hi + 1, opts.length - 1);
+    opts[hi].classList.add('hi');
+    opts[hi].scrollIntoView({ block:'nearest' });
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (hi >= 0) opts[hi].classList.remove('hi');
+    hi = Math.max(hi - 1, 0);
+    opts[hi].classList.add('hi');
+    opts[hi].scrollIntoView({ block:'nearest' });
+  } else if (e.key === 'Enter' && hi >= 0) {
+    e.preventDefault();
+    opts[hi].dispatchEvent(new MouseEvent('mousedown'));
+  } else if (e.key === 'Escape') {
+    dropdown.style.display = 'none';
+  }
 }
 
 function diPrint() {
