@@ -157,12 +157,17 @@
     /* Section visibility */
     #csv-content{display:none;} #payroll-content{display:none;} #budgets-content{display:none;} #lc-content{display:none;}
 
-    /* ── DI Area searchable combobox ── */
+    /* ── Searchable area combobox (DI rows + Budget by Area) ── */
     .di-area-wrap { position:relative; width:100%; }
     .di-area-wrap input { width:100%; }
     .di-area-dropdown { position:absolute; top:100%; left:0; right:0; background:var(--surface2); border:1px solid var(--accent); border-top:none; border-radius:0 0 8px 8px; max-height:220px; overflow-y:auto; z-index:999; display:none; }
     .di-area-opt { padding:7px 12px; font-size:.83rem; cursor:pointer; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .di-area-opt:hover, .di-area-opt.hi { background:var(--accent); color:#000; font-weight:600; }
+    .budget-area-wrap { position:relative; max-width:280px; }
+    .budget-area-wrap input { width:100%; }
+    .budget-area-dropdown { position:absolute; top:100%; left:0; right:0; background:var(--surface2); border:1px solid var(--accent); border-top:none; border-radius:0 0 8px 8px; max-height:260px; overflow-y:auto; z-index:999; display:none; min-width:220px; }
+    .budget-area-opt { padding:8px 12px; font-size:.83rem; cursor:pointer; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .budget-area-opt:hover, .budget-area-opt.hi { background:var(--accent); color:#000; font-weight:600; }
 
     /* ── Auth Screen ── */
     #auth-screen { position:fixed; inset:0; background:var(--bg); z-index:9999; display:none; align-items:center; justify-content:center; padding:24px; }
@@ -430,9 +435,13 @@
       <div style="margin-top:8px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:0 0 8px 8px;">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
           <label style="font-size:.85rem;color:var(--muted);white-space:nowrap;">Select Area</label>
-          <select id="area-budget-select" class="fi" style="max-width:280px;" onchange="renderAreaBudgetTable()">
-            <option value="">— Select area —</option>
-          </select>
+          <div class="budget-area-wrap">
+            <input id="area-budget-select" class="fi" style="width:100%;" placeholder="Search area…" autocomplete="off"
+              oninput="budgetAreaInput('area-budget-select')"
+              onfocus="budgetAreaOpen('area-budget-select')"
+              onkeydown="budgetAreaKey(event,this)" />
+            <div class="budget-area-dropdown" id="area-budget-select-dropdown"></div>
+          </div>
           <button class="btn btn-outline" style="margin-top:0;padding:8px 16px;font-size:.82rem;" onclick="exportAreaBudgetCSV()">Export CSV</button>
         </div>
         <div style="overflow-x:auto;">
@@ -688,9 +697,13 @@
       <div style="margin-top:8px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:0 0 8px 8px;">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
           <label style="font-size:.85rem;color:var(--muted);white-space:nowrap;">Select Area</label>
-          <select id="ps-area-budget-select" class="fi" style="max-width:280px;" onchange="renderPSAreaBudgetTable()">
-            <option value="">— Select area —</option>
-          </select>
+          <div class="budget-area-wrap">
+            <input id="ps-area-budget-select" class="fi" style="width:100%;" placeholder="Search area…" autocomplete="off"
+              oninput="budgetAreaInput('ps-area-budget-select')"
+              onfocus="budgetAreaOpen('ps-area-budget-select')"
+              onkeydown="budgetAreaKey(event,this)" />
+            <div class="budget-area-dropdown" id="ps-area-budget-select-dropdown"></div>
+          </div>
         </div>
         <div style="overflow-x:auto;">
           <table style="min-width:500px;margin:0;">
@@ -1541,10 +1554,11 @@ function renderWOTable() {
 function renderAreaBudget() {
   const fileName = document.getElementById('pr-csv-file').value;
   const jobLabel = document.getElementById('area-budget-job');
-  const areaSel  = document.getElementById('area-budget-select');
   const tbody    = document.getElementById('area-budget-tbody');
   jobLabel.textContent = fileName || '';
-  areaSel.innerHTML = '<option value="">— Select area —</option>';
+  // Clear the combobox input and stored areas
+  const input = document.getElementById('area-budget-select');
+  if (input) { input.value = ''; input._areas = []; }
   if (!fileName) {
     tbody.innerHTML='<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">Select a job to view budget by area.</td></tr>';
     return;
@@ -1552,7 +1566,7 @@ function renderAreaBudget() {
   const f = getSavedCSVFiles().find(x=>x.name===fileName);
   if (!f) { tbody.innerHTML='<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">No data found.</td></tr>'; return; }
   const areas = [...new Set(f.rows.map(r=>r.area).filter(a=>a&&a!=='—'))].sort();
-  areas.forEach(a=>{ const o=document.createElement('option'); o.value=a; o.textContent=a; areaSel.appendChild(o); });
+  if (input) input._areas = areas;
   tbody.innerHTML='<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">Select an area above.</td></tr>';
 }
 
@@ -3472,16 +3486,13 @@ function psJobChanged() { onJobChanged(); }
 
 function psPopulateAreaBudgetSelect() {
   const jobName = document.getElementById('ps-job-select').value;
-  const sel = document.getElementById('ps-area-budget-select');
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">— Select area —</option>';
-  if (jobName) {
-    psGetAreas(jobName).forEach(a => {
-      const o = document.createElement('option');
-      o.value = a; o.textContent = a;
-      sel.appendChild(o);
-    });
-    if (cur) sel.value = cur;
+  const input   = document.getElementById('ps-area-budget-select');
+  const cur     = input ? input.value : '';
+  const areas   = jobName ? psGetAreas(jobName) : [];
+  if (input) {
+    input._areas = areas;
+    // Keep current value if still valid, otherwise clear
+    if (cur && !areas.includes(cur)) input.value = '';
   }
   renderPSAreaBudgetTable();
 }
@@ -4997,11 +5008,83 @@ document.getElementById('ps-sig-modal').addEventListener('click', e => {
   if (e.target === e.currentTarget) psCancelSignature();
 });
 
+// ── Budget by Area searchable combobox ──
+function _budgetAreaAreas(inputId) {
+  const input = document.getElementById(inputId);
+  return (input && input._areas) ? input._areas : [];
+}
+
+function _budgetAreaRenderDropdown(inputId) {
+  const input    = document.getElementById(inputId);
+  const dropdown = document.getElementById(inputId + '-dropdown');
+  if (!input || !dropdown) return;
+  const q        = input.value.trim().toLowerCase();
+  const all      = _budgetAreaAreas(inputId);
+  const filtered = q ? all.filter(a => a.toLowerCase().includes(q)) : all;
+  if (!filtered.length) { dropdown.style.display = 'none'; return; }
+  dropdown.innerHTML = filtered.map(a =>
+    `<div class="budget-area-opt" data-area="${a.replace(/"/g,'&quot;')}" data-input="${inputId}">${a}</div>`
+  ).join('');
+  dropdown.querySelectorAll('.budget-area-opt').forEach(el => {
+    el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      budgetAreaPick(el.dataset.input, el.dataset.area);
+    });
+    el.addEventListener('touchend', e => {
+      e.preventDefault();
+      budgetAreaPick(el.dataset.input, el.dataset.area);
+    });
+  });
+  dropdown.style.display = 'block';
+}
+
+function budgetAreaOpen(inputId) { _budgetAreaRenderDropdown(inputId); }
+function budgetAreaInput(inputId) { _budgetAreaRenderDropdown(inputId); }
+
+function budgetAreaPick(inputId, area) {
+  const input    = document.getElementById(inputId);
+  const dropdown = document.getElementById(inputId + '-dropdown');
+  if (input)    input.value = area;
+  if (dropdown) dropdown.style.display = 'none';
+  // Fire the corresponding table render
+  if (inputId === 'ps-area-budget-select') renderPSAreaBudgetTable();
+  else renderAreaBudgetTable();
+}
+
+function budgetAreaKey(e, input) {
+  const dropdown = document.getElementById(input.id + '-dropdown');
+  if (!dropdown || dropdown.style.display === 'none') return;
+  const opts = dropdown.querySelectorAll('.budget-area-opt');
+  let hi = [...opts].findIndex(o => o.classList.contains('hi'));
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (hi >= 0) opts[hi].classList.remove('hi');
+    hi = Math.min(hi + 1, opts.length - 1);
+    opts[hi].classList.add('hi');
+    opts[hi].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (hi >= 0) opts[hi].classList.remove('hi');
+    hi = Math.max(hi - 1, 0);
+    opts[hi].classList.add('hi');
+    opts[hi].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter' && hi >= 0) {
+    e.preventDefault();
+    const el = opts[hi];
+    budgetAreaPick(el.dataset.input, el.dataset.area);
+  } else if (e.key === 'Escape') {
+    dropdown.style.display = 'none';
+  }
+}
+
 // Close area combobox dropdowns when tapping/clicking outside the combobox
 ['mousedown', 'touchstart'].forEach(evt => {
   document.addEventListener(evt, e => {
     if (!e.target.closest('.di-area-wrap')) {
       document.querySelectorAll('.di-area-dropdown').forEach(d => d.style.display = 'none');
+    }
+    if (!e.target.closest('.budget-area-wrap')) {
+      document.querySelectorAll('.budget-area-dropdown').forEach(d => d.style.display = 'none');
     }
   }, { passive: true });
 });
