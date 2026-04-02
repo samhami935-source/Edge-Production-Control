@@ -4992,7 +4992,12 @@ function appInit() {
   updateAdminUI();
   populatePRDropdowns();
   renderWOTable();
-  switchToBudgets();
+  // Foremen skip Budgets/Payroll — land directly on Paysheet (which also inits Daily Input)
+  if (isForeman()) {
+    switchToPaysheet();
+  } else {
+    switchToBudgets();
+  }
 }
 
 // Users modal close on overlay click
