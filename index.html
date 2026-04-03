@@ -2988,7 +2988,9 @@ async function diLoadDraftById(docId) {
     const diSel = document.getElementById('di-job-select');
     if (psSel) { psSel.value = d.job || ''; }
     if (diSel) { diSel.value = d.job || ''; }
-    // Store draft data into the per-job store then switch to it
+    // Trigger job change so Budget by Area, paysheet, and lock state all update
+    onJobChanged();
+    // Store draft data into the per-job store then switch to it (overwrites blank data onJobChanged just set)
     const jobName = d.job || '';
     if (jobName) {
       _diAllData[jobName] = {};
