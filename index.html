@@ -1155,7 +1155,7 @@ async function loadAllData() {
 }
 
 function isAdmin()   { return _currentUserRole === 'admin'; }
-function isPM()      { return _currentUserRole === 'project_manager'; }
+function isPM()      { return ['project_manager','vp_operations','operations_manager','accounting'].includes(_currentUserRole); }
 function isForeman() { return _currentUserRole === 'foreman'; }
 function canEdit()   { return isAdmin() || isPM(); }
 
@@ -1270,7 +1270,7 @@ function updateUserPill() {
   const pill = document.getElementById('user-info-pill');
   if (!pill) return;
   pill.style.display = 'flex';
-  const labels = { admin: 'Admin', project_manager: 'PM', foreman: 'Foreman' };
+  const labels = { admin: 'Admin', project_manager: 'Project Manager', vp_operations: 'VP of Operations', operations_manager: 'Operations Manager', accounting: 'Accounting', foreman: 'Foreman' };
   document.getElementById('user-role-badge').textContent    = labels[_currentUserRole] || _currentUserRole;
   document.getElementById('user-email-display').textContent = _currentUser ? _currentUser.email : '';
   const usersBtn = document.getElementById('users-mgmt-btn');
@@ -1291,10 +1291,13 @@ async function openUsersModal() {
         <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${eh(u.email||u.uid)}</td>
         <td>
           <select onchange="updateUserRole('${u.uid}',this.value)" ${u.uid===_currentUser.uid?'disabled':''}>
-            <option value="pending"         ${u.role==='pending'?'selected':''}>Pending</option>
-            <option value="foreman"         ${u.role==='foreman'?'selected':''}>Foreman</option>
-            <option value="project_manager" ${u.role==='project_manager'?'selected':''}>Project Manager</option>
-            <option value="admin"           ${u.role==='admin'?'selected':''}>Admin</option>
+            <option value="pending"            ${u.role==='pending'?'selected':''}>Pending</option>
+            <option value="foreman"            ${u.role==='foreman'?'selected':''}>Foreman</option>
+            <option value="project_manager"    ${u.role==='project_manager'?'selected':''}>Project Manager</option>
+            <option value="vp_operations"      ${u.role==='vp_operations'?'selected':''}>Vice President of Operations</option>
+            <option value="operations_manager" ${u.role==='operations_manager'?'selected':''}>Operations Manager</option>
+            <option value="accounting"         ${u.role==='accounting'?'selected':''}>Accounting</option>
+            <option value="admin"              ${u.role==='admin'?'selected':''}>Admin</option>
           </select>
         </td>
         <td style="color:var(--muted);font-size:.78rem;">${u.createdAt?new Date(u.createdAt).toLocaleDateString():'—'}</td>
