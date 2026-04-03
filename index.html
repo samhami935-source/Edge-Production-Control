@@ -2745,10 +2745,16 @@ function _diDraftDocId() {
   return date && jobName ? ('draft_' + (uid + '_' + jobName + '_' + date).replace(/[^\w-]/g, '_')) : null;
 }
 
-function diSaveDraft() {
+async function diSaveDraft() {
   const date    = document.getElementById('di-date').value;
   const jobName = document.getElementById('ps-job-select').value;
   if (!date || !jobName) { alert('Please select a date and job before saving a draft.'); return; }
+  // Load folders fresh from Firestore so the dropdown is always up-to-date
+  const uid = _currentUser ? _currentUser.uid : 'anon';
+  try {
+    const fSnap = await db.collection('draftFolders').where('ownerUid', '==', uid).get();
+    _diDraftFolders = fSnap.docs.map(d => d.data()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  } catch(e) { /* keep existing array */ }
   // Open the name + folder picker modal
   const nameInput = document.getElementById('di-draft-name-input');
   if (nameInput) nameInput.value = '';
