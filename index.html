@@ -891,7 +891,7 @@
 
 <!-- Daily Input Drafts Modal -->
 <div class="modal-overlay" id="di-drafts-modal" onclick="if(event.target===this)diCloseDraftsModal()">
-  <div class="modal" style="width:620px;max-width:96vw;max-height:85vh;display:flex;flex-direction:column;">
+  <div class="modal" style="width:620px;max-width:96vw;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
       <h2 style="margin:0;font-size:1.1rem;">📋 Saved Drafts</h2>
       <button class="btn btn-outline" style="margin:0;padding:4px 12px;font-size:.82rem;" onclick="diCloseDraftsModal()">✕ Close</button>
@@ -2948,14 +2948,14 @@ function _diRenderDraftsList() {
     const folderDocs = _diDraftsDocs.filter(d => d.folderId === folder.id);
     const isOpen     = _diDraftOpenFolders.has(folder.id);
     const count      = folderDocs.length;
-    html.push(`<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:2px;">
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);cursor:pointer;" onclick="diToggleDraftFolder('${eh(folder.id)}')">
+    html.push(`<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:2px;">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);cursor:pointer;border-radius:${isOpen ? '8px 8px 0 0' : '8px'};" onclick="diToggleDraftFolder('${eh(folder.id)}')">
         <span style="font-size:.85rem;">${isOpen ? '▼' : '▶'}</span>
         <span style="font-weight:700;font-size:.9rem;flex:1;">📁 ${eh(folder.name)}</span>
         <span style="font-size:.78rem;color:var(--muted);">${count} drafts</span>
         <button class="btn btn-outline" style="margin:0;padding:3px 10px;font-size:.74rem;color:#ef4444;border-color:#ef4444;" onclick="event.stopPropagation();diDeleteDraftFolder('${eh(folder.id)}')" title="Delete folder">🗑</button>
       </div>
-      ${isOpen ? `<div style="padding:8px;display:flex;flex-direction:column;gap:6px;">${folderDocs.length ? folderDocs.map(_diRenderDraftCard).join('') : '<p style="color:var(--muted);font-size:.8rem;text-align:center;padding:10px 0;">No drafts in this folder.</p>'}</div>` : ''}
+      ${isOpen ? `<div style="padding:8px;display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--border);">${folderDocs.length ? folderDocs.map(_diRenderDraftCard).join('') : '<p style="color:var(--muted);font-size:.8rem;text-align:center;padding:10px 0;">No drafts in this folder.</p>'}</div>` : ''}
     </div>`);
   });
 
