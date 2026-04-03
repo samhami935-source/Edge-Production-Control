@@ -2785,6 +2785,16 @@ async function diConfirmSaveDraft() {
   const empCount = Object.values(_diData).reduce((s, rows) =>
     s + (rows||[]).filter(r => (r.employee||'').trim()).length, 0);
 
+  // Deep-copy crew data so Firestore gets a clean serializable snapshot
+  const crewData = {};
+  for (let c = 1; c <= DI_CREWS; c++) {
+    crewData[String(c)] = (_diData[c] || []).map(r => ({
+      employee:    r.employee    || '',
+      area:        r.area        || '',
+      costCode:    r.costCode    || '',
+      description: r.description || ''
+    }));
+  }
   const doc = {
     id: docId,
     name: draftName,
@@ -2795,7 +2805,7 @@ async function diConfirmSaveDraft() {
     savedBy: _currentUser ? _currentUser.email : 'unknown',
     savedByUid: uid,
     empCount,
-    data: _diData
+    data: crewData
   };
   try {
     await db.collection('drafts').doc(docId).set(doc);
@@ -2842,13 +2852,22 @@ function diAutoSaveDraft() {
     const date    = document.getElementById('di-date').value;
     const jobName = document.getElementById('ps-job-select').value;
     if (!docId) return;
+    const autoCrewData = {};
+    for (let c = 1; c <= DI_CREWS; c++) {
+      autoCrewData[String(c)] = (_diData[c] || []).map(r => ({
+        employee:    r.employee    || '',
+        area:        r.area        || '',
+        costCode:    r.costCode    || '',
+        description: r.description || ''
+      }));
+    }
     const doc = {
       id: docId, date, job: jobName,
       savedAt: new Date().toISOString(),
       savedBy: _currentUser ? _currentUser.email : 'unknown',
       savedByUid: _currentUser ? _currentUser.uid : 'anon',
       empCount: Object.values(_diData).reduce((s, rows) => s + (rows||[]).filter(r => (r.employee||'').trim()).length, 0),
-      data: _diData
+      data: autoCrewData
     };
     try { await db.collection('drafts').doc(docId).set(doc); } catch(e) {}
   }, 2000);
@@ -2970,8 +2989,14 @@ async function diLoadDraftById(docId) {
     if (jobName) {
       _diAllData[jobName] = {};
       for (let c = 1; c <= DI_CREWS; c++) {
-        _diAllData[jobName][c] = (d.data && d.data[c])
-          ? d.data[c]
+        const crewRows = d.data && (d.data[String(c)] || d.data[c]);
+        _diAllData[jobName][c] = Array.isArray(crewRows) && crewRows.length
+          ? crewRows.map(r => ({
+              employee:    r.employee    || '',
+              area:        r.area        || '',
+              costCode:    r.costCode    || '',
+              description: r.description || ''
+            }))
           : Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:''}));
       }
       diSwitchJobData(jobName);
