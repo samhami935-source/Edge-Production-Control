@@ -1156,7 +1156,7 @@ async function loadAllData() {
 
 function isAdmin()   { return _currentUserRole === 'admin'; }
 function isPM()      { return ['project_manager','vp_operations','operations_manager','accounting','estimating_manager'].includes(_currentUserRole); }
-function isForeman() { return _currentUserRole === 'foreman'; }
+function isForeman() { return ['foreman','framing_foreman','hanging_foreman','taping_foreman','pickup_foreman'].includes(_currentUserRole); }
 function canEdit()   { return isAdmin() || isPM(); }
 
 // ─── Auth UI helpers ───
@@ -1270,7 +1270,7 @@ function updateUserPill() {
   const pill = document.getElementById('user-info-pill');
   if (!pill) return;
   pill.style.display = 'flex';
-  const labels = { admin: 'Admin', project_manager: 'Project Manager', vp_operations: 'VP of Operations', operations_manager: 'Operations Manager', accounting: 'Accounting', estimating_manager: 'Estimating Manager', foreman: 'Foreman' };
+  const labels = { admin: 'Admin', project_manager: 'Project Manager', vp_operations: 'VP of Operations', operations_manager: 'Operations Manager', accounting: 'Accounting', estimating_manager: 'Estimating Manager', foreman: 'Foreman', framing_foreman: 'Framing Foreman', hanging_foreman: 'Hanging Foreman', taping_foreman: 'Taping Foreman', pickup_foreman: 'Pick-Up Foreman' };
   document.getElementById('user-role-badge').textContent    = labels[_currentUserRole] || _currentUserRole;
   document.getElementById('user-email-display').textContent = _currentUser ? _currentUser.email : '';
   const usersBtn = document.getElementById('users-mgmt-btn');
@@ -1292,7 +1292,11 @@ async function openUsersModal() {
         <td>
           <select onchange="updateUserRole('${u.uid}',this.value)" ${u.uid===_currentUser.uid?'disabled':''}>
             <option value="pending"            ${u.role==='pending'?'selected':''}>Pending</option>
-            <option value="foreman"            ${u.role==='foreman'?'selected':''}>Foreman</option>
+            <option value="foreman"          ${u.role==='foreman'?'selected':''}>Foreman</option>
+            <option value="framing_foreman"  ${u.role==='framing_foreman'?'selected':''}>Framing Foreman</option>
+            <option value="hanging_foreman"  ${u.role==='hanging_foreman'?'selected':''}>Hanging Foreman</option>
+            <option value="taping_foreman"   ${u.role==='taping_foreman'?'selected':''}>Taping Foreman</option>
+            <option value="pickup_foreman"   ${u.role==='pickup_foreman'?'selected':''}>Pick-Up Foreman</option>
             <option value="project_manager"    ${u.role==='project_manager'?'selected':''}>Project Manager</option>
             <option value="vp_operations"      ${u.role==='vp_operations'?'selected':''}>Vice President of Operations</option>
             <option value="operations_manager" ${u.role==='operations_manager'?'selected':''}>Operations Manager</option>
