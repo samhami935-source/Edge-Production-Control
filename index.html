@@ -5092,16 +5092,16 @@ function budgetAreaKey(e, input) {
   }
 }
 
-// Close area combobox dropdowns when tapping/clicking outside the combobox
-['mousedown', 'touchstart'].forEach(evt => {
-  document.addEventListener(evt, e => {
-    if (!e.target.closest('.di-area-wrap')) {
-      document.querySelectorAll('.di-area-dropdown').forEach(d => d.style.display = 'none');
-    }
-    if (!e.target.closest('.budget-area-wrap')) {
-      document.querySelectorAll('.budget-area-dropdown').forEach(d => d.style.display = 'none');
-    }
-  }, { passive: true });
+// On desktop (mouse): close dropdowns when clicking outside
+// On touch devices: do NOT close on outside touch — only close via selection or Escape
+// This allows iPad users to scroll the page or dismiss the keyboard without losing the dropdown or typed text
+document.addEventListener('mousedown', e => {
+  if (!e.target.closest('.di-area-wrap')) {
+    document.querySelectorAll('.di-area-dropdown').forEach(d => d.style.display = 'none');
+  }
+  if (!e.target.closest('.budget-area-wrap')) {
+    document.querySelectorAll('.budget-area-dropdown').forEach(d => d.style.display = 'none');
+  }
 });
 
 </script>
