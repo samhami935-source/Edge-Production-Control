@@ -2581,6 +2581,15 @@ function _diAreaRenderDropdown(input, crew, rowIdx) {
       e.preventDefault();
       diAreaPick(el.dataset.area, parseInt(el.dataset.crew), parseInt(el.dataset.row));
     });
+    let _touchStartY = 0;
+    el.addEventListener('touchstart', e => { _touchStartY = e.touches[0].clientY; }, { passive: true });
+    el.addEventListener('touchend', e => {
+      const moved = Math.abs(e.changedTouches[0].clientY - _touchStartY);
+      if (moved < 8) {
+        e.preventDefault();
+        diAreaPick(el.dataset.area, parseInt(el.dataset.crew), parseInt(el.dataset.row));
+      }
+    });
   });
   dropdown.style.display = 'block';
 }
@@ -5030,9 +5039,15 @@ function _budgetAreaRenderDropdown(inputId) {
       e.preventDefault();
       budgetAreaPick(el.dataset.input, el.dataset.area);
     });
+    // Touch: only pick if finger didn't scroll (moved less than 8px)
+    let _touchStartY = 0;
+    el.addEventListener('touchstart', e => { _touchStartY = e.touches[0].clientY; }, { passive: true });
     el.addEventListener('touchend', e => {
-      e.preventDefault();
-      budgetAreaPick(el.dataset.input, el.dataset.area);
+      const moved = Math.abs(e.changedTouches[0].clientY - _touchStartY);
+      if (moved < 8) {
+        e.preventDefault();
+        budgetAreaPick(el.dataset.input, el.dataset.area);
+      }
     });
   });
   dropdown.style.display = 'block';
