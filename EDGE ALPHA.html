@@ -891,14 +891,46 @@
 
 <!-- Daily Input Drafts Modal -->
 <div class="modal-overlay" id="di-drafts-modal" onclick="if(event.target===this)diCloseDraftsModal()">
-  <div class="modal" style="width:560px;max-width:96vw;max-height:80vh;display:flex;flex-direction:column;">
+  <div class="modal" style="width:620px;max-width:96vw;max-height:85vh;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
       <h2 style="margin:0;font-size:1.1rem;">📋 Saved Drafts</h2>
       <button class="btn btn-outline" style="margin:0;padding:4px 12px;font-size:.82rem;" onclick="diCloseDraftsModal()">✕ Close</button>
     </div>
-    <p style="color:var(--muted);font-size:.8rem;margin:0 0 12px;">Select a draft to load it into the Daily Input. Loading a draft will replace your current unsaved input.</p>
-    <div id="di-drafts-list" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+      <button class="btn btn-outline" style="margin:0;padding:6px 14px;font-size:.82rem;white-space:nowrap;" onclick="diToggleNewDraftFolderForm()">📁 New Folder</button>
+    </div>
+    <!-- New folder form -->
+    <div id="di-new-folder-form" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input id="di-new-folder-name" class="fi" placeholder="Folder name…" style="flex:1;" onkeydown="if(event.key==='Enter')diCreateDraftFolder()" />
+        <button class="btn" style="margin:0;padding:7px 16px;font-size:.83rem;" onclick="diCreateDraftFolder()">Create</button>
+        <button class="btn btn-outline" style="margin:0;padding:7px 12px;font-size:.83rem;" onclick="diToggleNewDraftFolderForm()">Cancel</button>
+      </div>
+    </div>
+    <div id="di-drafts-list" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:6px;">
       <p style="color:var(--muted);text-align:center;padding:20px;">No drafts saved yet.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Save Draft Name Modal -->
+<div class="modal-overlay" id="di-save-draft-modal" onclick="if(event.target===this)diCancelSaveDraft()">
+  <div class="modal" style="width:420px;max-width:96vw;">
+    <h2 style="margin:0 0 14px;">📌 Name This Draft</h2>
+    <div style="margin-bottom:14px;">
+      <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Draft Name</label>
+      <input id="di-draft-name-input" class="fi" placeholder="e.g. Crew 1 – Monday framing" style="width:100%;"
+        onkeydown="if(event.key==='Enter')diConfirmSaveDraft()" />
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Save to Folder <span style="color:var(--muted);font-style:italic;">(optional)</span></label>
+      <select id="di-draft-folder-select" class="fi" style="width:100%;">
+        <option value="">— No folder (save loose) —</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-outline" style="flex:1;margin:0;" onclick="diCancelSaveDraft()">Cancel</button>
+      <button class="btn" style="flex:1;margin:0;" onclick="diConfirmSaveDraft()">Save Draft</button>
     </div>
   </div>
 </div>
@@ -2703,6 +2735,8 @@ function diClearDropdowns() {
 
 let _diDraftsUnsub = null;
 let _diDraftsDocs  = [];
+let _diDraftFolders = [];       // [{id, name, count}] for current user
+let _diDraftOpenFolders = new Set(); // which folder ids are expanded in the modal
 
 function _diDraftDocId() {
   const date    = document.getElementById('di-date').value;
@@ -2711,46 +2745,72 @@ function _diDraftDocId() {
   return date && jobName ? ('draft_' + (uid + '_' + jobName + '_' + date).replace(/[^\w-]/g, '_')) : null;
 }
 
-async function diSaveDraft() {
+function diSaveDraft() {
   const date    = document.getElementById('di-date').value;
   const jobName = document.getElementById('ps-job-select').value;
   if (!date || !jobName) { alert('Please select a date and job before saving a draft.'); return; }
+  // Open the name + folder picker modal
+  const nameInput = document.getElementById('di-draft-name-input');
+  if (nameInput) nameInput.value = '';
+  // Populate folder select
+  const folderSel = document.getElementById('di-draft-folder-select');
+  if (folderSel) {
+    folderSel.innerHTML = '<option value="">— No folder (save loose) —</option>' +
+      _diDraftFolders.map(f => `<option value="${eh(f.id)}">${eh(f.name)} (${f.count||0}/10)</option>`).join('');
+  }
+  document.getElementById('di-save-draft-modal').classList.add('open');
+  setTimeout(() => nameInput && nameInput.focus(), 100);
+}
 
-  // Each manual save creates a new timestamped doc (never overwrites previous drafts)
+function diCancelSaveDraft() {
+  document.getElementById('di-save-draft-modal').classList.remove('open');
+}
+
+async function diConfirmSaveDraft() {
+  const date    = document.getElementById('di-date').value;
+  const jobName = document.getElementById('ps-job-select').value;
+  const nameVal = (document.getElementById('di-draft-name-input').value || '').trim();
+  const folderId = document.getElementById('di-draft-folder-select').value;
+  const draftName = nameVal || (jobName + ' – ' + date);
+
+  // If folder selected, check 10-draft limit
+  if (folderId) {
+    const folder = _diDraftFolders.find(f => f.id === folderId);
+    if (folder && (folder.count || 0) >= 10) {
+      alert(`"${folder.name}" already has 10 drafts. Delete one first or save to a different folder.`);
+      return;
+    }
+  }
+
+  const uid   = _currentUser ? _currentUser.uid : 'anon';
   const ts    = Date.now();
-  const docId = ('draft_' + (jobName + '_' + date + '_' + ts)).replace(/[^\w-]/g, '_');
-
+  const docId = ('draft_' + (uid + '_' + ts)).replace(/[^\w-]/g, '_');
   const empCount = Object.values(_diData).reduce((s, rows) =>
     s + (rows||[]).filter(r => (r.employee||'').trim()).length, 0);
 
   const doc = {
     id: docId,
+    name: draftName,
     date,
     job: jobName,
+    folderId: folderId || '',
     savedAt: new Date().toISOString(),
     savedBy: _currentUser ? _currentUser.email : 'unknown',
-    savedByUid: _currentUser ? _currentUser.uid : 'anon',
+    savedByUid: uid,
     empCount,
     data: _diData
   };
   try {
     await db.collection('drafts').doc(docId).set(doc);
-
-    // Keep only the 10 most recent drafts for this user — delete the rest
-    const uid = _currentUser ? _currentUser.uid : 'anon';
-    const allSnap = await db.collection('drafts').where('savedByUid', '==', uid).get();
-    const allDocs = allSnap.docs.sort((a, b) => (b.data().savedAt || '').localeCompare(a.data().savedAt || ''));
-    if (allDocs.length > 10) {
-      const toDelete = allDocs.slice(10);
-      await Promise.all(toDelete.map(d => db.collection('drafts').doc(d.id).delete()));
+    // If folder, update count
+    if (folderId) {
+      await db.collection('draftFolders').doc(folderId).update({ count: firebase.firestore.FieldValue.increment(1) });
+      const folder = _diDraftFolders.find(f => f.id === folderId);
+      if (folder) folder.count = (folder.count || 0) + 1;
     }
-
-    // Update Drafts button count
-    const remaining = Math.min(allDocs.length, 10);
-    const btn = document.getElementById('di-drafts-btn');
-    if (btn) btn.textContent = remaining ? `📋 Drafts (${remaining})` : '📋 Drafts';
-
-    _diShowToast('Draft saved ✓');
+    document.getElementById('di-save-draft-modal').classList.remove('open');
+    _diShowToast(`Draft "${draftName}" saved ✓`);
+    _diUpdateDraftsBtn();
   } catch(e) { alert('Could not save draft: ' + e.message); }
 }
 
@@ -2801,22 +2861,28 @@ function diLoadDraftIfExists() {
   // No-op: drafts are loaded via the modal now
 }
 
-function diOpenDraftsModal() {
+async function diOpenDraftsModal() {
   const list = document.getElementById('di-drafts-list');
   list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Loading drafts…</p>';
   document.getElementById('di-drafts-modal').classList.add('open');
 
+  const uid = _currentUser ? _currentUser.uid : 'anon';
+
+  // Load folders for this user
+  try {
+    const fSnap = await db.collection('draftFolders').where('ownerUid', '==', uid).get();
+    _diDraftFolders = fSnap.docs.map(d => d.data()).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  } catch(e) { _diDraftFolders = []; }
+
   // Unsubscribe previous listener
   if (_diDraftsUnsub) { _diDraftsUnsub(); _diDraftsUnsub = null; }
 
-  const uid = _currentUser ? _currentUser.uid : 'anon';
   _diDraftsUnsub = db.collection('drafts')
     .where('savedByUid', '==', uid)
     .onSnapshot(snap => {
       _diDraftsDocs = snap.docs.map(d => d.data()).sort((a,b) => (b.savedAt||'').localeCompare(a.savedAt||''));
       _diRenderDraftsList();
     }, () => {
-      // Fallback if index missing: fetch all and filter client-side
       db.collection('drafts').get().then(snap => {
         _diDraftsDocs = snap.docs.map(d => d.data())
           .filter(d => d.savedByUid === uid)
@@ -2826,37 +2892,64 @@ function diOpenDraftsModal() {
     });
 }
 
+function _diUpdateDraftsBtn() {
+  const btn = document.getElementById('di-drafts-btn');
+  if (!btn) return;
+  const count = _diDraftsDocs.length;
+  btn.textContent = count ? `📋 Drafts (${count})` : '📋 Drafts';
+}
+
+function _diRenderDraftCard(d) {
+  const dateDisp  = d.date ? new Date(d.date + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+  const savedDisp = d.savedAt ? new Date(d.savedAt).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true}) : '';
+  const emp = d.empCount || 0;
+  const draftName = d.name || d.job || '—';
+  return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;">
+    <div style="flex:1;min-width:0;cursor:pointer;" onclick="diLoadDraftById('${eh(d.id)}')">
+      <div style="font-weight:600;font-size:.86rem;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${eh(draftName)}</div>
+      <div style="font-size:.76rem;color:var(--muted);margin-top:2px;">${eh(d.job)} · ${dateDisp}${emp?' · '+emp+' emp':''}</div>
+      ${savedDisp ? `<div style="font-size:.72rem;color:var(--muted);margin-top:1px;">Saved: ${savedDisp}</div>` : ''}
+    </div>
+    <button class="btn btn-outline" style="margin:0;padding:4px 12px;font-size:.76rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" onclick="diLoadDraftById('${eh(d.id)}')">Load</button>
+    <button class="btn btn-outline" style="margin:0;padding:4px 8px;font-size:.76rem;white-space:nowrap;color:#ef4444;border-color:#ef4444;" onclick="diDeleteDraftById('${eh(d.id)}')" title="Delete">✕</button>
+  </div>`;
+}
+
 function _diRenderDraftsList() {
   const list = document.getElementById('di-drafts-list');
   if (!list) return;
-  const docs = _diDraftsDocs;
+  _diUpdateDraftsBtn();
 
-  // Update button count
-  const btn = document.getElementById('di-drafts-btn');
-  if (btn) btn.textContent = docs.length ? `📋 Drafts (${docs.length})` : '📋 Drafts';
+  const loose   = _diDraftsDocs.filter(d => !d.folderId);
+  const html    = [];
 
-  if (!docs.length) {
+  // Folders
+  _diDraftFolders.forEach(folder => {
+    const folderDocs = _diDraftsDocs.filter(d => d.folderId === folder.id);
+    const isOpen     = _diDraftOpenFolders.has(folder.id);
+    const count      = folderDocs.length;
+    html.push(`<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:2px;">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);cursor:pointer;" onclick="diToggleDraftFolder('${eh(folder.id)}')">
+        <span style="font-size:.85rem;">${isOpen ? '▼' : '▶'}</span>
+        <span style="font-weight:700;font-size:.9rem;flex:1;">📁 ${eh(folder.name)}</span>
+        <span style="font-size:.78rem;color:var(--muted);">${count}/10 drafts</span>
+        <button class="btn btn-outline" style="margin:0;padding:3px 10px;font-size:.74rem;color:#ef4444;border-color:#ef4444;" onclick="event.stopPropagation();diDeleteDraftFolder('${eh(folder.id)}')" title="Delete folder">🗑</button>
+      </div>
+      ${isOpen ? `<div style="padding:8px;display:flex;flex-direction:column;gap:6px;">${folderDocs.length ? folderDocs.map(_diRenderDraftCard).join('') : '<p style="color:var(--muted);font-size:.8rem;text-align:center;padding:10px 0;">No drafts in this folder.</p>'}</div>` : ''}
+    </div>`);
+  });
+
+  // Loose (no folder)
+  if (loose.length) {
+    html.push(`<div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin:${_diDraftFolders.length?'8px':'0'} 0 4px 2px;">Unsorted</div>`);
+    html.push(...loose.map(_diRenderDraftCard));
+  }
+
+  if (!html.length) {
     list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">No drafts saved yet.</p>';
     return;
   }
-
-  list.innerHTML = docs.map(d => {
-    const crewsWithData = Object.keys(d.data||{})
-      .filter(c => (d.data[c]||[]).some(r => (r.employee||'').trim() || (r.area||'').trim()))
-      .map(c => `Crew ${c}`).join(', ');
-    const dateDisp  = d.date ? new Date(d.date + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
-    const savedDisp = d.savedAt ? new Date(d.savedAt).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true}) : '';
-    const emp = d.empCount || 0;
-    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="diLoadDraftById('${eh(d.id)}')">
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:600;font-size:.88rem;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${eh(d.job)}</div>
-        <div style="font-size:.78rem;color:var(--muted);margin-top:2px;">For: ${dateDisp}${crewsWithData?' · '+crewsWithData:''}${emp?' · '+emp+' employee'+(emp!==1?'s':''):''}</div>
-        ${savedDisp ? `<div style="font-size:.74rem;color:var(--muted);margin-top:1px;">Saved: ${savedDisp}</div>` : ''}
-      </div>
-      <button class="btn btn-outline" style="margin:0;padding:5px 14px;font-size:.78rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" onclick="event.stopPropagation();diLoadDraftById('${eh(d.id)}')">Load</button>
-      <button class="btn btn-outline" style="margin:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;color:#ef4444;border-color:#ef4444;" onclick="event.stopPropagation();diDeleteDraftById('${eh(d.id)}')" title="Delete draft">✕</button>
-    </div>`;
-  }).join('');
+  list.innerHTML = html.join('');
 }
 
 function diCloseDraftsModal() {
@@ -2897,10 +2990,63 @@ async function diLoadDraftById(docId) {
 }
 
 async function diDeleteDraftById(docId) {
+  const draft = _diDraftsDocs.find(d => d.id === docId);
   try {
     await db.collection('drafts').doc(docId).delete();
-    // List updates automatically via onSnapshot
+    // Decrement folder count if it was in one
+    if (draft && draft.folderId) {
+      await db.collection('draftFolders').doc(draft.folderId).update({ count: firebase.firestore.FieldValue.increment(-1) });
+      const folder = _diDraftFolders.find(f => f.id === draft.folderId);
+      if (folder) folder.count = Math.max(0, (folder.count || 1) - 1);
+    }
   } catch(e) { alert('Could not delete draft: ' + e.message); }
+}
+
+function diToggleNewDraftFolderForm() {
+  const form = document.getElementById('di-new-folder-form');
+  if (!form) return;
+  const visible = form.style.display !== 'none';
+  form.style.display = visible ? 'none' : 'block';
+  if (!visible) setTimeout(() => document.getElementById('di-new-folder-name').focus(), 80);
+}
+
+async function diCreateDraftFolder() {
+  const nameEl = document.getElementById('di-new-folder-name');
+  const name   = (nameEl.value || '').trim();
+  if (!name) { alert('Please enter a folder name.'); return; }
+  if (_diDraftFolders.find(f => f.name.toLowerCase() === name.toLowerCase())) { alert('A folder with that name already exists.'); return; }
+  const uid    = _currentUser ? _currentUser.uid : 'anon';
+  const id     = ('draftfolder_' + uid + '_' + Date.now()).replace(/[^\w-]/g, '_');
+  const folder = { id, name, ownerUid: uid, createdAt: new Date().toISOString(), count: 0 };
+  try {
+    await db.collection('draftFolders').doc(id).set(folder);
+    _diDraftFolders.push(folder);
+    _diDraftFolders.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+    _diDraftOpenFolders.add(id);
+    nameEl.value = '';
+    document.getElementById('di-new-folder-form').style.display = 'none';
+    _diRenderDraftsList();
+  } catch(e) { alert('Could not create folder: ' + e.message); }
+}
+
+async function diDeleteDraftFolder(folderId) {
+  const folder = _diDraftFolders.find(f => f.id === folderId);
+  if (!folder) return;
+  if (!confirm(`Delete folder "${folder.name}"? Drafts inside will become unsorted.`)) return;
+  try {
+    await db.collection('draftFolders').doc(folderId).delete();
+    const inFolder = _diDraftsDocs.filter(d => d.folderId === folderId);
+    await Promise.all(inFolder.map(d => db.collection('drafts').doc(d.id).update({ folderId: '' })));
+    _diDraftFolders = _diDraftFolders.filter(f => f.id !== folderId);
+    _diDraftOpenFolders.delete(folderId);
+    _diRenderDraftsList();
+  } catch(e) { alert('Could not delete folder: ' + e.message); }
+}
+
+function diToggleDraftFolder(folderId) {
+  if (_diDraftOpenFolders.has(folderId)) _diDraftOpenFolders.delete(folderId);
+  else _diDraftOpenFolders.add(folderId);
+  _diRenderDraftsList();
 }
 
 async function submitDailyInput() {
@@ -5023,6 +5169,9 @@ document.getElementById('ps-save-dest-modal').addEventListener('click', e => {
 });
 document.getElementById('ps-sig-modal').addEventListener('click', e => {
   if (e.target === e.currentTarget) psCancelSignature();
+});
+document.getElementById('di-save-draft-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) diCancelSaveDraft();
 });
 
 // ── Budget by Area searchable combobox ──
