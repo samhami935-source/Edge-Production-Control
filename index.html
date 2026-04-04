@@ -3811,7 +3811,13 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
   const pctDisp     = budgetVal > 0 ? pctComplete.toFixed(1) + '%' : '—';
   const pctColor    = pctComplete > 100 ? '#ef4444' : pctComplete >= 80 ? '#c9a84c' : '#333';
   const codeLabel   = row.costCode
-    ? (() => { const g = PAYROLL_GROUPS.find(x => x.code === row.costCode); return g ? row.costCode + ' – ' + g.description : row.costCode; })()
+    ? (() => {
+        // Use description already stored on the row (from individual CSV line item)
+        if (row.description) return row.costCode + ' – ' + row.description;
+        // Fall back to PAYROLL_GROUPS lookup
+        const g = PAYROLL_GROUPS.find(x => x.code === row.costCode);
+        return g ? row.costCode + ' – ' + g.description : row.costCode;
+      })()
     : '';
   const cell = 'border:1px solid #000;padding:4px 8px;font-size:12px;';
 
