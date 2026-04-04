@@ -2576,16 +2576,23 @@ function diRenderCrewTable() {
   const tbody   = document.getElementById('di-crew-tbody');
   const rows    = _diData[_diActiveCrew];
 
+  const csvFile = getSavedCSVFiles().find(x => x.name === jobName);
+
   tbody.innerHTML = rows.map((row, i) => {
 
     let codeOpts = '<option value=""></option>';
-    if (jobName && row.area) {
-      PAYROLL_GROUPS.forEach(g => {
-        const {budget} = psGetAreaCodeData(jobName, row.area, g.code);
-        if (budget > 0 || row.costCode === g.code) {
+    if (csvFile && row.area) {
+      // Show individual CSV line items for this area (matches Budget by Area breakdown)
+      const areaRows = csvFile.rows.filter(r => r.area === row.area);
+      if (areaRows.length) {
+        areaRows.forEach(r => {
+          codeOpts += `<option value="${eh(r.costCode)}" data-desc="${eh(r.description)}" ${row.costCode===r.costCode?'selected':''}>${r.costCode} – ${r.description}</option>`;
+        });
+      } else {
+        PAYROLL_GROUPS.forEach(g => {
           codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
-        }
-      });
+        });
+      }
     } else {
       PAYROLL_GROUPS.forEach(g => {
         codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
@@ -2608,7 +2615,7 @@ function diRenderCrewTable() {
         </div>
       </td>
       <td style="padding:6px 8px;">
-        <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value;diAutoSaveDraft()">
+        <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value;var _opt=this.options[this.selectedIndex];if(_opt&&_opt.dataset.desc)_diData[${_diActiveCrew}][${i}].description=_opt.dataset.desc;diAutoSaveDraft()">
           ${codeOpts}
         </select>
       </td>
