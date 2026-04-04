@@ -2615,7 +2615,7 @@ function diRenderCrewTable() {
         </div>
       </td>
       <td style="padding:6px 8px;">
-        <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value;var _opt=this.options[this.selectedIndex];if(_opt&&_opt.dataset.desc)_diData[${_diActiveCrew}][${i}].description=_opt.dataset.desc;diAutoSaveDraft()">
+        <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value;diAutoSaveDraft()">
           ${codeOpts}
         </select>
       </td>
@@ -3812,8 +3812,12 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
   const pctColor    = pctComplete > 100 ? '#ef4444' : pctComplete >= 80 ? '#c9a84c' : '#333';
   const codeLabel   = row.costCode
     ? (() => {
-        // Use description already stored on the row (from individual CSV line item)
-        if (row.description) return row.costCode + ' – ' + row.description;
+        // Look up description from CSV by area + exact cost code
+        const csvFile = jobName ? getSavedCSVFiles().find(x => x.name === jobName) : null;
+        if (csvFile && row.area) {
+          const csvRow = csvFile.rows.find(r => r.area === row.area && r.costCode === row.costCode);
+          if (csvRow) return row.costCode + ' – ' + csvRow.description;
+        }
         // Fall back to PAYROLL_GROUPS lookup
         const g = PAYROLL_GROUPS.find(x => x.code === row.costCode);
         return g ? row.costCode + ' – ' + g.description : row.costCode;
