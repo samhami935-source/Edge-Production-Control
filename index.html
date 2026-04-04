@@ -2170,20 +2170,12 @@ function refreshLaborCodeOptions() {
   if(f && area) {
     // Show individual CSV line items for this area
     const areaRows = f.rows.filter(r => r.area === area);
-    const groupPaidCache = {};
     areaRows.forEach(r => {
-      const gc = getCodeGroup(r.costCode);
-      if (groupPaidCache[gc] === undefined)
-        groupPaidCache[gc] = allEntries.filter(e=>e.area===area&&e.costCode===gc).reduce((s,e)=>s+e.price,0);
-    });
-    areaRows.forEach(r => {
-      const gc = getCodeGroup(r.costCode);
-      const groupBudget = areaRows.filter(x=>getCodeGroup(x.costCode)===gc).reduce((s,x)=>s+x.amount,0);
-      const paidAlloc = groupBudget>0 ? groupPaidCache[gc] * (r.amount/groupBudget) : 0;
-      const rem = r.amount - paidAlloc;
+      const paid = allEntries.filter(e=>e.area===area&&e.costCode===r.costCode&&e.description===r.description).reduce((s,e)=>s+e.price,0);
+      const rem  = r.amount - paid;
       const remStr = rem<0?`-${fm(Math.abs(rem))}`:fm(rem);
       const o=document.createElement('option');
-      o.value=getCodeGroup(r.costCode);
+      o.value=r.costCode;
       o.dataset.description=r.description;
       o.textContent=`${r.costCode} – ${r.description}   |   Rem: ${remStr}`;
       lcSel.appendChild(o);
@@ -2311,7 +2303,9 @@ function renderPayrollTable() {
   tbody.innerHTML=page.map(e=>{
     const files=getSavedCSVFiles();
     const ce=files.find(f=>f.name===e.csvFile);
-    const budget=ce?ce.rows.filter(r=>r.area===(e.area||'')&&getCodeGroup(r.costCode)===(e.costCode||'')).reduce((s,r)=>s+r.amount,0):e.amount;
+    // Try exact match first (new entries), fall back to group match (legacy entries)
+    const exactBudget=ce?ce.rows.filter(r=>r.area===(e.area||'')&&r.costCode===(e.costCode||'')&&r.description===(e.description||'')).reduce((s,r)=>s+r.amount,0):0;
+    const budget=exactBudget||( ce?ce.rows.filter(r=>r.area===(e.area||'')&&getCodeGroup(r.costCode)===(e.costCode||'')).reduce((s,r)=>s+r.amount,0):e.amount );
     const{paid}=getPayrollTotals(e.csvFile,e.costCode||'',e.description,e.area||'');
     const remRaw=budget-paid;
     const rem=Math.abs(remRaw)<0.01?0:remRaw;
