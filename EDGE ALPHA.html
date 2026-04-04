@@ -17,6 +17,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -4246,14 +4248,19 @@ function psExportPDF() {
 }
 
 async function psExportFolderZip(weekEnding) {
-  if (typeof JSZip === 'undefined') { alert('ZIP library not loaded yet — please wait a moment and try again.'); return; }
-  const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
-  const sheets = (_cache.paysheets || []).filter(p => p.weekEnding === weekEnding && (!activeJob || p.job === activeJob));
+  if (typeof JSZip === 'undefined') { alert('ZIP library not loaded — please wait a moment and try again.'); return; }
+  if (typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined') {
+    alert('PDF library not loaded — please wait a moment and try again.'); return;
+  }
+
+  const activeJob  = (document.getElementById('ps-job-select') || {}).value || '';
+  const sheets     = (_cache.paysheets || []).filter(p => p.weekEnding === weekEnding && (!activeJob || p.job === activeJob));
   if (!sheets.length) { alert('No paysheets found for this folder.'); return; }
 
-  const zip    = new JSZip();
-  const label  = _fmtWeekDate(weekEnding); // e.g. "Apr 3, 2026"
+  const zip        = new JSZip();
+  const label      = _fmtWeekDate(weekEnding);
   const savedFiles = getSavedCSVFiles();
+  const { jsPDF }  = window.jspdf;
 
   function fmtMoney(n) {
     return '$' + (n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -4263,37 +4270,34 @@ async function psExportFolderZip(weekEnding) {
     const csvFile = jobName ? savedFiles.find(x => x.name === jobName) : null;
     if (csvFile && area) {
       const csvRow = csvFile.rows.find(r => r.area === area && r.costCode === costCode);
-      if (csvRow) return costCode + ' – ' + csvRow.description;
+      if (csvRow) return costCode + ' \u2013 ' + csvRow.description;
     }
     const g = PAYROLL_GROUPS.find(x => x.code === costCode);
-    return g ? costCode + ' – ' + g.description : costCode;
+    return g ? costCode + ' \u2013 ' + g.description : costCode;
   }
 
-  function buildPaysheetHtml(doc) {
-    const jobName  = doc.job || '';
-    const isDaily  = doc.type === 'daily';
+  // Build the inner HTML content (no <html>/<body> wrapper — rendered into a hidden div)
+  function buildCrewHTML(doc) {
+    const jobName   = doc.job || '';
+    const isDaily   = doc.type === 'daily';
     const typeLabel = isDaily ? 'Daily Paysheet' : 'Weekly Summary Paysheet';
+    const parts     = [];
 
-    const crewSections = [];
     for (let c = 1; c <= PS_NUM_CREWS; c++) {
       const crewData = doc.crews && (doc.crews[String(c)] || doc.crews[c]);
       if (!crewData) continue;
-      const rows   = (crewData.rows || []).filter(r => r.area || r.costCode || r.weAmount || r.ptd);
+      const rows   = (crewData.rows   || []).filter(r => r.area || r.costCode || r.weAmount || r.ptd);
       const splits = (crewData.splits || []).filter(s => s.employee);
       if (!rows.length && !splits.length) continue;
 
       const h = crewData.header || {};
-      const foremanSigCell = (!isDaily && h.foremanSig)
-        ? `<td rowspan="2" style="padding:4px 8px;text-align:right;vertical-align:bottom;"><div><strong>Foreman Signature:</strong></div><img src="${h.foremanSig}" style="height:40px;max-width:200px;margin-top:4px;" /></td>`
-        : (!isDaily ? `<td rowspan="2" style="padding:4px 8px;text-align:right;vertical-align:bottom;"><strong>Foreman Signature:</strong><div style="border-bottom:1px solid #000;width:200px;height:36px;margin-top:4px;margin-left:auto;"></div></td>` : '<td></td>');
-      const hdr = `<table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px;">
-        <tr><td style="padding:2px 4px;"><strong>Project:</strong> ${h.project||''}</td><td style="padding:2px 4px;"><strong>Week Ending:</strong> ${h.weekEnding||weekEnding}</td>${foremanSigCell}</tr>
-        <tr><td style="padding:2px 4px;"><strong>Foreman:</strong> ${h.foreman||''}</td><td style="padding:2px 4px;"><strong>Crew:</strong> ${h.crewName||('Crew ' + c)}</td></tr>
-      </table>`;
+      const foremanSigHtml = (!isDaily && h.foremanSig)
+        ? `<img src="${h.foremanSig}" style="height:36px;max-width:180px;vertical-align:middle;" />`
+        : (!isDaily ? '<div style="border-bottom:1px solid #000;width:180px;height:32px;display:inline-block;"></div>' : '');
 
       const theadCols = isDaily
-        ? `<th>Area Worked</th><th>Labor Code</th><th>Notes</th><th style="width:90px;">Budget</th><th style="width:90px;">PTD</th><th style="width:110px;">Remaining</th>`
-        : `<th>Area Worked</th><th>Labor Code</th><th>Notes</th><th style="width:90px;">Budget</th><th style="width:90px;">PTD</th><th style="width:110px;">Remaining</th><th style="width:105px;">W/E Amount</th><th style="width:75px;">% Complete</th>`;
+        ? `<th>Area Worked</th><th>Labor Code</th><th>Notes</th><th style="width:88px;">Budget</th><th style="width:88px;">PTD</th><th style="width:105px;">Remaining</th>`
+        : `<th>Area Worked</th><th>Labor Code</th><th>Notes</th><th style="width:88px;">Budget</th><th style="width:88px;">PTD</th><th style="width:105px;">Remaining</th><th style="width:100px;">W/E Amount</th><th style="width:72px;">% Complete</th>`;
 
       const trows = rows.map(row => {
         let budgetVal = 0;
@@ -4306,10 +4310,10 @@ async function psExportFolderZip(weekEnding) {
         const pctColor = pct > 100 ? '#ef4444' : pct >= 80 ? '#c9a84c' : '#333';
         const budDisp  = budgetVal > 0 ? fmtMoney(budgetVal) : '';
         const remDisp  = (budgetVal > 0 || ptdVal > 0) ? (rem < 0 ? '-' : '') + fmtMoney(Math.abs(rem)) : '';
-        const pctDisp  = budgetVal > 0 ? pct.toFixed(1) + '%' : '—';
-        const dailyCols = `<td>${row.area||''}</td><td>${buildCodeLabel(row.area, row.costCode, jobName)}</td><td style="color:#555;font-style:italic;">${row.notes||''}</td><td style="text-align:right;">${budDisp}</td><td style="text-align:right;color:#1a56db;">${fmtMoney(ptdVal)}</td><td style="text-align:right;color:${remColor};">${remDisp}</td>`;
-        const weekCols  = dailyCols + `<td style="text-align:right;font-weight:700;">${fmtMoney(weAmt)}</td><td style="text-align:center;font-weight:700;color:${pctColor};">${pctDisp}</td>`;
-        return `<tr>${isDaily ? dailyCols : weekCols}</tr>`;
+        const pctDisp  = budgetVal > 0 ? pct.toFixed(1) + '%' : '\u2014';
+        const base = `<td>${row.area||''}</td><td>${buildCodeLabel(row.area, row.costCode, jobName)}</td><td style="color:#555;font-style:italic;">${row.notes||''}</td><td style="text-align:right;">${budDisp}</td><td style="text-align:right;color:#1a56db;">${fmtMoney(ptdVal)}</td><td style="text-align:right;color:${remColor};">${remDisp}</td>`;
+        const extra = `<td style="text-align:right;font-weight:700;">${fmtMoney(weAmt)}</td><td style="text-align:center;font-weight:700;color:${pctColor};">${pctDisp}</td>`;
+        return `<tr>${base}${isDaily ? '' : extra}</tr>`;
       }).join('');
 
       let splitsHtml = '';
@@ -4317,16 +4321,16 @@ async function psExportFolderZip(weekEnding) {
         const colCount = isDaily ? 2 : 5;
         const splitCols = isDaily
           ? `<th style="width:80px;">Employee #</th><th>Employee Name</th>`
-          : `<th style="width:80px;">Employee #</th><th>Employee Name</th><th style="width:80px;">% Split</th><th style="width:110px;">Amount</th><th style="width:160px;">Employee Initials</th>`;
+          : `<th style="width:80px;">Employee #</th><th>Employee Name</th><th style="width:80px;">% Split</th><th style="width:110px;">Amount</th><th style="width:150px;">Employee Initials</th>`;
         splitsHtml = `<table style="width:100%;border-collapse:collapse;border:1px solid #000;margin-top:14px;">
           <thead>
-            <tr style="background:#c9a84c;"><th colspan="${colCount}" style="padding:6px;text-align:center;font-size:11px;">${isDaily ? 'CREW — DAILY LOG' : 'CREW SPLITS'}</th></tr>
+            <tr style="background:#c9a84c;"><th colspan="${colCount}" style="padding:6px;text-align:center;font-size:11px;">${isDaily ? 'CREW \u2014 DAILY LOG' : 'CREW SPLITS'}</th></tr>
             <tr style="background:#d9d9d9;font-size:11px;">${splitCols}</tr>
           </thead>
           <tbody>${splits.map(s => `<tr>
-            <td style="padding:5px 8px;text-align:center;">${s.empNum||'—'}</td>
+            <td style="padding:5px 8px;text-align:center;">${s.empNum||'\u2014'}</td>
             <td style="padding:5px 8px;">${s.employee||''}</td>
-            ${!isDaily ? `<td style="padding:5px 8px;text-align:center;">${s.pctSplit||''}</td><td style="padding:5px 8px;text-align:right;">${fmtMoney(parseFloat(s.amount||0))}</td><td style="padding:5px 8px;text-align:center;">${s.signatureData ? `<img src="${s.signatureData}" style="height:32px;max-width:140px;" />` : ''}</td>` : ''}
+            ${!isDaily ? `<td style="padding:5px 8px;text-align:center;">${s.pctSplit||''}</td><td style="padding:5px 8px;text-align:right;">${fmtMoney(parseFloat(s.amount||0))}</td><td style="padding:5px 8px;text-align:center;">${s.signatureData ? `<img src="${s.signatureData}" style="height:30px;max-width:130px;" />` : ''}</td>` : ''}
           </tr>`).join('')}</tbody>
         </table>`;
       }
@@ -4334,41 +4338,67 @@ async function psExportFolderZip(weekEnding) {
       const totalHtml = !isDaily
         ? `<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:12px;"><strong style="text-decoration:underline;">Total Amount:</strong><div style="border:1px solid #000;padding:5px 16px;min-width:120px;text-align:right;font-weight:700;">${fmtMoney(rows.reduce((s,r)=>s+(parseFloat(r.weAmount)||0),0))}</div></div>` : '';
 
-      crewSections.push(`<div class="crew-section">
-        <div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:12px;border-bottom:2px solid #000;padding-bottom:8px;">D9 Edge — ${typeLabel}${jobName ? ' — ' + jobName : ''}</div>
-        ${hdr}
+      parts.push(`
+        <div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:10px;border-bottom:2px solid #000;padding-bottom:6px;">D9 Edge \u2014 ${typeLabel}${jobName ? ' \u2014 ' + jobName : ''}</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:12px;">
+          <tr><td style="padding:2px 4px;"><strong>Project:</strong> ${h.project||''}</td><td style="padding:2px 4px;"><strong>Week Ending:</strong> ${h.weekEnding||weekEnding}</td>${!isDaily ? `<td style="padding:2px 4px;text-align:right;"><strong>Foreman Signature:</strong> ${foremanSigHtml}</td>` : '<td></td>'}</tr>
+          <tr><td style="padding:2px 4px;"><strong>Foreman:</strong> ${h.foreman||''}</td><td style="padding:2px 4px;"><strong>Crew:</strong> ${h.crewName||('Crew '+c)}</td><td></td></tr>
+        </table>
         <table style="width:100%;border-collapse:collapse;border:1px solid #000;">
-          <thead><tr style="background:#c9a84c;font-size:11px;text-decoration:underline;">${theadCols}</tr></thead>
+          <thead><tr style="background:#c9a84c;font-size:11px;">${theadCols}</tr></thead>
           <tbody>${trows}</tbody>
-        </table>${totalHtml}${splitsHtml}
-      </div>`);
+        </table>
+        ${totalHtml}${splitsHtml}`);
     }
-
-    if (!crewSections.length) return null;
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${typeLabel}${jobName ? ' – ' + jobName : ''}</title>
-      <style>*{box-sizing:border-box;}body{font-family:Arial,sans-serif;font-size:12px;color:#000;margin:0;padding:20px;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #000;padding:4px 8px;}thead th{font-size:11px;text-align:center;}.crew-section{margin-bottom:32px;}
-      @media print{body{padding:0;margin:0;}@page{margin:.5in;size:landscape;}.crew-section{page-break-after:always;}.crew-section:last-child{page-break-after:avoid;}}</style>
-    </head><body>${crewSections.join('')}</body></html>`;
+    return parts;
   }
 
-  // Build files and add to ZIP
+  // Hidden off-screen render container (fixed width = landscape A4-ish at 96dpi)
+  const renderDiv = document.createElement('div');
+  renderDiv.style.cssText = 'position:fixed;left:-9999px;top:0;width:1100px;padding:24px;background:#fff;color:#000;font-family:Arial,sans-serif;font-size:12px;box-sizing:border-box;';
+  document.body.appendChild(renderDiv);
+
   let fileCount = 0;
-  for (const doc of sheets) {
-    const html = buildPaysheetHtml(doc);
-    if (!html) continue;
-    const isDaily = doc.type === 'daily';
-    const dateStr = (isDaily ? doc.date : doc.weekEnding || weekEnding).replace(/-/g, '-');
-    const jobSlug = (doc.job || 'NoJob').replace(/[^\w\s]/g, '').trim().replace(/\s+/g, '_');
-    const fileName = isDaily
-      ? `Daily_${jobSlug}_${dateStr}.html`
-      : `Weekly_Summary_${jobSlug}_${dateStr}.html`;
-    zip.file(fileName, html);
-    fileCount++;
+  try {
+    for (const doc of sheets) {
+      const parts = buildCrewHTML(doc);
+      if (!parts.length) continue;
+
+      const isDaily  = doc.type === 'daily';
+      const dateStr  = (isDaily ? doc.date : doc.weekEnding || weekEnding);
+      const jobSlug  = (doc.job || 'NoJob').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
+      const baseName = isDaily ? `Daily_${jobSlug}_${dateStr}` : `Weekly_Summary_${jobSlug}_${dateStr}`;
+
+      // Each crew section → one PDF page; all crew sections → one PDF file per paysheet doc
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+      let firstPage = true;
+
+      for (const part of parts) {
+        renderDiv.innerHTML = `<div style="width:1052px;">${part}</div>`;
+        // Let images render
+        await new Promise(r => setTimeout(r, 150));
+        const canvas = await html2canvas(renderDiv, { scale: 1.5, useCORS: true, allowTaint: true, logging: false });
+        const imgData = canvas.toDataURL('image/jpeg', 0.92);
+        const pdfW = pdf.internal.pageSize.getWidth();
+        const pdfH = pdf.internal.pageSize.getHeight();
+        const ratio = Math.min(pdfW / (canvas.width / 1.5), pdfH / (canvas.height / 1.5));
+        const drawW = (canvas.width / 1.5) * ratio;
+        const drawH = (canvas.height / 1.5) * ratio;
+        if (!firstPage) pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, 0, drawW, drawH);
+        firstPage = false;
+      }
+
+      zip.file(baseName + '.pdf', pdf.output('arraybuffer'));
+      fileCount++;
+    }
+  } finally {
+    document.body.removeChild(renderDiv);
   }
 
   if (!fileCount) { alert('No exportable paysheet data found.'); return; }
 
-  const zipLabel = label.replace(/[^\w\s,]/g, '').trim().replace(/\s+/g, '_');
+  const zipLabel = label.replace(/[^a-zA-Z0-9 _,]/g, '').trim().replace(/\s+/g, '_');
   const content  = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
   const url = URL.createObjectURL(content);
   const a   = document.createElement('a');
