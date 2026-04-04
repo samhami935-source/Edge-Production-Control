@@ -3777,8 +3777,12 @@ function psGetAreas(jobName) {
 function psGetAreaCodeData(jobName, area, costCode) {
   const f       = getSavedCSVFiles().find(x => x.name === jobName);
   const entries = getPayrollEntries().filter(e => e.csvFile === jobName);
-  const budget  = f ? f.rows.filter(r => r.area === area && getCodeGroup(r.costCode) === costCode).reduce((s,r) => s + r.amount, 0) : 0;
-  const ptd     = entries.filter(e => e.area === area && e.costCode === costCode).reduce((s,e) => s + e.price, 0);
+  // Try exact cost code match first (new individual codes like 301), fall back to group match (legacy 300)
+  const exactBudget = f ? f.rows.filter(r => r.area === area && r.costCode === costCode).reduce((s,r) => s + r.amount, 0) : 0;
+  const budget = exactBudget || (f ? f.rows.filter(r => r.area === area && getCodeGroup(r.costCode) === costCode).reduce((s,r) => s + r.amount, 0) : 0);
+  // Same for PTD: exact match first, then group match
+  const exactPtd = entries.filter(e => e.area === area && e.costCode === costCode).reduce((s,e) => s + e.price, 0);
+  const ptd = exactPtd || entries.filter(e => e.area === area && getCodeGroup(e.costCode) === costCode).reduce((s,e) => s + e.price, 0);
   return { budget, ptd, remaining: budget - ptd };
 }
 
