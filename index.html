@@ -4387,9 +4387,11 @@ async function psCompileWeeklyPaysheet(weekEnding) {
         (sc.rows || []).forEach(r => {
           if (!r.area && !r.costCode) return;
           const key = (r.area||'') + '|||' + (r.costCode||'');
-          if (!areaMap[key]) areaMap[key] = { area: r.area||'', costCode: r.costCode||'', ptd: 0, weAmount: 0, pctComplete: '' };
+          if (!areaMap[key]) areaMap[key] = { area: r.area||'', costCode: r.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: '' };
           areaMap[key].weAmount += parseFloat(r.weAmount) || 0;
           areaMap[key].ptd      += parseFloat(r.ptd)      || 0;
+          // Carry first non-empty note for this area+code
+          if (!areaMap[key].notes && r.notes) areaMap[key].notes = r.notes;
         });
         // Collect unique employees from splits
         (sc.splits || []).forEach(s => { if (s.employee) empSet.add(s.employee); });
@@ -4489,9 +4491,12 @@ function openLoadPaysheetModal() {
 }
 
 function renderPSLoadList() {
-  const list = document.getElementById('ps-load-list');
-  const q    = (document.getElementById('ps-load-search').value || '').toLowerCase().trim();
-  const all  = (_cache.paysheets || []).slice().sort((a,b) => (b.savedAt||'').localeCompare(a.savedAt||''));
+  const list    = document.getElementById('ps-load-list');
+  const q       = (document.getElementById('ps-load-search').value || '').toLowerCase().trim();
+  const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
+  const all  = (_cache.paysheets || [])
+    .filter(p => !activeJob || (p.job || '') === activeJob)
+    .slice().sort((a,b) => (b.savedAt||'').localeCompare(a.savedAt||''));
 
   // Search mode — flat filtered list
   if (q) {
