@@ -16,6 +16,7 @@
   <title>D9 Edge — Budget Tracker</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -4244,6 +4245,141 @@ function psExportPDF() {
   setTimeout(() => { win.focus(); win.print(); }, 600);
 }
 
+async function psExportFolderZip(weekEnding) {
+  if (typeof JSZip === 'undefined') { alert('ZIP library not loaded yet — please wait a moment and try again.'); return; }
+  const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
+  const sheets = (_cache.paysheets || []).filter(p => p.weekEnding === weekEnding && (!activeJob || p.job === activeJob));
+  if (!sheets.length) { alert('No paysheets found for this folder.'); return; }
+
+  const zip    = new JSZip();
+  const label  = _fmtWeekDate(weekEnding); // e.g. "Apr 3, 2026"
+  const savedFiles = getSavedCSVFiles();
+
+  function fmtMoney(n) {
+    return '$' + (n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  function buildCodeLabel(area, costCode, jobName) {
+    if (!costCode) return '';
+    const csvFile = jobName ? savedFiles.find(x => x.name === jobName) : null;
+    if (csvFile && area) {
+      const csvRow = csvFile.rows.find(r => r.area === area && r.costCode === costCode);
+      if (csvRow) return costCode + ' – ' + csvRow.description;
+    }
+    const g = PAYROLL_GROUPS.find(x => x.code === costCode);
+    return g ? costCode + ' – ' + g.description : costCode;
+  }
+
+  function buildPaysheetHtml(doc) {
+    const jobName  = doc.job || '';
+    const isDaily  = doc.type === 'daily';
+    const typeLabel = isDaily ? 'Daily Paysheet' : 'Weekly Summary Paysheet';
+
+    const crewSections = [];
+    for (let c = 1; c <= PS_NUM_CREWS; c++) {
+      const crewData = doc.crews && (doc.crews[String(c)] || doc.crews[c]);
+      if (!crewData) continue;
+      const rows   = (crewData.rows || []).filter(r => r.area || r.costCode || r.weAmount || r.ptd);
+      const splits = (crewData.splits || []).filter(s => s.employee);
+      if (!rows.length && !splits.length) continue;
+
+      const h = crewData.header || {};
+      const foremanSigCell = (!isDaily && h.foremanSig)
+        ? `<td rowspan="2" style="padding:4px 8px;text-align:right;vertical-align:bottom;"><div><strong>Foreman Signature:</strong></div><img src="${h.foremanSig}" style="height:40px;max-width:200px;margin-top:4px;" /></td>`
+        : (!isDaily ? `<td rowspan="2" style="padding:4px 8px;text-align:right;vertical-align:bottom;"><strong>Foreman Signature:</strong><div style="border-bottom:1px solid #000;width:200px;height:36px;margin-top:4px;margin-left:auto;"></div></td>` : '<td></td>');
+      const hdr = `<table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px;">
+        <tr><td style="padding:2px 4px;"><strong>Project:</strong> ${h.project||''}</td><td style="padding:2px 4px;"><strong>Week Ending:</strong> ${h.weekEnding||weekEnding}</td>${foremanSigCell}</tr>
+        <tr><td style="padding:2px 4px;"><strong>Foreman:</strong> ${h.foreman||''}</td><td style="padding:2px 4px;"><strong>Crew:</strong> ${h.crewName||('Crew ' + c)}</td></tr>
+      </table>`;
+
+      const theadCols = isDaily
+        ? `<th>Area Worked</th><th>Labor Code</th><th>Notes</th><th style="width:90px;">Budget</th><th style="width:90px;">PTD</th><th style="width:110px;">Remaining</th>`
+        : `<th>Area Worked</th><th>Labor Code</th><th>Notes</th><th style="width:90px;">Budget</th><th style="width:90px;">PTD</th><th style="width:110px;">Remaining</th><th style="width:105px;">W/E Amount</th><th style="width:75px;">% Complete</th>`;
+
+      const trows = rows.map(row => {
+        let budgetVal = 0;
+        if (jobName && row.area && row.costCode) budgetVal = psGetAreaCodeData(jobName, row.area, row.costCode).budget || 0;
+        const ptdVal   = parseFloat(row.ptd) || 0;
+        const weAmt    = parseFloat(row.weAmount) || 0;
+        const rem      = budgetVal - ptdVal;
+        const pct      = budgetVal > 0 ? ((ptdVal + weAmt) / budgetVal * 100) : 0;
+        const remColor = rem < 0 ? '#ef4444' : '#333';
+        const pctColor = pct > 100 ? '#ef4444' : pct >= 80 ? '#c9a84c' : '#333';
+        const budDisp  = budgetVal > 0 ? fmtMoney(budgetVal) : '';
+        const remDisp  = (budgetVal > 0 || ptdVal > 0) ? (rem < 0 ? '-' : '') + fmtMoney(Math.abs(rem)) : '';
+        const pctDisp  = budgetVal > 0 ? pct.toFixed(1) + '%' : '—';
+        const dailyCols = `<td>${row.area||''}</td><td>${buildCodeLabel(row.area, row.costCode, jobName)}</td><td style="color:#555;font-style:italic;">${row.notes||''}</td><td style="text-align:right;">${budDisp}</td><td style="text-align:right;color:#1a56db;">${fmtMoney(ptdVal)}</td><td style="text-align:right;color:${remColor};">${remDisp}</td>`;
+        const weekCols  = dailyCols + `<td style="text-align:right;font-weight:700;">${fmtMoney(weAmt)}</td><td style="text-align:center;font-weight:700;color:${pctColor};">${pctDisp}</td>`;
+        return `<tr>${isDaily ? dailyCols : weekCols}</tr>`;
+      }).join('');
+
+      let splitsHtml = '';
+      if (splits.length) {
+        const colCount = isDaily ? 2 : 5;
+        const splitCols = isDaily
+          ? `<th style="width:80px;">Employee #</th><th>Employee Name</th>`
+          : `<th style="width:80px;">Employee #</th><th>Employee Name</th><th style="width:80px;">% Split</th><th style="width:110px;">Amount</th><th style="width:160px;">Employee Initials</th>`;
+        splitsHtml = `<table style="width:100%;border-collapse:collapse;border:1px solid #000;margin-top:14px;">
+          <thead>
+            <tr style="background:#c9a84c;"><th colspan="${colCount}" style="padding:6px;text-align:center;font-size:11px;">${isDaily ? 'CREW — DAILY LOG' : 'CREW SPLITS'}</th></tr>
+            <tr style="background:#d9d9d9;font-size:11px;">${splitCols}</tr>
+          </thead>
+          <tbody>${splits.map(s => `<tr>
+            <td style="padding:5px 8px;text-align:center;">${s.empNum||'—'}</td>
+            <td style="padding:5px 8px;">${s.employee||''}</td>
+            ${!isDaily ? `<td style="padding:5px 8px;text-align:center;">${s.pctSplit||''}</td><td style="padding:5px 8px;text-align:right;">${fmtMoney(parseFloat(s.amount||0))}</td><td style="padding:5px 8px;text-align:center;">${s.signatureData ? `<img src="${s.signatureData}" style="height:32px;max-width:140px;" />` : ''}</td>` : ''}
+          </tr>`).join('')}</tbody>
+        </table>`;
+      }
+
+      const totalHtml = !isDaily
+        ? `<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:12px;"><strong style="text-decoration:underline;">Total Amount:</strong><div style="border:1px solid #000;padding:5px 16px;min-width:120px;text-align:right;font-weight:700;">${fmtMoney(rows.reduce((s,r)=>s+(parseFloat(r.weAmount)||0),0))}</div></div>` : '';
+
+      crewSections.push(`<div class="crew-section">
+        <div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:12px;border-bottom:2px solid #000;padding-bottom:8px;">D9 Edge — ${typeLabel}${jobName ? ' — ' + jobName : ''}</div>
+        ${hdr}
+        <table style="width:100%;border-collapse:collapse;border:1px solid #000;">
+          <thead><tr style="background:#c9a84c;font-size:11px;text-decoration:underline;">${theadCols}</tr></thead>
+          <tbody>${trows}</tbody>
+        </table>${totalHtml}${splitsHtml}
+      </div>`);
+    }
+
+    if (!crewSections.length) return null;
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${typeLabel}${jobName ? ' – ' + jobName : ''}</title>
+      <style>*{box-sizing:border-box;}body{font-family:Arial,sans-serif;font-size:12px;color:#000;margin:0;padding:20px;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #000;padding:4px 8px;}thead th{font-size:11px;text-align:center;}.crew-section{margin-bottom:32px;}
+      @media print{body{padding:0;margin:0;}@page{margin:.5in;size:landscape;}.crew-section{page-break-after:always;}.crew-section:last-child{page-break-after:avoid;}}</style>
+    </head><body>${crewSections.join('')}</body></html>`;
+  }
+
+  // Build files and add to ZIP
+  let fileCount = 0;
+  for (const doc of sheets) {
+    const html = buildPaysheetHtml(doc);
+    if (!html) continue;
+    const isDaily = doc.type === 'daily';
+    const dateStr = (isDaily ? doc.date : doc.weekEnding || weekEnding).replace(/-/g, '-');
+    const jobSlug = (doc.job || 'NoJob').replace(/[^\w\s]/g, '').trim().replace(/\s+/g, '_');
+    const fileName = isDaily
+      ? `Daily_${jobSlug}_${dateStr}.html`
+      : `Weekly_Summary_${jobSlug}_${dateStr}.html`;
+    zip.file(fileName, html);
+    fileCount++;
+  }
+
+  if (!fileCount) { alert('No exportable paysheet data found.'); return; }
+
+  const zipLabel = label.replace(/[^\w\s,]/g, '').trim().replace(/\s+/g, '_');
+  const content  = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+  const url = URL.createObjectURL(content);
+  const a   = document.createElement('a');
+  a.href    = url;
+  a.download = zipLabel + '.zip';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function psCancelEdit() {
   if (_psEditSnapshot) {
     // Restore state from snapshot
@@ -4796,14 +4932,16 @@ function renderPSLoadList() {
     const isEmpty = sheets.length === 0;
     return `
     <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden;">
-      <div onclick="psToggleFolder('${we}','${folderId}')"
-           style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;background:var(--surface2);user-select:none;">
-        <span style="font-size:1rem;">${isOpen ? '📂' : '📁'}</span>
-        <div style="flex:1;">
-          <div style="font-weight:700;font-size:.93rem;">Week Ending: ${eh(label)}</div>
-          <div style="font-size:.75rem;color:var(--muted);margin-top:1px;">${isEmpty ? 'Empty folder' : sheets.length + ' paysheet' + (sheets.length!==1?'s':'')}</div>
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface2);user-select:none;">
+        <div onclick="psToggleFolder('${we}','${folderId}')" style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer;">
+          <span style="font-size:1rem;">${isOpen ? '📂' : '📁'}</span>
+          <div style="flex:1;">
+            <div style="font-weight:700;font-size:.93rem;">Week Ending: ${eh(label)}</div>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:1px;">${isEmpty ? 'Empty folder' : sheets.length + ' paysheet' + (sheets.length!==1?'s':'')}</div>
+          </div>
+          <span style="color:var(--muted);font-size:.85rem;">${isOpen ? '▲' : '▼'}</span>
         </div>
-        <span style="color:var(--muted);font-size:.85rem;">${isOpen ? '▲' : '▼'}</span>
+        ${!isEmpty ? `<button class="btn-sm" onclick="event.stopPropagation();psExportFolderZip('${we}')" style="white-space:nowrap;font-size:.75rem;padding:4px 10px;" title="Export all paysheets as PDF bundle">⬇ Export ZIP</button>` : ''}
       </div>
       <div id="${folderId}" style="display:${isOpen?'block':'none'};">
         ${isEmpty
