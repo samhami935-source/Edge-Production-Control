@@ -2584,9 +2584,13 @@ function diRenderCrewTable() {
     if (csvFile && row.area) {
       // Show individual CSV line items for this area (matches Budget by Area breakdown)
       const areaRows = csvFile.rows.filter(r => r.area === row.area);
+      const areaEntries = getPayrollEntries().filter(e => e.csvFile === jobName && e.area === row.area);
       if (areaRows.length) {
         areaRows.forEach(r => {
-          codeOpts += `<option value="${eh(r.costCode)}" data-desc="${eh(r.description)}" ${row.costCode===r.costCode?'selected':''}>${r.costCode} – ${r.description}</option>`;
+          const paid = areaEntries.filter(e => e.costCode === r.costCode && e.description === r.description).reduce((s,e) => s+e.price, 0);
+          const rem  = r.amount - paid;
+          const remStr = rem < 0 ? `-${fm(Math.abs(rem))}` : fm(rem);
+          codeOpts += `<option value="${eh(r.costCode)}" data-desc="${eh(r.description)}" ${row.costCode===r.costCode?'selected':''}>${r.costCode} – ${r.description}   |   Rem: ${remStr}</option>`;
         });
       } else {
         PAYROLL_GROUPS.forEach(g => {
