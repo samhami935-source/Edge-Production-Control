@@ -708,12 +708,13 @@
         <div style="overflow-x:auto;">
           <table style="min-width:500px;margin:0;">
             <thead><tr>
-              <th>Labor Group</th>
+              <th>Cost Code</th>
+              <th>Description</th>
               <th style="text-align:right;">Budget</th>
               <th style="text-align:right;">Paid</th>
               <th style="text-align:right;">Remaining</th>
             </tr></thead>
-            <tbody id="ps-area-budget-tbody"><tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">Select a job and area to view budget.</td></tr></tbody>
+            <tbody id="ps-area-budget-tbody"><tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted);">Select a job and area to view budget.</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -2142,9 +2143,14 @@ function onCSVFileChange() {
 }
 
 function onLineCodeInput() {
-  const code=document.getElementById('pr-line-code').value;
-  const group=PAYROLL_GROUPS.find(g=>g.code===code);
-  document.getElementById('pr-line-desc').value=group?group.description:'';
+  const sel=document.getElementById('pr-line-code');
+  const code=sel.value;
+  const selectedOpt=sel.options[sel.selectedIndex];
+  // Use item-level description if available, otherwise fall back to payroll group
+  const desc=selectedOpt&&selectedOpt.dataset.description
+    ? selectedOpt.dataset.description
+    : (PAYROLL_GROUPS.find(g=>g.code===code)||{}).description||'';
+  document.getElementById('pr-line-desc').value=desc;
   previewBalance();
 }
 
@@ -2156,20 +2162,37 @@ function refreshLaborCodeOptions() {
   lcSel.innerHTML='<option value="">— Select —</option>';
   const f=fileName?getSavedCSVFiles().find(x=>x.name===fileName):null;
   const allEntries=fileName?getPayrollEntries().filter(e=>e.csvFile===fileName):[];
-  PAYROLL_GROUPS.forEach(g=>{
-    const o=document.createElement('option');
-    o.value=g.code;
-    if(f&&area){
-      const budget=f.rows.filter(r=>r.area===area&&getCodeGroup(r.costCode)===g.code).reduce((s,r)=>s+r.amount,0);
-      const paid=allEntries.filter(e=>e.area===area&&e.costCode===g.code).reduce((s,e)=>s+e.price,0);
-      const rem=budget-paid;
-      const remStr=rem<0?`-${fm(Math.abs(rem))}`:fm(rem);
-      o.textContent=`${g.code} – ${g.description}   |   Rem: ${remStr}`;
-    } else {
+
+  if(f && area) {
+    // Show individual CSV line items for this area
+    const areaRows = f.rows.filter(r => r.area === area);
+    const groupPaidCache = {};
+    areaRows.forEach(r => {
+      const gc = getCodeGroup(r.costCode);
+      if (groupPaidCache[gc] === undefined)
+        groupPaidCache[gc] = allEntries.filter(e=>e.area===area&&e.costCode===gc).reduce((s,e)=>s+e.price,0);
+    });
+    areaRows.forEach(r => {
+      const gc = getCodeGroup(r.costCode);
+      const groupBudget = areaRows.filter(x=>getCodeGroup(x.costCode)===gc).reduce((s,x)=>s+x.amount,0);
+      const paidAlloc = groupBudget>0 ? groupPaidCache[gc] * (r.amount/groupBudget) : 0;
+      const rem = r.amount - paidAlloc;
+      const remStr = rem<0?`-${fm(Math.abs(rem))}`:fm(rem);
+      const o=document.createElement('option');
+      o.value=getCodeGroup(r.costCode);
+      o.dataset.description=r.description;
+      o.textContent=`${r.costCode} – ${r.description}   |   Rem: ${remStr}`;
+      lcSel.appendChild(o);
+    });
+  } else {
+    // No area selected — show all payroll groups
+    PAYROLL_GROUPS.forEach(g=>{
+      const o=document.createElement('option');
+      o.value=g.code;
       o.textContent=`${g.code} – ${g.description}`;
-    }
-    lcSel.appendChild(o);
-  });
+      lcSel.appendChild(o);
+    });
+  }
   lcSel.value=current;
 }
 
@@ -3697,28 +3720,34 @@ function renderPSAreaBudgetTable() {
   if (!f) return;
   const allEntries = getPayrollEntries().filter(e => e.csvFile === jobName);
   let totalBudget=0, totalPaid=0;
-  const rows = PAYROLL_GROUPS.map(g => {
-    const budget = f.rows.filter(r=>r.area===area&&getCodeGroup(r.costCode)===g.code).reduce((s,r)=>s+r.amount,0);
-    const paid   = allEntries.filter(e=>e.area===area&&e.costCode===g.code).reduce((s,e)=>s+e.price,0);
-    if (budget===0 && paid===0) return '';
-    const rem = budget - paid;
-    const rc  = rem<0?'color:var(--red)':rem===0?'color:var(--yellow)':'color:var(--green)';
-    totalBudget+=budget; totalPaid+=paid;
-    return `<tr>
-      <td style="font-size:.85rem;">${g.code} — ${g.description}</td>
-      <td style="text-align:right;">${fm(budget)}</td>
-      <td style="text-align:right;color:var(--yellow);">${paid>0?fm(paid):'—'}</td>
-      <td style="text-align:right;${rc}">${rem<0?'-':''}${fm(Math.abs(rem))}</td>
-    </tr>`;
-  }).filter(Boolean);
-  if (!rows.length) {
+  // Show individual CSV rows for this area (same breakdown as Budget tab)
+  const areaRows = f.rows.filter(r => r.area === area);
+  if (!areaRows.length) {
     tbody.innerHTML='<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">No budget data for this area.</td></tr>';
     return;
   }
+  const rows = areaRows.map(r => {
+    const paid = allEntries.filter(e => e.area === area && e.costCode === getCodeGroup(r.costCode) && e.description === r.description).reduce((s,e)=>s+e.price,0)
+               + allEntries.filter(e => e.area === area && e.costCode === r.costCode).reduce((s,e)=>s+e.price,0);
+    // Avoid double-counting: use group-level paid split proportionally if exact match not found
+    const groupBudget = areaRows.filter(x => getCodeGroup(x.costCode) === getCodeGroup(r.costCode)).reduce((s,x)=>s+x.amount,0);
+    const groupPaid   = allEntries.filter(e => e.area === area && e.costCode === getCodeGroup(r.costCode)).reduce((s,e)=>s+e.price,0);
+    const paidAlloc   = groupBudget > 0 ? groupPaid * (r.amount / groupBudget) : 0;
+    const rem = r.amount - paidAlloc;
+    const rc  = rem<0?'color:var(--red)':rem===0?'color:var(--yellow)':'color:var(--green)';
+    totalBudget += r.amount; totalPaid += paidAlloc;
+    return `<tr>
+      <td style="font-size:.85rem;color:var(--muted);font-family:monospace;">${eh(r.costCode)}</td>
+      <td style="font-size:.85rem;">${eh(r.description)}</td>
+      <td style="text-align:right;">${fm(r.amount)}</td>
+      <td style="text-align:right;color:var(--yellow);">${paidAlloc>0?fm(paidAlloc):'—'}</td>
+      <td style="text-align:right;${rc}">${rem<0?'-':''}${fm(Math.abs(rem))}</td>
+    </tr>`;
+  });
   const totRem = totalBudget-totalPaid;
   const totRc  = totRem<0?'color:var(--red)':totRem===0?'color:var(--yellow)':'color:var(--green)';
   tbody.innerHTML = rows.join('') + `<tr style="border-top:2px solid var(--border);font-weight:700;">
-    <td>Total</td>
+    <td colspan="2">Total</td>
     <td style="text-align:right;">${fm(totalBudget)}</td>
     <td style="text-align:right;color:var(--yellow);">${totalPaid>0?fm(totalPaid):'—'}</td>
     <td style="text-align:right;${totRc}">${totRem<0?'-':''}${fm(Math.abs(totRem))}</td>
