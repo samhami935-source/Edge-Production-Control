@@ -447,12 +447,13 @@
         <div style="overflow-x:auto;">
           <table style="min-width:500px;margin:0;">
             <thead><tr>
-              <th>Labor Group</th>
+              <th>Cost Code</th>
+              <th>Description</th>
               <th style="text-align:right;">Budget</th>
               <th style="text-align:right;">Paid</th>
               <th style="text-align:right;">Remaining</th>
             </tr></thead>
-            <tbody id="area-budget-tbody"><tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">Select a job and area to view budget.</td></tr></tbody>
+            <tbody id="area-budget-tbody"><tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted);">Select a job and area to view budget.</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1616,35 +1617,38 @@ function renderAreaBudgetTable() {
   const area     = document.getElementById('area-budget-select').value;
   const tbody    = document.getElementById('area-budget-tbody');
   if (!area) {
-    tbody.innerHTML='<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">Select an area above.</td></tr>';
+    tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted);">Select an area above.</td></tr>';
     return;
   }
   const f = getSavedCSVFiles().find(x=>x.name===fileName);
   if (!f) return;
-  const allEntries = getPayrollEntries().filter(e=>e.csvFile===fileName);
+  const allEntries = getPayrollEntries().filter(e=>e.csvFile===fileName&&e.area===area);
   let totalBudget=0, totalPaid=0;
-  const rows = PAYROLL_GROUPS.map(g => {
-    const budget = f.rows.filter(r=>r.area===area&&getCodeGroup(r.costCode)===g.code).reduce((s,r)=>s+r.amount,0);
-    const paid   = allEntries.filter(e=>e.area===area&&e.costCode===g.code).reduce((s,e)=>s+e.price,0);
-    if (budget===0 && paid===0) return '';
-    const rem = budget - paid;
-    const rc  = rem<0?'color:var(--red)':rem===0?'color:var(--yellow)':'color:var(--green)';
-    totalBudget+=budget; totalPaid+=paid;
+  const areaRows = f.rows.filter(r=>r.area===area);
+  if (!areaRows.length) {
+    tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted);">No budget data for this area.</td></tr>';
+    return;
+  }
+  // Build paid lookup by exact costCode
+  const paidByCode = {};
+  allEntries.forEach(e => { paidByCode[e.costCode] = (paidByCode[e.costCode]||0) + e.price; });
+  const rows = areaRows.map(r => {
+    const paid = paidByCode[r.costCode] || 0;
+    const rem  = r.amount - paid;
+    const rc   = rem<0?'color:var(--red)':rem===0?'color:var(--yellow)':'color:var(--green)';
+    totalBudget+=r.amount; totalPaid+=paid;
     return `<tr>
-      <td style="font-size:.85rem;">${g.code} — ${g.description}</td>
-      <td style="text-align:right;">${fm(budget)}</td>
+      <td style="font-size:.85rem;color:var(--muted);font-family:monospace;">${eh(r.costCode)}</td>
+      <td style="font-size:.85rem;">${eh(r.description)}</td>
+      <td style="text-align:right;">${fm(r.amount)}</td>
       <td style="text-align:right;color:var(--yellow);">${paid>0?fm(paid):'—'}</td>
       <td style="text-align:right;${rc}">${rem<0?'-':''}${fm(Math.abs(rem))}</td>
     </tr>`;
-  }).filter(Boolean);
-  if (!rows.length) {
-    tbody.innerHTML='<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">No budget data for this area.</td></tr>';
-    return;
-  }
+  });
   const totRem = totalBudget - totalPaid;
   const totRc  = totRem<0?'color:var(--red)':totRem===0?'color:var(--yellow)':'color:var(--green)';
   tbody.innerHTML = rows.join('') + `<tr style="border-top:2px solid var(--border);font-weight:700;">
-    <td>Total</td>
+    <td colspan="2">Total</td>
     <td style="text-align:right;">${fm(totalBudget)}</td>
     <td style="text-align:right;color:var(--yellow);">${totalPaid>0?fm(totalPaid):'—'}</td>
     <td style="text-align:right;${totRc}">${totRem<0?'-':''}${fm(Math.abs(totRem))}</td>
@@ -2198,7 +2202,7 @@ function refreshLaborCodeOptions() {
 
 function previewBalance() {
   const fileName=document.getElementById('pr-csv-file').value;
-  const costCode=getCodeGroup(document.getElementById('pr-line-code').value.trim());
+  const costCode=document.getElementById('pr-line-code').value.trim();
   const description=document.getElementById('pr-line-desc').value.trim();
   const area=document.getElementById('pr-area').value.trim();
   const price=parseFloat(document.getElementById('pr-price').value)||0;
@@ -2206,7 +2210,8 @@ function previewBalance() {
 
   if(!fileName||!costCode||!area){preview.innerHTML='';return;}
   const entry=getSavedCSVFiles().find(f=>f.name===fileName);
-  const budget=entry?entry.rows.filter(r=>r.area===area&&getCodeGroup(r.costCode)===costCode).reduce((s,r)=>s+r.amount,0):0;
+  // Budget for this exact line item
+  const budget=entry?entry.rows.filter(r=>r.area===area&&r.costCode===costCode&&r.description===description).reduce((s,r)=>s+r.amount,0):0;
   const{paid}=getPayrollTotals(fileName,costCode,description,area);
   const newRem=budget-(paid+price);
   preview.innerHTML=
@@ -2223,7 +2228,7 @@ function addPayrollEntry() {
   const area       =document.getElementById('pr-area').value.trim();
   const rawCode    =document.getElementById('pr-line-code').value.trim();
   const description=document.getElementById('pr-line-desc').value.trim();
-  const costCode   =getCodeGroup(rawCode);
+  const costCode   =rawCode; // save exact code (e.g. "206"), not the group code
   const price      =parseFloat(document.getElementById('pr-price').value)||0;
   if(!csvFile)    {alert('Please select a CSV file.');return;}
   if(!area)       {alert('Please enter an area.');return;}
@@ -2232,7 +2237,8 @@ function addPayrollEntry() {
 
   const files=getSavedCSVFiles();
   const csvEntry=files.find(f=>f.name===csvFile);
-  const budget=csvEntry?csvEntry.rows.filter(r=>r.area===area&&getCodeGroup(r.costCode)===costCode).reduce((s,r)=>s+r.amount,0):0;
+  // Match budget to this specific line item by cost code + description
+  const budget=csvEntry?csvEntry.rows.filter(r=>r.area===area&&r.costCode===costCode&&r.description===description).reduce((s,r)=>s+r.amount,0):0;
 
   const entries=getPayrollEntries();
   entries.push({id:Date.now(),date,time,csvFile,area,costCode,description,amount:budget,price});
