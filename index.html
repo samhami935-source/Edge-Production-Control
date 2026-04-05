@@ -4102,11 +4102,31 @@ async function psFinishEdit() {
   _psSaveHeaderFields();
   _psEditMode = false;
   const isDaily = _psCurrentType === 'daily';
-  await savePaysheetToCloud(false, {
+
+  const savedDoc = await savePaysheetToCloud(false, {
     type: isDaily ? 'daily' : 'weekly',
     dailyDate: _ps().header.weekEnding || document.getElementById('di-date').value,
     submissionId: _psSavePendingData?.submissionId || null
   });
+
+  // If this weekly paysheet was already approved, re-sync payroll entries
+  // so they reflect the updated W/E Earned amounts (no duplicates — sync
+  // always replaces entries tagged with this paysheet's sourceDocId).
+  if (!isDaily && savedDoc) {
+    const freshDoc = (_cache.paysheets||[]).find(p => p.id === savedDoc.id);
+    if (freshDoc && freshDoc.approvedAt) {
+      try {
+        const syncCount = await psApproveSync(freshDoc);
+        if (syncCount > 0) {
+          console.log(`psFinishEdit: re-synced ${syncCount} payroll entr${syncCount===1?'y':'ies'} for "${freshDoc.job}"`);
+        }
+      } catch(syncErr) {
+        console.error('psFinishEdit: payroll re-sync failed:', syncErr);
+        alert('Paysheet saved, but payroll re-sync failed: ' + syncErr.message + '\n\nRe-approve the paysheet to retry.');
+      }
+    }
+  }
+
   _psEditSnapshot = null;
   psLoadHeaderFields();
   psRenderMainTable();
@@ -4129,25 +4149,132 @@ async function psApprovePaysheet() {
   const doc = (_cache.paysheets||[]).find(p => p.id === _psCurrentDocId);
   if (!doc) { alert('Paysheet not found. Please save it to the cloud first.'); return; }
 
-  const jobName = doc.job    || '';
+  const jobName = doc.job      || '';
   const weekEnd = doc.weekEnding || '';
-  if (!confirm(`Approve weekly summary for "${jobName}" — Week Ending ${_fmtWeekDate(weekEnd)} for Accounting?\n\nThis will publish employee pay amounts to the Accounting tab. You can re-approve after editing.`)) return;
+  if (!confirm(`Approve weekly summary for "${jobName}" — Week Ending ${_fmtWeekDate(weekEnd)} for Accounting?\n\nThis will:\n• Publish employee pay to the Accounting tab\n• Auto-create Payroll entries for each labor code\n\nYou can re-approve after editing to update payroll entries.`)) return;
 
   const approvedAt = new Date().toISOString();
   const approvedBy = _currentUser ? _currentUser.email : 'unknown';
 
   try {
     await db.collection('paysheets').doc(_psCurrentDocId).update({ approvedAt, approvedBy });
+
     // Update local cache
     const idx = (_cache.paysheets||[]).findIndex(p => p.id === _psCurrentDocId);
     if (idx !== -1) {
       _cache.paysheets[idx].approvedAt = approvedAt;
       _cache.paysheets[idx].approvedBy = approvedBy;
     }
+
+    // Sync W/E Earned amounts → Payroll entries (one per labor code row)
+    const approvedDoc = (_cache.paysheets||[]).find(p => p.id === _psCurrentDocId);
+    const syncCount   = await psApproveSync(approvedDoc);
+
     psRenderCrewTabs(); // re-render action buttons to show Approved status
+    alert(`Paysheet approved.\n\n${syncCount} payroll entr${syncCount === 1 ? 'y' : 'ies'} created/updated in the Payroll tab.`);
   } catch(e) {
     alert('Approval failed: ' + e.message);
   }
+}
+
+// ─── Sync approved weekly paysheet rows → Payroll entries ───
+// Called on approval and on re-save of an already-approved paysheet.
+// Each row (area + laborCode + weAmount) becomes one payroll entry.
+// Uses deterministic IDs so re-syncing always upserts — never duplicates.
+// Only touches entries tagged source='paysheet_sync' + sourceDocId=doc.id.
+async function psApproveSync(doc) {
+  if (!doc) throw new Error('psApproveSync: no doc provided');
+
+  const docId      = doc.id        || '';
+  const jobName    = doc.job       || '';
+  const weekEnding = doc.weekEnding || '';
+
+  // Validation — cannot sync without the three key identifiers
+  if (!docId)      throw new Error('psApproveSync: missing paysheet doc ID');
+  if (!jobName)    throw new Error('psApproveSync: paysheet has no job — please select a job and save first');
+  if (!weekEnding) throw new Error('psApproveSync: paysheet has no Week Ending — fill in the header and save first');
+
+  const now     = new Date();
+  const timeStr = now.toTimeString().slice(0, 5);
+
+  // ── Build new payroll entries from every crew row that has data ──
+  const newEntries = [];
+
+  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+    const crew = doc.crews && doc.crews[String(c)];
+    if (!crew || !crew.rows) continue;
+
+    crew.rows.forEach((row, i) => {
+      const area      = (row.area      || '').trim();
+      const costCode  = (row.costCode  || '').trim();
+      const weAmount  = parseFloat(row.weAmount) || 0;
+
+      // Skip blank or zero rows — nothing to post to payroll
+      if (!area)     return;
+      if (!costCode) return;
+      if (weAmount <= 0) return;
+
+      // Resolve description from PAYROLL_GROUPS via group-code mapping
+      const groupCode   = getCodeGroup(costCode);
+      const groupEntry  = PAYROLL_GROUPS.find(g => g.code === groupCode);
+      const description = groupEntry ? groupEntry.description : costCode;
+
+      // Budget amount from CSV (best-effort; zero if CSV not loaded)
+      const files    = getSavedCSVFiles();
+      const csvFile  = files.find(f => f.name === jobName);
+      const budget   = csvFile
+        ? csvFile.rows
+            .filter(r => r.area === area && r.costCode === costCode)
+            .reduce((s, r) => s + (r.amount || 0), 0)
+        : 0;
+
+      // Deterministic ID: changing these invalidates old entries on re-sync.
+      // Format: ps_<docId>_c<crew>_r<rowIndex>  (sanitised to alphanum+dash)
+      const entryId = ('ps_' + docId + '_c' + c + '_r' + i).replace(/[^\w-]/g, '_');
+
+      newEntries.push({
+        id:          entryId,
+        date:        weekEnding,   // use week-ending date as the payroll date
+        time:        timeStr,
+        csvFile:     jobName,
+        area,
+        costCode,
+        description,
+        amount:      budget,       // CSV budget for reference
+        price:       weAmount,     // W/E Earned → Amount Paid
+        source:      'paysheet_sync',
+        sourceDocId: docId,
+        weekEnding,
+      });
+    });
+  }
+
+  // ── Validate: warn if nothing to post ──
+  if (!newEntries.length) {
+    console.warn('psApproveSync: no rows with area + labor code + W/E Earned amount found in', docId);
+    return 0;
+  }
+
+  // ── Remove old sync entries for this paysheet, keep everything else ──
+  const existing = _cache.payroll || [];
+  const toKeep   = existing.filter(e => e.sourceDocId !== docId);
+  const toDelete = existing.filter(e => e.sourceDocId === docId);
+
+  // ── Atomic batch write to Firestore ──
+  const batch = db.batch();
+  toDelete.forEach(e  => batch.delete(db.collection('payroll').doc(String(e.id))));
+  newEntries.forEach(e => batch.set(   db.collection('payroll').doc(String(e.id)), e));
+
+  await batch.commit(); // throws on failure — caller handles the error
+
+  // ── Update in-memory cache ──
+  _cache.payroll = [...toKeep, ...newEntries];
+
+  // ── Refresh payroll UI if it's currently visible ──
+  try { applyPayrollFilters(); } catch(_) {}
+  try { if (activeCSVName === jobName) { renderCSVSummary(); applyFilters(); renderCharts(); } } catch(_) {}
+
+  return newEntries.length;
 }
 
 function psExportPDF() {
