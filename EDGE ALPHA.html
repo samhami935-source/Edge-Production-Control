@@ -342,6 +342,9 @@
     <div class="tab" id="paysheet-tab" onclick="switchToPaysheet()">
       <span>📄</span><span class="tab-name">Paysheet</span>
     </div>
+    <div class="tab" id="accounting-tab" onclick="switchToAccounting()">
+      <span>🧾</span><span class="tab-name">Accounting</span>
+    </div>
   </div>
 
   <input type="file" id="file-input" accept=".csv,text/csv" multiple />
@@ -1793,8 +1796,8 @@ function exportLCCSV() {
 //  TAB ROUTING
 // ═══════════════════════════
 function showPanel(name) {
-  ['csv-content','payroll-content','budgets-content','lc-content','paysheet-content'].forEach(id => document.getElementById(id).style.display = 'none');
-  const map = { csv:'csv-content', payroll:'payroll-content', budgets:'budgets-content', lc:'lc-content' };
+  ['csv-content','payroll-content','budgets-content','lc-content','paysheet-content','accounting-content'].forEach(id => document.getElementById(id).style.display = 'none');
+  const map = { csv:'csv-content', payroll:'payroll-content', budgets:'budgets-content', lc:'lc-content', accounting:'accounting-content' };
   if (map[name]) document.getElementById(map[name]).style.display = 'block';
   if (name === 'budgets') {
     const hasFiles = getSavedCSVFiles().length > 0;
@@ -1805,10 +1808,11 @@ function showPanel(name) {
 }
 
 function renderTabBar() {
-  document.getElementById('payroll-tab').classList.toggle('active',   activeTab === 'payroll');
-  document.getElementById('budgets-tab').classList.toggle('active',   activeTab === 'budgets');
-  document.getElementById('lc-tab').classList.toggle('active',        activeTab === 'lc');
-  document.getElementById('paysheet-tab').classList.toggle('active',  activeTab === 'paysheet');
+  document.getElementById('payroll-tab').classList.toggle('active',    activeTab === 'payroll');
+  document.getElementById('budgets-tab').classList.toggle('active',    activeTab === 'budgets');
+  document.getElementById('lc-tab').classList.toggle('active',         activeTab === 'lc');
+  document.getElementById('paysheet-tab').classList.toggle('active',   activeTab === 'paysheet');
+  document.getElementById('accounting-tab').classList.toggle('active', activeTab === 'accounting');
 }
 
 function switchToPayroll() {
@@ -3534,7 +3538,8 @@ for (let c=1; c<=PS_NUM_CREWS; c++) {
 
 // 'daily' = auto-generated from daily input (no % split/amount/sign)
 // 'weekly' = compiled or manually saved (full crew splits)
-let _psCurrentType = 'daily';
+let _psCurrentType  = 'daily';
+let _psCurrentDocId = null;  // Firestore doc ID of the paysheet currently loaded in the view
 let _psEditMode    = false;  // true = daily paysheet in edit mode (admin/PM only)
 let _psFilterCode  = '';     // active labor code filter (weekly only)
 let _psCurrentPage = 0;      // current page index for single-page navigation
@@ -3607,15 +3612,24 @@ function psRenderCrewTabs() {
   const isDaily  = _psCurrentType === 'daily';
 
   if (!isDaily) {
-    // Summary (weekly) paysheet — Edit + Export PDF + Save Paysheet
+    // Summary (weekly) paysheet — Edit + Export PDF + Approve + Save Paysheet
     if (_psEditMode) {
       actWrap.innerHTML = `
         <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="psFinishEdit()">💾 Save Edits</button>
         <button class="btn btn-outline" style="white-space:nowrap;" onclick="psCancelEdit()">✕ Cancel</button>`;
     } else {
+      // Check approval status of the currently-loaded doc
+      const _acctDoc      = _psCurrentDocId ? (_cache.paysheets||[]).find(p => p.id === _psCurrentDocId) : null;
+      const _acctApproved = _acctDoc && _acctDoc.approvedAt;
+      const _approveBtn   = isAdmin()
+        ? (_acctApproved
+            ? `<span style="font-size:.78rem;color:var(--green);font-weight:700;white-space:nowrap;padding:0 4px;">✓ Approved ${new Date(_acctDoc.approvedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>`
+            : `<button class="btn" style="background:#1a56db;color:#fff;white-space:nowrap;border:none;" onclick="psApprovePaysheet()">✓ Approve for Accounting</button>`)
+        : '';
       actWrap.innerHTML = `
         <button class="btn btn-outline" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);" onclick="psEnterEditMode()">✏️ Edit</button>
         <button class="btn btn-outline" style="white-space:nowrap;" onclick="psExportPDF()">⬇ Export PDF</button>
+        ${_approveBtn}
         <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>`;
     }
   } else {
@@ -3663,7 +3677,7 @@ function psAutoFillCrewFromDaily(crewNum) {
 function switchToPaysheet() {
   activeTab = 'paysheet';
   renderTabBar();
-  ['csv-content','payroll-content','budgets-content','lc-content'].forEach(id => document.getElementById(id).style.display = 'none');
+  ['csv-content','payroll-content','budgets-content','lc-content','accounting-content'].forEach(id => document.getElementById(id).style.display = 'none');
   document.getElementById('paysheet-content').style.display = 'block';
   psPopulateJobSelect();
   psPopulateAreaBudgetSelect();
@@ -3672,6 +3686,13 @@ function switchToPaysheet() {
   psRenderMainTable();
   psRenderCrewTable();
   diInit();
+}
+
+function switchToAccounting() {
+  activeTab = 'accounting';
+  renderTabBar();
+  showPanel('accounting');
+  acctInit();
 }
 
 function psPopulateJobSelect() {
@@ -4097,6 +4118,36 @@ function psDeleteRow(i) {
   _ps().rows.splice(i, 1);
   psRenderMainTable();
   psUpdateTotal();
+}
+
+// ─── Admin: Approve weekly paysheet for Accounting tab ───
+async function psApprovePaysheet() {
+  if (!isAdmin()) { alert('Admin access required to approve paysheets.'); return; }
+  if (!_psCurrentDocId) { alert('No paysheet loaded. Load a saved weekly summary first.'); return; }
+  if (_psCurrentType !== 'weekly') { alert('Only weekly summary paysheets can be approved for accounting.'); return; }
+
+  const doc = (_cache.paysheets||[]).find(p => p.id === _psCurrentDocId);
+  if (!doc) { alert('Paysheet not found. Please save it to the cloud first.'); return; }
+
+  const jobName = doc.job    || '';
+  const weekEnd = doc.weekEnding || '';
+  if (!confirm(`Approve weekly summary for "${jobName}" — Week Ending ${_fmtWeekDate(weekEnd)} for Accounting?\n\nThis will publish employee pay amounts to the Accounting tab. You can re-approve after editing.`)) return;
+
+  const approvedAt = new Date().toISOString();
+  const approvedBy = _currentUser ? _currentUser.email : 'unknown';
+
+  try {
+    await db.collection('paysheets').doc(_psCurrentDocId).update({ approvedAt, approvedBy });
+    // Update local cache
+    const idx = (_cache.paysheets||[]).findIndex(p => p.id === _psCurrentDocId);
+    if (idx !== -1) {
+      _cache.paysheets[idx].approvedAt = approvedAt;
+      _cache.paysheets[idx].approvedBy = approvedBy;
+    }
+    psRenderCrewTabs(); // re-render action buttons to show Approved status
+  } catch(e) {
+    alert('Approval failed: ' + e.message);
+  }
 }
 
 function psExportPDF() {
@@ -5198,8 +5249,9 @@ async function loadPaysheetFromCloud(docId) {
   }
 
   // Set type for conditional rendering
-  _psCurrentType = doc.type || 'weekly';
-  _psEditMode    = false;
+  _psCurrentType  = doc.type || 'weekly';
+  _psCurrentDocId = docId;
+  _psEditMode     = false;
 
   // Refresh current crew view
   psLoadHeaderFields();
@@ -5732,7 +5784,327 @@ document.addEventListener('mousedown', e => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  ACCOUNTING TAB
+//  Reads from approved weekly paysheets in _cache.paysheets.
+//  Each weekly paysheet stores employee pay in crews[n].splits[].
+//  Employees are grouped and amounts summed across all crews/jobs for the week.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Populate selectors, show admin notice, trigger first render. */
+function acctInit() {
+  acctPopulateWeekSelect();
+  acctPopulateJobSelect();
+  // Show admin tip if the user is an admin and there are no approved paysheets yet
+  const adminNotice = document.getElementById('acct-admin-notice');
+  if (adminNotice) adminNotice.style.display = isAdmin() ? 'block' : 'none';
+  acctRender();
+}
+
+/** Build the week-ending dropdown from all approved weekly paysheets. */
+function acctPopulateWeekSelect() {
+  const sel = document.getElementById('acct-week-select');
+  if (!sel) return;
+  const cur = sel.value;
+
+  const weeks = [...new Set(
+    (_cache.paysheets || [])
+      .filter(p => p.type === 'weekly' && p.approvedAt)
+      .map(p => p.weekEnding)
+      .filter(Boolean)
+  )].sort((a, b) => b.localeCompare(a)); // newest first
+
+  sel.innerHTML = '<option value="">— Select —</option>' +
+    weeks.map(w => `<option value="${w}"${w === cur ? ' selected' : ''}>${_fmtWeekDate(w)}</option>`).join('');
+}
+
+/** Build the job dropdown from all approved weekly paysheets. */
+function acctPopulateJobSelect() {
+  const sel = document.getElementById('acct-job-select');
+  if (!sel) return;
+  const cur = sel.value;
+
+  const jobs = [...new Set(
+    (_cache.paysheets || [])
+      .filter(p => p.type === 'weekly' && p.approvedAt)
+      .map(p => p.job)
+      .filter(Boolean)
+  )].sort();
+
+  sel.innerHTML = '<option value="">All Jobs</option>' +
+    jobs.map(j => `<option value="${j}"${j === cur ? ' selected' : ''}>${eh(j)}</option>`).join('');
+}
+
+/**
+ * Aggregate employee pay from approved weekly paysheets.
+ * Returns { rows: [{name, amount}], totalAmount, employeeCount, weekEnding, approvedDocs }
+ * Rows are sorted by name.  Multiple appearances of the same name are summed.
+ */
+function acctGetData(weekEnding, jobFilter) {
+  if (!weekEnding) return null;
+
+  const docs = (_cache.paysheets || []).filter(p =>
+    p.type === 'weekly' &&
+    p.approvedAt &&
+    p.weekEnding === weekEnding &&
+    (!jobFilter || p.job === jobFilter)
+  );
+
+  if (!docs.length) return null;
+
+  // Map: employee name (lowercase key) → { displayName, amount }
+  const empMap = new Map();
+
+  docs.forEach(doc => {
+    for (let c = 1; c <= PS_NUM_CREWS; c++) {
+      const crew = doc.crews && doc.crews[String(c)];
+      if (!crew) continue;
+      (crew.splits || []).forEach(s => {
+        const name   = (s.employeeName || '').trim();
+        const amount = parseFloat(s.amount) || 0;
+        if (!name) return; // skip blank rows
+        const key = name.toLowerCase();
+        if (empMap.has(key)) {
+          empMap.get(key).amount += amount;
+        } else {
+          empMap.set(key, { displayName: name, amount });
+        }
+      });
+    }
+  });
+
+  const rows = [...empMap.values()]
+    .filter(r => r.displayName) // safety: skip any leftover blanks
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+  const totalAmount    = rows.reduce((s, r) => s + r.amount, 0);
+  const employeeCount  = rows.length;
+  const approvedDocs   = docs;
+
+  return { rows, totalAmount, employeeCount, weekEnding, approvedDocs };
+}
+
+/** Render the accounting table into #acct-print-area. */
+function acctRender() {
+  const weekEnding = (document.getElementById('acct-week-select') || {}).value || '';
+  const jobFilter  = (document.getElementById('acct-job-select')  || {}).value || '';
+  const printArea  = document.getElementById('acct-print-area');
+  if (!printArea) return;
+
+  if (!weekEnding) {
+    printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">Select a week ending above to view the accounting paysheet.</div>`;
+    return;
+  }
+
+  const data = acctGetData(weekEnding, jobFilter);
+
+  if (!data || !data.rows.length) {
+    const hasApprovedAny = (_cache.paysheets || []).some(p => p.type === 'weekly' && p.approvedAt && p.weekEnding === weekEnding);
+    if (hasApprovedAny && jobFilter) {
+      printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">No employees found for <strong>${eh(jobFilter)}</strong> — Week Ending ${_fmtWeekDate(weekEnding)}.<br>Try selecting "All Jobs".</div>`;
+    } else {
+      printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">No approved weekly paysheets found for Week Ending ${_fmtWeekDate(weekEnding)}.<br>${isAdmin() ? 'Load a Weekly Summary in the Paysheet tab and click <strong>✓ Approve for Accounting</strong>.' : 'Ask an admin to approve the weekly paysheet.'}</div>`;
+    }
+    return;
+  }
+
+  // ── Summary line (which jobs / how many sheets) ──
+  const jobNames   = [...new Set(data.approvedDocs.map(d => d.job).filter(Boolean))];
+  const jobSummary = jobFilter ? eh(jobFilter) : jobNames.map(eh).join(', ') || 'All Jobs';
+  const approvedBy = data.approvedDocs.map(d => d.approvedBy || '').filter(Boolean);
+  const approvedOn = data.approvedDocs
+    .map(d => d.approvedAt ? new Date(d.approvedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '')
+    .filter(Boolean);
+
+  const th  = `padding:10px 14px;text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:#555;border-bottom:2px solid #000;white-space:nowrap;`;
+  const thR = th + `text-align:right;`;
+  const td  = `padding:10px 14px;border-bottom:1px solid #ddd;font-size:.88rem;vertical-align:middle;`;
+  const tdR = td + `text-align:right;font-variant-numeric:tabular-nums;`;
+
+  const rowsHtml = data.rows.map((r, i) => `
+    <tr style="${i % 2 === 1 ? 'background:#f9f9f9;' : ''}">
+      <td style="${td}text-align:center;color:#888;font-size:.78rem;">${i + 1}</td>
+      <td style="${td}font-weight:600;">${eh(r.displayName)}</td>
+      <td style="${tdR}font-weight:700;color:#1a56db;">$${r.amount.toFixed(2)}</td>
+    </tr>`).join('');
+
+  printArea.innerHTML = `
+    <div style="background:#fff;color:#000;border-radius:8px;padding:32px;max-width:860px;font-family:Arial,sans-serif;font-size:13px;border:1px solid var(--border);">
+
+      <!-- Letterhead -->
+      <div style="text-align:center;margin-bottom:24px;border-bottom:3px solid #1a56db;padding-bottom:16px;">
+        <div style="font-size:1.5rem;font-weight:900;color:#1a56db;letter-spacing:.04em;">D9 EDGE</div>
+        <div style="font-size:.95rem;font-weight:700;color:#333;margin-top:4px;text-transform:uppercase;letter-spacing:.08em;">Accounting Weekly Paysheet</div>
+      </div>
+
+      <!-- Meta row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-bottom:22px;font-size:.85rem;">
+        <div><span style="font-weight:700;color:#555;">Week Ending:</span>&nbsp;&nbsp;<strong style="color:#1a56db;">${_fmtWeekDate(weekEnding)}</strong></div>
+        <div><span style="font-weight:700;color:#555;">Job(s):</span>&nbsp;&nbsp;${jobSummary}</div>
+        <div><span style="font-weight:700;color:#555;">Generated:</span>&nbsp;&nbsp;${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+        <div><span style="font-weight:700;color:#555;">Approved by:</span>&nbsp;&nbsp;${[...new Set(approvedBy)].join(', ') || '—'}</div>
+      </div>
+
+      <!-- Table -->
+      <div style="overflow-x:auto;margin-bottom:24px;">
+        <table style="width:100%;border-collapse:collapse;min-width:420px;">
+          <thead>
+            <tr style="background:#f0f4ff;">
+              <th style="${th}width:40px;text-align:center;">#</th>
+              <th style="${th}">Employee Name</th>
+              <th style="${thR}">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+          <!-- Totals footer -->
+          <tfoot>
+            <tr style="background:#f0f4ff;border-top:2px solid #1a56db;">
+              <td style="${td}font-weight:700;text-align:right;" colspan="2">
+                Total — <span style="color:#555;font-size:.82rem;font-weight:600;">${data.employeeCount} employee${data.employeeCount !== 1 ? 's' : ''}</span>
+              </td>
+              <td style="${tdR}font-weight:900;font-size:1.05rem;color:#1a56db;">$${data.totalAmount.toFixed(2)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Signature block -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:40px;padding-top:16px;border-top:1px solid #ddd;font-size:.82rem;color:#555;">
+        <div>
+          <div style="border-bottom:1px solid #000;height:32px;margin-bottom:4px;"></div>
+          <div style="font-weight:700;">Prepared by / Date</div>
+        </div>
+        <div>
+          <div style="border-bottom:1px solid #000;height:32px;margin-bottom:4px;"></div>
+          <div style="font-weight:700;">Authorized Signature / Date</div>
+        </div>
+      </div>
+
+    </div>`;
+}
+
+/** Export the current accounting view as PDF via browser print dialog. */
+function acctExportPDF() {
+  const weekEnding = (document.getElementById('acct-week-select') || {}).value || '';
+  const jobFilter  = (document.getElementById('acct-job-select')  || {}).value || '';
+
+  if (!weekEnding) { alert('Please select a week ending before exporting.'); return; }
+
+  const data = acctGetData(weekEnding, jobFilter);
+  if (!data || !data.rows.length) { alert('No data to export for the selected week.'); return; }
+
+  const jobNames  = [...new Set(data.approvedDocs.map(d => d.job).filter(Boolean))];
+  const jobSummary = jobFilter ? eh(jobFilter) : jobNames.map(eh).join(', ') || 'All Jobs';
+  const approvedBy = [...new Set(data.approvedDocs.map(d => d.approvedBy || '').filter(Boolean))].join(', ') || '—';
+
+  const rowsHtml = data.rows.map((r, i) => `
+    <tr style="${i % 2 === 1 ? 'background:#f9f9f9;' : ''}">
+      <td style="padding:8px 12px;border-bottom:1px solid #ddd;text-align:center;color:#888;font-size:.78rem;">${i + 1}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #ddd;font-weight:600;">${eh(r.displayName)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #ddd;text-align:right;font-weight:700;color:#1a56db;font-variant-numeric:tabular-nums;">$${r.amount.toFixed(2)}</td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Accounting Paysheet — ${_fmtWeekDate(weekEnding)}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:Arial,sans-serif;font-size:13px;color:#000;padding:32px;}
+    @media print{@page{size:letter portrait;margin:24px;} body{padding:0;}}
+  </style>
+  </head><body>
+    <div style="text-align:center;margin-bottom:24px;border-bottom:3px solid #1a56db;padding-bottom:16px;">
+      <div style="font-size:1.4rem;font-weight:900;color:#1a56db;letter-spacing:.04em;">D9 EDGE</div>
+      <div style="font-size:.9rem;font-weight:700;color:#333;margin-top:4px;text-transform:uppercase;letter-spacing:.08em;">Accounting Weekly Paysheet</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;margin-bottom:20px;font-size:.85rem;">
+      <div><strong style="color:#555;">Week Ending:</strong>&nbsp;&nbsp;<strong style="color:#1a56db;">${_fmtWeekDate(weekEnding)}</strong></div>
+      <div><strong style="color:#555;">Job(s):</strong>&nbsp;&nbsp;${jobSummary}</div>
+      <div><strong style="color:#555;">Generated:</strong>&nbsp;&nbsp;${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+      <div><strong style="color:#555;">Approved by:</strong>&nbsp;&nbsp;${approvedBy}</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+      <thead>
+        <tr style="background:#f0f4ff;">
+          <th style="padding:8px 12px;border-bottom:2px solid #000;text-align:center;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;width:40px;">#</th>
+          <th style="padding:8px 12px;border-bottom:2px solid #000;text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;">Employee Name</th>
+          <th style="padding:8px 12px;border-bottom:2px solid #000;text-align:right;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;">Amount</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot>
+        <tr style="background:#f0f4ff;border-top:2px solid #1a56db;">
+          <td colspan="2" style="padding:8px 12px;font-weight:700;text-align:right;">
+            Total — <span style="font-size:.78rem;font-weight:600;color:#555;">${data.employeeCount} employee${data.employeeCount !== 1 ? 's' : ''}</span>
+          </td>
+          <td style="padding:8px 12px;text-align:right;font-weight:900;font-size:1.05rem;color:#1a56db;font-variant-numeric:tabular-nums;">$${data.totalAmount.toFixed(2)}</td>
+        </tr>
+      </tfoot>
+    </table>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:40px;padding-top:16px;border-top:1px solid #ccc;font-size:.82rem;color:#555;">
+      <div>
+        <div style="border-bottom:1px solid #000;height:32px;margin-bottom:4px;"></div>
+        <div style="font-weight:700;">Prepared by / Date</div>
+      </div>
+      <div>
+        <div style="border-bottom:1px solid #000;height:32px;margin-bottom:4px;"></div>
+        <div style="font-weight:700;">Authorized Signature / Date</div>
+      </div>
+    </div>
+  </body></html>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => { win.focus(); win.print(); }, 500);
+}
+
 </script>
+
+<!-- ════════════════════════════════════════════════════════════
+     ACCOUNTING CONTENT PANEL
+     Source of truth: approved weekly paysheets in _cache.paysheets
+     ════════════════════════════════════════════════════════════ -->
+<div id="accounting-content" style="display:none;">
+
+  <!-- Header bar -->
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px;padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);border-top:2px solid #1a56db;">
+    <div style="font-size:1.1rem;font-weight:800;color:#1a56db;letter-spacing:.02em;white-space:nowrap;">🧾 Accounting Weekly Paysheet</div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;">
+      <!-- Week-ending selector -->
+      <div style="display:flex;align-items:center;gap:6px;">
+        <label style="font-size:.78rem;font-weight:700;color:var(--muted);white-space:nowrap;text-transform:uppercase;letter-spacing:.05em;">Week Ending</label>
+        <select id="acct-week-select" class="fi" style="min-width:160px;" onchange="acctRender()">
+          <option value="">— Select —</option>
+        </select>
+      </div>
+      <!-- Job filter -->
+      <div style="display:flex;align-items:center;gap:6px;">
+        <label style="font-size:.78rem;font-weight:700;color:var(--muted);white-space:nowrap;text-transform:uppercase;letter-spacing:.05em;">Job</label>
+        <select id="acct-job-select" class="fi" style="min-width:160px;" onchange="acctRender()">
+          <option value="">All Jobs</option>
+        </select>
+      </div>
+      <button class="btn btn-outline" style="padding:7px 14px;font-size:.8rem;" onclick="acctRender()">⟳ Refresh</button>
+      <button class="btn" style="padding:7px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="acctExportPDF()">⬇ Export PDF</button>
+    </div>
+  </div>
+
+  <!-- Admin notice about approvals -->
+  <div id="acct-admin-notice" style="display:none;padding:10px 16px;background:rgba(26,86,219,.08);border:1px solid rgba(26,86,219,.3);border-radius:8px;font-size:.82rem;color:#93c5fd;margin-bottom:16px;">
+    <strong style="color:#1a56db;">Admin tip:</strong> Only <em>approved</em> weekly paysheets appear here. Open the Paysheet tab, load a Weekly Summary, and click <strong>✓ Approve for Accounting</strong> to make it visible.
+  </div>
+
+  <!-- Main printable area -->
+  <div id="acct-print-area">
+    <!-- Populated by acctRender() -->
+    <div style="padding:48px;text-align:center;color:var(--muted);">
+      Select a week ending above to view the accounting paysheet.
+    </div>
+  </div>
+
+</div>
 
 <!-- Unlock Requests Modal (admin only) -->
 <div class="modal-overlay" id="di-unlock-requests-modal" onclick="if(event.target===this)diCloseUnlockRequestsModal()">
