@@ -1166,6 +1166,24 @@ function isPM()      { return ['project_manager','vp_operations','operations_man
 function isForeman() { return ['foreman','framing_foreman','hanging_foreman','taping_foreman','pickup_foreman'].includes(_currentUserRole); }
 function canEdit()   { return isAdmin() || isPM(); }
 
+// Returns true if the given cost code/group is visible to the current user.
+// Non-foreman roles always see all codes.  Each foreman class sees only its
+// allowed numeric ranges (plus any explicitly-listed individual codes).
+function isForemanAllowedCode(codeStr) {
+  if (!isForeman()) return true;
+  const m = String(codeStr || '').match(/^(\d+)/);
+  if (!m) return true; // non-numeric codes always shown
+  const n = parseInt(m[1], 10);
+  switch (_currentUserRole) {
+    case 'foreman':         return true; // general foreman — no restriction
+    case 'framing_foreman': return (n >= 100 && n <= 199) || (n >= 700 && n <= 799) || (n >= 800 && n <= 899);
+    case 'hanging_foreman': return (n >= 200 && n <= 399) || (n >= 700 && n <= 799) || (n >= 800 && n <= 899);
+    case 'taping_foreman':  return (n >= 400 && n <= 499) || n === 903 || n === 904 || n === 906 || (n >= 700 && n <= 799) || (n >= 800 && n <= 899);
+    case 'pickup_foreman':  return (n >= 600 && n <= 699) || (n >= 700 && n <= 799) || (n >= 800 && n <= 899);
+    default:                return true;
+  }
+}
+
 // ─── Auth UI helpers ───
 function switchAuthTab(tab) {
   document.getElementById('auth-login-form').style.display  = tab === 'login'  ? '' : 'none';
@@ -1364,9 +1382,11 @@ function updateAdminUI() {
   const payrollTab = document.getElementById('payroll-tab');
   const budgetsTab = document.getElementById('budgets-tab');
   const lcTab      = document.getElementById('lc-tab');
-  if (payrollTab) payrollTab.style.display = isForeman() ? 'none' : '';  // foremen can't see Payroll
-  if (budgetsTab) budgetsTab.style.display = isForeman() ? 'none' : '';  // foremen can't see Budgets
-  if (lcTab)      lcTab.style.display      = '';                         // everyone can see Labor Codes
+  const accountingTab = document.getElementById('accounting-tab');
+  if (payrollTab)    payrollTab.style.display    = isForeman() ? 'none' : '';  // foremen can't see Payroll
+  if (budgetsTab)    budgetsTab.style.display    = isForeman() ? 'none' : '';  // foremen can't see Budgets
+  if (accountingTab) accountingTab.style.display = isForeman() ? 'none' : '';  // foremen can't see Accounting
+  if (lcTab)         lcTab.style.display         = '';                         // everyone can see Labor Codes
   renderTabBar();
 }
 
@@ -1465,6 +1485,7 @@ function saveLaborCodes(list) {
 //  BUDGETS TAB
 // ═══════════════════════════
 function switchToBudgets() {
+  if (isForeman()) return;
   activeCSVName=null;
   activeTab='budgets';
   renderTabBar();
@@ -1629,7 +1650,7 @@ function renderAreaBudgetTable() {
   if (!f) return;
   const allEntries = getPayrollEntries().filter(e=>e.csvFile===fileName&&e.area===area);
   let totalBudget=0, totalPaid=0;
-  const areaRows = f.rows.filter(r=>r.area===area);
+  const areaRows = f.rows.filter(r=>r.area===area && isForemanAllowedCode(r.costCode));
   if (!areaRows.length) {
     tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted);">No budget data for this area.</td></tr>';
     return;
@@ -1755,7 +1776,8 @@ function switchToLaborCodes() {
 function renderLCTable() {
   const q=(document.getElementById('lc-search').value||'').toLowerCase();
   const codes=getLaborCodes().filter(lc=>
-    !q || lc.code.toLowerCase().includes(q) || lc.description.toLowerCase().includes(q)
+    isForemanAllowedCode(lc.code) &&
+    (!q || lc.code.toLowerCase().includes(q) || lc.description.toLowerCase().includes(q))
   );
   const admin=isAdmin();
   document.getElementById('lc-tbody').innerHTML=codes.map((lc,i)=>{
@@ -1818,6 +1840,7 @@ function renderTabBar() {
 }
 
 function switchToPayroll() {
+  if (isForeman()) return;
   activeTab = 'payroll';
   renderTabBar();
   showPanel('payroll');
@@ -2599,19 +2622,19 @@ function diRenderCrewTable() {
       const areaRows = csvFile.rows.filter(r => r.area === row.area);
       const areaEntries = getPayrollEntries().filter(e => e.csvFile === jobName && e.area === row.area);
       if (areaRows.length) {
-        areaRows.forEach(r => {
+        areaRows.filter(r => isForemanAllowedCode(r.costCode)).forEach(r => {
           const paid = areaEntries.filter(e => e.costCode === r.costCode && e.description === r.description).reduce((s,e) => s+e.price, 0);
           const rem  = r.amount - paid;
           const remStr = rem < 0 ? `-${fm(Math.abs(rem))}` : fm(rem);
           codeOpts += `<option value="${eh(r.costCode)}" data-desc="${eh(r.description)}" ${row.costCode===r.costCode?'selected':''}>${r.costCode} – ${r.description}   |   Rem: ${remStr}</option>`;
         });
       } else {
-        PAYROLL_GROUPS.forEach(g => {
+        PAYROLL_GROUPS.filter(g => isForemanAllowedCode(g.code)).forEach(g => {
           codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
         });
       }
     } else {
-      PAYROLL_GROUPS.forEach(g => {
+      PAYROLL_GROUPS.filter(g => isForemanAllowedCode(g.code)).forEach(g => {
         codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
       });
     }
@@ -3274,6 +3297,8 @@ function diRenderLogRows() {
   const jobName = document.getElementById('ps-job-select').value;
   let docs = _diLogDocs;
   if (jobName) docs = docs.filter(r => r.job === jobName);
+  // Foremen only see their own submissions
+  if (isForeman() && _currentUser) docs = docs.filter(r => r.submittedBy === _currentUser.email);
 
   // Build unique values for each column dropdown (from all docs for this job)
   const uniq = arr => [...new Set(arr.filter(Boolean))].sort();
@@ -3699,6 +3724,7 @@ function switchToPaysheet() {
 }
 
 function switchToAccounting() {
+  if (isForeman()) return;
   activeTab = 'accounting';
   renderTabBar();
   showPanel('accounting');
@@ -3768,7 +3794,7 @@ function renderPSAreaBudgetTable() {
   const allEntries = getPayrollEntries().filter(e => e.csvFile === jobName);
   let totalBudget=0, totalPaid=0;
   // Show individual CSV rows for this area (same breakdown as Budget tab)
-  const areaRows = f.rows.filter(r => r.area === area);
+  const areaRows = f.rows.filter(r => r.area === area && isForemanAllowedCode(r.costCode));
   if (!areaRows.length) {
     tbody.innerHTML='<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">No budget data for this area.</td></tr>';
     return;
@@ -3887,7 +3913,7 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
       ...areas.map(a => `<option value="${eh(a)}" ${row.area===a?'selected':''}>${eh(a)}</option>`)
     ].join('');
     let codeOpts = '<option value=""></option>';
-    PAYROLL_GROUPS.forEach(g => {
+    PAYROLL_GROUPS.filter(g => isForemanAllowedCode(g.code)).forEach(g => {
       codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
     });
     const n2 = 'width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:inherit;padding:0;text-align:right;';
@@ -3921,11 +3947,11 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
     if (row.area) {
       const csvFile2 = jobName ? getSavedCSVFiles().find(x => x.name === jobName) : null;
       if (csvFile2) {
-        csvFile2.rows.filter(r => r.area === row.area).forEach(r => {
+        csvFile2.rows.filter(r => r.area === row.area && isForemanAllowedCode(r.costCode)).forEach(r => {
           codeOpts += `<option value="${r.costCode}" ${row.costCode===r.costCode?'selected':''}>${r.costCode} – ${r.description}</option>`;
         });
       } else {
-        PAYROLL_GROUPS.forEach(g => {
+        PAYROLL_GROUPS.filter(g => isForemanAllowedCode(g.code)).forEach(g => {
           codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
         });
       }
@@ -5147,6 +5173,7 @@ function renderPSLoadList() {
   const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
   const all  = (_cache.paysheets || [])
     .filter(p => !activeJob || (p.job || '') === activeJob)
+    .filter(p => !isForeman() || !_currentUser || (p.savedBy || '') === _currentUser.email)
     .slice().sort((a,b) => (b.savedAt||'').localeCompare(a.savedAt||''));
 
   // Search mode — flat filtered list
