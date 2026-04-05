@@ -1695,8 +1695,11 @@ function renderBurnLog() {
     if(seen.has(key)) return;
     seen.add(key);
     const f=files.find(f=>f.name===e.csvFile);
-    const budget=f?f.rows.filter(r=>r.area===e.area&&getCodeGroup(r.costCode)===(e.costCode||'')).reduce((s,r)=>s+r.amount,0):0;
-    const paid=allEntries.filter(x=>x.csvFile===e.csvFile&&x.area===e.area&&x.costCode===(e.costCode||'')).reduce((s,x)=>s+x.price,0);
+    const _rlCode=String(e.costCode||''); const _rlGrp=getCodeGroup(_rlCode);
+    const _rlExact=f?f.rows.filter(r=>r.area===e.area&&String(r.costCode)===_rlCode).reduce((s,r)=>s+r.amount,0):0;
+    const _rlGrpB =f&&!_rlExact?f.rows.filter(r=>r.area===e.area&&getCodeGroup(String(r.costCode))===_rlGrp).reduce((s,r)=>s+r.amount,0):0;
+    const budget=_rlExact||_rlGrpB||e.amount||0;
+    const paid=allEntries.filter(x=>x.csvFile===e.csvFile&&x.area===e.area&&x.costCode===_rlCode).reduce((s,x)=>s+x.price,0);
     const remRaw=budget-paid;
     const rem=Math.abs(remRaw)<0.01?0:remRaw;
     if(rem<0){
@@ -2310,10 +2313,18 @@ function renderPayrollTable() {
   tbody.innerHTML=page.map(e=>{
     const files=getSavedCSVFiles();
     const ce=files.find(f=>f.name===e.csvFile);
-    // Try exact match first (new entries), fall back to group match (legacy entries)
-    const exactBudget=ce?ce.rows.filter(r=>r.area===(e.area||'')&&r.costCode===(e.costCode||'')&&r.description===(e.description||'')).reduce((s,r)=>s+r.amount,0):0;
-    const budget=exactBudget||( ce?ce.rows.filter(r=>r.area===(e.area||'')&&getCodeGroup(r.costCode)===(e.costCode||'')).reduce((s,r)=>s+r.amount,0):e.amount );
-    const{paid}=getPayrollTotals(e.csvFile,e.costCode||'',e.description,e.area||'');
+    // Budget lookup — same 3-tier logic used by _prLookupBudget at save time:
+    // 1. Exact: area + costCode + description  (manual entries always hit this)
+    // 2. Code-only: area + costCode  (synced entries with PAYROLL_GROUPS description)
+    // 3. Group fallback: area + getCodeGroup on BOTH sides  (e.g. stored "102" → group "100")
+    // 4. Last resort: use e.amount stored at save time, then 0
+    const _area=e.area||''; const _code=String(e.costCode||''); const _desc=e.description||'';
+    const _grp=getCodeGroup(_code);
+    const _exactBudget=ce?ce.rows.filter(r=>r.area===_area&&String(r.costCode)===_code&&r.description===_desc).reduce((s,r)=>s+r.amount,0):0;
+    const _codeBudget =ce&&!_exactBudget?ce.rows.filter(r=>r.area===_area&&String(r.costCode)===_code).reduce((s,r)=>s+r.amount,0):0;
+    const _grpBudget  =ce&&!_exactBudget&&!_codeBudget?ce.rows.filter(r=>r.area===_area&&getCodeGroup(String(r.costCode))===_grp).reduce((s,r)=>s+r.amount,0):0;
+    const budget=_exactBudget||_codeBudget||_grpBudget||e.amount||0;
+    const{paid}=getPayrollTotals(e.csvFile,_code,_desc,_area);
     const remRaw=budget-paid;
     const rem=Math.abs(remRaw)<0.01?0:remRaw;
     const rc=rem<0?'ar':rem===0?'':' ap';
@@ -2380,8 +2391,12 @@ function exportPayrollCSV() {
   const csvFiles=getSavedCSVFiles();
   prFiltered.forEach(e=>{
     const ce=csvFiles.find(f=>f.name===e.csvFile);
-    const budget=ce?ce.rows.filter(r=>r.area===(e.area||'')&&getCodeGroup(r.costCode)===(e.costCode||'')).reduce((s,r)=>s+r.amount,0):e.amount;
-    const{paid}=getPayrollTotals(e.csvFile,e.costCode||'',e.description,e.area||'');
+    const _exCode=String(e.costCode||''); const _exGrp=getCodeGroup(_exCode);
+    const _exExact=ce?ce.rows.filter(r=>r.area===(e.area||'')&&String(r.costCode)===_exCode&&r.description===(e.description||'')).reduce((s,r)=>s+r.amount,0):0;
+    const _exCode2=ce&&!_exExact?ce.rows.filter(r=>r.area===(e.area||'')&&String(r.costCode)===_exCode).reduce((s,r)=>s+r.amount,0):0;
+    const _exGrpB =ce&&!_exExact&&!_exCode2?ce.rows.filter(r=>r.area===(e.area||'')&&getCodeGroup(String(r.costCode))===_exGrp).reduce((s,r)=>s+r.amount,0):0;
+    const budget=_exExact||_exCode2||_exGrpB||e.amount||0;
+    const{paid}=getPayrollTotals(e.csvFile,_exCode,e.description,e.area||'');
     lines.push([e.date,fmtTime(e.time),`"${e.csvFile}"`,`"${e.area||''}"`,`"${e.costCode||''}"`,`"${e.description.replace(/"/g,'""')}"`,budget,e.price,budget-paid].join(','));
   });
   dlCSV(lines.join('\n'),'payroll-export.csv');
@@ -2447,8 +2462,11 @@ function exportBurnLogCSV() {
     if(seen.has(key)) return;
     seen.add(key);
     const f=files.find(f=>f.name===e.csvFile);
-    const budget=f?f.rows.filter(r=>r.area===e.area&&getCodeGroup(r.costCode)===(e.costCode||'')).reduce((s,r)=>s+r.amount,0):0;
-    const paid=allEntries.filter(x=>x.csvFile===e.csvFile&&x.area===e.area&&x.costCode===(e.costCode||'')).reduce((s,x)=>s+x.price,0);
+    const _bcCode=String(e.costCode||''); const _bcGrp=getCodeGroup(_bcCode);
+    const _bcExact=f?f.rows.filter(r=>r.area===e.area&&String(r.costCode)===_bcCode).reduce((s,r)=>s+r.amount,0):0;
+    const _bcGrpB =f&&!_bcExact?f.rows.filter(r=>r.area===e.area&&getCodeGroup(String(r.costCode))===_bcGrp).reduce((s,r)=>s+r.amount,0):0;
+    const budget=_bcExact||_bcGrpB||e.amount||0;
+    const paid=allEntries.filter(x=>x.csvFile===e.csvFile&&x.area===e.area&&x.costCode===_bcCode).reduce((s,x)=>s+x.price,0);
     const rem=budget-paid;
     if(rem<0){
       const lc=PAYROLL_GROUPS.find(g=>g.code===e.costCode)||{description:e.description||''};
