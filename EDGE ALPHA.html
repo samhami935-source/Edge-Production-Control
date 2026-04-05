@@ -1175,19 +1175,42 @@ function canEdit()   { return isAdmin() || isPM(); }
 // Returns true if the given cost code/group is visible to the current user.
 // Non-foreman roles always see all codes.  Each foreman class sees only its
 // allowed numeric ranges (plus any explicitly-listed individual codes).
+// Per-role allowlists. Each entry is either:
+//   { range: [lo, hi] }  — inclusive numeric range
+//   { exact: n }         — single exact code
+// Codes are parsed from the leading digit sequence of codeStr, so '808A' → 808.
+const _FOREMAN_ALLOWED = {
+  framing_foreman: [
+    { range: [100, 199] },
+    { exact: 808 }, { exact: 809 },
+  ],
+  hanging_foreman: [
+    { range: [200, 399] },
+    { exact: 808 }, { exact: 809 },
+  ],
+  taping_foreman: [
+    { range: [400, 499] },
+    { exact: 805 }, { exact: 808 }, { exact: 809 },
+    { exact: 903 }, { exact: 904 }, { exact: 906 },
+  ],
+  pickup_foreman: [
+    { range: [600, 699] },
+    { exact: 808 }, { exact: 809 },
+  ],
+};
+
+// Returns true if the given cost code is visible to the current user.
+// Non-foreman roles always see all codes.
+// "foreman" (plain) is a general foreman with no code restriction.
+// Specialist foremen are filtered to their _FOREMAN_ALLOWED ruleset.
 function isForemanAllowedCode(codeStr) {
   if (!isForeman()) return true;
+  const rules = _FOREMAN_ALLOWED[_currentUserRole];
+  if (!rules) return true; // 'foreman' or unknown — unrestricted
   const m = String(codeStr || '').match(/^(\d+)/);
-  if (!m) return true; // non-numeric codes always shown
+  if (!m) return true; // non-numeric codes (headers, labels) always shown
   const n = parseInt(m[1], 10);
-  switch (_currentUserRole) {
-    case 'foreman':         return true; // general foreman — no restriction
-    case 'framing_foreman': return (n >= 100 && n <= 199) || (n >= 700 && n <= 799) || (n >= 800 && n <= 899);
-    case 'hanging_foreman': return (n >= 200 && n <= 399) || (n >= 700 && n <= 799) || (n >= 800 && n <= 899);
-    case 'taping_foreman':  return (n >= 400 && n <= 499) || n === 903 || n === 904 || n === 906 || (n >= 700 && n <= 799) || (n >= 800 && n <= 899);
-    case 'pickup_foreman':  return (n >= 600 && n <= 699) || (n >= 700 && n <= 799) || (n >= 800 && n <= 899);
-    default:                return true;
-  }
+  return rules.some(r => ('exact' in r ? n === r.exact : n >= r.range[0] && n <= r.range[1]));
 }
 
 // ─── Auth UI helpers ───
@@ -1694,19 +1717,44 @@ function exportAreaBudgetCSV() {
   const f = getSavedCSVFiles().find(x=>x.name===fileName);
   if (!f) return;
   const allEntries = getPayrollEntries().filter(e=>e.csvFile===fileName);
-  const lines = [['Job','Area','Labor Code','Description','Budget','Paid','Remaining'].join(',')];
   const areas = area ? [area] : [...new Set(f.rows.map(r=>r.area).filter(a=>a&&a!=='—'))].sort();
-  areas.forEach(a=>{
-    PAYROLL_GROUPS.forEach(g=>{
-      const budget = f.rows.filter(r=>r.area===a&&getCodeGroup(r.costCode)===g.code).reduce((s,r)=>s+r.amount,0);
-      const paid   = allEntries.filter(e=>e.area===a&&e.costCode===g.code).reduce((s,e)=>s+e.price,0);
-      if (budget===0 && paid===0) return;
-      const rem = budget-paid;
-      lines.push([`"${fileName}"`,`"${a}"`,g.code,`"${g.description}"`,budget.toFixed(2),paid.toFixed(2),rem.toFixed(2)].join(','));
+  const label  = area ? area.replace(/[^a-z0-9]/gi,'_') : 'all-areas';
+
+  if (isForeman()) {
+    // Foremen: export at individual row level, applying the same role-based
+    // code filter as the on-screen Budget by Area table.  PAYROLL_GROUPS are
+    // group-level codes ('800') and would never match exact codes like 808/809,
+    // so row-level iteration is the only way to honour the allowlist faithfully.
+    const lines = [['Job','Area','Cost Code','Description','Budget','Paid','Remaining'].join(',')];
+    areas.forEach(a => {
+      f.rows.filter(r => r.area === a && isForemanAllowedCode(r.costCode)).forEach(r => {
+        const paid = allEntries
+          .filter(e => e.area === a && e.costCode === r.costCode && e.description === r.description)
+          .reduce((s,e) => s + e.price, 0);
+        const rem = r.amount - paid;
+        if (r.amount === 0 && paid === 0) return;
+        lines.push([
+          `"${fileName}"`, `"${a}"`, r.costCode,
+          `"${r.description.replace(/"/g,'""')}"`,
+          r.amount.toFixed(2), paid.toFixed(2), rem.toFixed(2),
+        ].join(','));
+      });
     });
-  });
-  const label = area ? area.replace(/[^a-z0-9]/gi,'_') : 'all-areas';
-  dlCSV(lines.join('\n'), `budget-by-area_${label}.csv`);
+    dlCSV(lines.join('\n'), `budget-by-area_${label}.csv`);
+  } else {
+    // Non-foremen: existing group-level aggregation (preserves prior behaviour).
+    const lines = [['Job','Area','Labor Code','Description','Budget','Paid','Remaining'].join(',')];
+    areas.forEach(a => {
+      PAYROLL_GROUPS.forEach(g => {
+        const budget = f.rows.filter(r=>r.area===a&&getCodeGroup(r.costCode)===g.code).reduce((s,r)=>s+r.amount,0);
+        const paid   = allEntries.filter(e=>e.area===a&&e.costCode===g.code).reduce((s,e)=>s+e.price,0);
+        if (budget===0 && paid===0) return;
+        const rem = budget - paid;
+        lines.push([`"${fileName}"`,`"${a}"`,g.code,`"${g.description}"`,budget.toFixed(2),paid.toFixed(2),rem.toFixed(2)].join(','));
+      });
+    });
+    dlCSV(lines.join('\n'), `budget-by-area_${label}.csv`);
+  }
 }
 
 function renderBurnLog() {
