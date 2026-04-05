@@ -452,6 +452,7 @@
               onkeydown="budgetAreaKey(event,this)" />
             <div class="budget-area-dropdown" id="area-budget-select-dropdown"></div>
           </div>
+          <button class="btn btn-outline" style="margin-top:0;padding:8px 12px;font-size:.82rem;color:var(--muted);" onclick="budgetAreaClear('area-budget-select')">✕ Clear</button>
           <button class="btn btn-outline" style="margin-top:0;padding:8px 16px;font-size:.82rem;" onclick="exportAreaBudgetCSV()">Export CSV</button>
         </div>
         <div style="overflow-x:auto;">
@@ -715,6 +716,7 @@
               onkeydown="budgetAreaKey(event,this)" />
             <div class="budget-area-dropdown" id="ps-area-budget-select-dropdown"></div>
           </div>
+          <button class="btn btn-outline" style="margin-top:0;padding:8px 12px;font-size:.82rem;color:var(--muted);" onclick="budgetAreaClear('ps-area-budget-select')">✕ Clear</button>
         </div>
         <div style="overflow-x:auto;">
           <table style="min-width:500px;margin:0;">
@@ -5927,6 +5929,15 @@ function budgetAreaPick(inputId, area) {
   if (input)    input.value = area;
   if (dropdown) dropdown.style.display = 'none';
   // Fire the corresponding table render
+  if (inputId === 'ps-area-budget-select') renderPSAreaBudgetTable();
+  else renderAreaBudgetTable();
+}
+
+function budgetAreaClear(inputId) {
+  const input    = document.getElementById(inputId);
+  const dropdown = document.getElementById(inputId + '-dropdown');
+  if (input)    { input.value = ''; input.focus(); }
+  if (dropdown) dropdown.style.display = 'none';
   if (inputId === 'ps-area-budget-select') renderPSAreaBudgetTable();
   else renderAreaBudgetTable();
 }
