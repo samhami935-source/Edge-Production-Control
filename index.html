@@ -4178,21 +4178,30 @@ async function psApprovePaysheet() {
 }
 
 // ─── Budget lookup helper ───
-// Tries exact area + code match first, then falls back to group-code match
-// so paysheet codes like "102" correctly resolve against CSV codes like "102"
-// or against any row whose getCodeGroup maps to the same group.
-function _prLookupBudget(jobName, area, costCode) {
+// Matches the same logic as manual addPayrollEntry:
+// 1. Exact area + exact costCode + description (most precise)
+// 2. Exact area + exact costCode (sums all descriptions for that code)
+// 3. Exact area + group-code fallback (paysheet "102" → group "100" matches CSV "101","102","103"…)
+function _prLookupBudget(jobName, area, costCode, description) {
   const files   = getSavedCSVFiles();
   const csvFile = files.find(f => f.name === jobName);
   if (!csvFile) return 0;
 
-  // 1. Exact area + exact costCode
+  // 1. Exact match including description (mirrors addPayrollEntry)
+  if (description) {
+    const withDesc = csvFile.rows
+      .filter(r => r.area === area && String(r.costCode) === String(costCode) && r.description === description)
+      .reduce((s, r) => s + (r.amount || 0), 0);
+    if (withDesc > 0) return withDesc;
+  }
+
+  // 2. Exact area + exact costCode (no description filter)
   const exact = csvFile.rows
     .filter(r => r.area === area && String(r.costCode) === String(costCode))
     .reduce((s, r) => s + (r.amount || 0), 0);
   if (exact > 0) return exact;
 
-  // 2. Exact area + same group-code (e.g. paysheet "102" → group "100", CSV rows "101","102","103" all map to "100")
+  // 3. Exact area + group-code fallback
   const group = getCodeGroup(costCode);
   return csvFile.rows
     .filter(r => r.area === area && getCodeGroup(String(r.costCode)) === group)
@@ -4200,9 +4209,9 @@ function _prLookupBudget(jobName, area, costCode) {
 }
 
 // ─── Sync approved weekly paysheet rows → Payroll entries ───
-// BURN-ONLY: Only creates a payroll entry when W/E Earned exceeds the
-// budgeted amount for that area + labor code.  Normal (within-budget)
-// labor is not a burn and does not appear in the Payroll tab.
+// Creates one entry per paysheet row with area + labor code + W/E Earned.
+// Identical structure to a manual addPayrollEntry — budget is looked up
+// from the CSV so Remaining/Budget columns display correctly.
 // Uses deterministic IDs so re-syncing always upserts — never duplicates.
 // Only touches entries tagged source='paysheet_sync' + sourceDocId=doc.id.
 async function psApproveSync(doc) {
@@ -4219,7 +4228,7 @@ async function psApproveSync(doc) {
   const now     = new Date();
   const timeStr = now.toTimeString().slice(0, 5);
 
-  // ── Build payroll entries — ONLY for over-budget rows ──
+  // ── Build payroll entries — one per valid paysheet row ──
   const newEntries = [];
 
   for (let c = 1; c <= PS_NUM_CREWS; c++) {
@@ -4227,39 +4236,34 @@ async function psApproveSync(doc) {
     if (!crew || !crew.rows) continue;
 
     crew.rows.forEach((row, i) => {
-      const area      = (row.area     || '').trim();
-      const costCode  = (row.costCode || '').trim();
-      const weAmount  = parseFloat(row.weAmount) || 0;
+      const area     = (row.area     || '').trim();
+      const costCode = (row.costCode || '').trim();
+      const weAmount = parseFloat(row.weAmount) || 0;
 
       // Skip blank or zero rows
       if (!area || !costCode || weAmount <= 0) return;
 
-      // Look up the budgeted amount for this area + labor code
-      const budget = _prLookupBudget(jobName, area, costCode);
-
-      // ── BURN GATE: only post to payroll if W/E Earned exceeds budget ──
-      // If budget is 0 and there's genuinely no allocation, any spend is
-      // still not considered a trackable burn (no budget = untracked line).
-      if (budget <= 0 || weAmount <= budget) return;
-
-      // Resolve description via PAYROLL_GROUPS
+      // Resolve description from PAYROLL_GROUPS (same source as manual entry dropdown)
       const groupCode   = getCodeGroup(costCode);
       const groupEntry  = PAYROLL_GROUPS.find(g => g.code === groupCode);
       const description = groupEntry ? groupEntry.description : costCode;
+
+      // Look up budget — same logic as addPayrollEntry
+      const budget = _prLookupBudget(jobName, area, costCode, description);
 
       // Deterministic ID: ps_<docId>_c<crew>_r<rowIndex>
       const entryId = ('ps_' + docId + '_c' + c + '_r' + i).replace(/[^\w-]/g, '_');
 
       newEntries.push({
         id:          entryId,
-        date:        weekEnding,
+        date:        weekEnding,   // week-ending date as the payroll date
         time:        timeStr,
         csvFile:     jobName,
         area,
         costCode,
         description,
-        amount:      budget,    // budgeted amount (reference column)
-        price:       weAmount,  // W/E Earned = Amount Paid (over budget)
+        amount:      budget,       // budgeted amount from CSV
+        price:       weAmount,     // W/E Earned → Amount Paid
         source:      'paysheet_sync',
         sourceDocId: docId,
         weekEnding,
@@ -4267,10 +4271,10 @@ async function psApproveSync(doc) {
     });
   }
 
-  // ── Nothing to post — all rows are within budget ──
+  // ── Nothing to post — no valid rows found ──
   if (!newEntries.length) {
-    console.log('psApproveSync: all rows within budget for', docId, '— no payroll entries created');
-    // Still remove any stale sync entries from a prior approval that had burns
+    console.log('psApproveSync: no rows with area + labor code + W/E Earned in', docId);
+    // Still clean up any stale sync entries from a prior approval
     const existing = _cache.payroll || [];
     const toDelete  = existing.filter(e => e.sourceDocId === docId);
     if (toDelete.length) {
