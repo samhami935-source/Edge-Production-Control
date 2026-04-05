@@ -2326,7 +2326,7 @@ function renderPayrollTable() {
       <td class="ap" style="text-align:right">${fm(budget)}</td>
       <td class="ay" style="text-align:right">${fm(e.price)}</td>
       <td class="${rc}" style="text-align:right">${rem===0?'$0.00':rem<0?'-'+fm(Math.abs(rem)):fm(rem)}</td>
-      ${admin?`<td style="text-align:center"><button class="btn-sm btn-danger" onclick="deletePayrollEntry(${e.id})">Delete</button></td>`:''}
+      ${admin?`<td style="text-align:center"><button class="btn-sm btn-danger" onclick="deletePayrollEntry('${e.id}')">Delete</button></td>`:''}
     </tr>`;
   }).join('');
   renderPag('pr-pagination',prFiltered.length,prPage,n=>{prPage=n;renderPayrollTable();});
@@ -2335,7 +2335,7 @@ function renderPayrollTable() {
 function deletePayrollEntry(id) {
   if(!isAdmin()){alert('Admin access required to delete payroll entries.');return;}
   if(!confirm('Delete this payroll entry?')) return;
-  savePayrollEntries(getPayrollEntries().filter(e=>e.id!==id));
+  savePayrollEntries(getPayrollEntries().filter(e=>String(e.id)!==String(id)));
   applyPayrollFilters(); renderPayrollSummary();
   if(activeCSVName){renderCSVSummary();applyFilters();renderCharts();}
 }
