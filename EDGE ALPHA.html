@@ -1029,6 +1029,12 @@ const ADMIN_KEY  = 'edge_admin_pw';
 const SES_KEY    = 'edge_admin_session';
 const DEFAULT_PW = 'D9Admin';
 
+// ── Daily Input timing config ─────────────────────────────────────────────────
+// Change these two values to adjust lock cutoff and unlock grant duration
+// without hunting through multiple call sites.
+const DI_LOCK_HOUR          = 17;               // 5:00 PM local time — inputs close at this hour
+const DI_UNLOCK_DURATION_MS = 60 * 60 * 1000;  // 1 hour unlock grant window
+
 const LABOR_CODES_DEFAULT = [
   { code:'100',  description:'Framing' },
   { code:'200',  description:'Prelim' },
@@ -2521,7 +2527,7 @@ let _diUnlockGrantsUnsub = null;
 let _diPendingReqUnsub = null;
 // Manual locks set by admin keyed by "date__job"
 let _diManualLocks = {};
-// Periodic lock-state refresh interval (checks 4 PM deadline every minute)
+// Periodic lock-state refresh interval (checks 5 PM deadline every minute)
 let _diLockCheckInterval = null;
 
 
@@ -5580,9 +5586,9 @@ function diIsLocked() {
     // Past or future dates — not today — are locked
     if (dateMidnight.getTime() !== todayMidnight.getTime()) return true;
 
-    // Today: only open Mon–Fri between 4:00 AM and 4:00 PM
+    // Today: only open Mon–Fri between 4:00 AM and DI_LOCK_HOUR (5:00 PM)
     const hour = new Date().getHours();
-    if (hour < 4 || hour >= 16) return true;
+    if (hour < 4 || hour >= DI_LOCK_HOUR) return true;
   }
 
   // Admin manual lock
@@ -5601,8 +5607,8 @@ function _diLockReason() {
     const dateMidnight  = new Date(date + 'T00:00:00');
     if (dateMidnight.getTime() !== todayMidnight.getTime()) return '🔒 Inputs are only open for today\'s date.';
     const hour = new Date().getHours();
-    if (hour < 4)  return '🔒 Daily inputs open at 4:00 AM.';
-    if (hour >= 16) return '🔒 Deadline passed — daily inputs were locked at 4:00 PM.';
+    if (hour < 4)               return '🔒 Daily inputs open at 4:00 AM.';
+    if (hour >= DI_LOCK_HOUR)   return '🔒 Deadline passed — daily inputs were locked at 5:00 PM.';
   }
   const key = _diLockKey();
   if (_diManualLocks[key]) return '🔒 This date has been locked by an admin.';
@@ -5754,7 +5760,7 @@ async function diRenderUnlockRequestsList() {
       const borderColor = isActiveGrant ? '#10b981' : r.status === 'pending' ? '#f59e0b' : 'var(--border)';
       let actions = '';
       if (r.status === 'pending' && (isAdmin() || isPM())) {
-        actions = `<button onclick="diApproveUnlock('${r.id}')" style="padding:5px 13px;font-size:.8rem;background:none;border:1px solid #10b981;color:#10b981;border-radius:5px;cursor:pointer;margin-right:6px;">Approve (20 min)</button>
+        actions = `<button onclick="diApproveUnlock('${r.id}')" style="padding:5px 13px;font-size:.8rem;background:none;border:1px solid #10b981;color:#10b981;border-radius:5px;cursor:pointer;margin-right:6px;">Approve (1 hr)</button>
                    <button onclick="diDenyUnlock('${r.id}')" style="padding:5px 13px;font-size:.8rem;background:none;border:1px solid #ef4444;color:#ef4444;border-radius:5px;cursor:pointer;">Deny</button>`;
       } else if (isActiveGrant && (isAdmin() || isPM()) && r.grantDocId) {
         actions = `<button onclick="diRevokeUnlock('${r.id}','${r.grantDocId}')" style="padding:5px 13px;font-size:.8rem;background:none;border:1px solid #ef4444;color:#ef4444;border-radius:5px;cursor:pointer;font-weight:600;">🔒 Revoke Access</button>`;
@@ -5787,7 +5793,7 @@ async function diApproveUnlock(reqId) {
     const snap = await db.collection('unlockRequests').doc(reqId).get();
     if (!snap.exists) return;
     const r = snap.data();
-    const expiresAt = new Date(Date.now() + 20 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + DI_UNLOCK_DURATION_MS).toISOString();
     const key = r.date + '__' + (r.job || '');
     const grantDocId = (key + '__' + r.requestedBy).replace(/[^\w-]/g, '_');
     const grant = { id: grantDocId, date: r.date, job: r.job || '', grantedTo: r.requestedBy, grantedToEmail: r.requestedByEmail || '', grantedBy: _currentUser ? _currentUser.email : '', grantedAt: new Date().toISOString(), expiresAt, requestId: reqId };
