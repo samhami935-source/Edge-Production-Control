@@ -421,13 +421,6 @@
       <div class="card"><div class="label">Total Budget</div><div class="value cg" id="pr-stat-budget">$0</div><div class="sub" id="pr-stat-budget-sub">0 entries</div></div>
       <div class="card"><div class="label">Total Paid</div><div class="value cr" id="pr-stat-paid">$0</div><div class="sub" id="pr-stat-paid-sub"></div></div>
       <div class="card"><div class="label">Remaining</div><div class="value" id="pr-stat-balance">$0</div><div class="sub" id="pr-stat-balance-sub"></div></div>
-      <div class="card" style="border-left:3px solid var(--accent);">
-        <div class="label">Today's Paid</div>
-        <div class="value cy" id="pr-stat-today">$0</div>
-        <div class="sub" id="pr-stat-today-sub"></div>
-        <div style="margin-top:10px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;"><div id="pr-today-bar" style="height:100%;width:0%;background:var(--accent);border-radius:2px;transition:width .4s;"></div></div>
-        <div class="sub" id="pr-stat-today-date" style="margin-top:5px;"></div>
-      </div>
       <div class="card" style="border-left:3px solid var(--red);">
         <div class="label" style="color:var(--red);">503 — Burn Log</div>
         <div class="value cr" id="pr-stat-burn">$0</div>
@@ -2096,16 +2089,14 @@ function switchPayrollJob(name) {
 function renderAllJobsOverview() {
   const files = getSavedCSVFiles();
   const allEntries = getPayrollEntries();
-  const _t=new Date(); const today=`${_t.getFullYear()}-${String(_t.getMonth()+1).padStart(2,'0')}-${String(_t.getDate()).padStart(2,'0')}`;
-  let totBudget=0, totPaid=0, todayPaid=0;
+  let totBudget=0, totPaid=0;
   const tbody = document.getElementById('aj-tbody');
   tbody.innerHTML = files.map(f=>{
     const budget = f.rows.reduce((s,r)=>s+r.amount,0);
     const entries = allEntries.filter(e=>e.csvFile===f.name);
     const paid = entries.reduce((s,e)=>s+e.price,0);
     const rem = budget-paid;
-    const tPaid = entries.filter(e=>e.date===today).reduce((s,e)=>s+e.price,0);
-    totBudget+=budget; totPaid+=paid; todayPaid+=tPaid;
+    totBudget+=budget; totPaid+=paid;
     const rc = rem<0?'ar':rem===0?'ay':'ap';
     return`<tr style="cursor:pointer;" onclick="switchPayrollJob('${ea(f.name)}')" title="View ${eh(f.name)} payroll">
       <td><span class="pill">${eh(f.name)}</span></td>
@@ -2121,7 +2112,6 @@ function renderAllJobsOverview() {
   document.getElementById('aj-stat-paid').textContent   = fm(totPaid);
   re.textContent = (totRem<0?'-':'')+fm(Math.abs(totRem));
   re.className = 'value '+(totRem<0?'cr':'cg');
-  document.getElementById('aj-stat-today').textContent  = fm(todayPaid);
 }
 
 function populatePRDropdowns() {
@@ -2361,10 +2351,7 @@ function renderPayrollSummary() {
   const selectedFile=document.getElementById('pr-filter-file').value;
   const allEntries=getPayrollEntries();
   const entries=selectedFile?allEntries.filter(e=>e.csvFile===selectedFile):allEntries;
-  const _td=new Date(); const today=`${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,'0')}-${String(_td.getDate()).padStart(2,'0')}`;
   const totP=entries.reduce((s,e)=>s+e.price,0);
-  const todayP=entries.filter(e=>e.date===today).reduce((s,e)=>s+e.price,0);
-  const todayC=entries.filter(e=>e.date===today).length;
 
   // Budget scoped to selected job, or all jobs if none selected
   const allFiles=getSavedCSVFiles();
@@ -2381,11 +2368,6 @@ function renderPayrollSummary() {
   rb.textContent=(totR<0?'-':'')+fm(Math.abs(totR));
   rb.className='value '+(totR<0?'cr':'cg');
   document.getElementById('pr-stat-balance-sub').textContent=totR<0?'over budget':'remaining';
-  document.getElementById('pr-stat-today').textContent=fm(todayP);
-  document.getElementById('pr-stat-today-sub').textContent=`${todayC} entr${todayC!==1?'ies':'y'} today`;
-  const todayPct=totP>0?Math.min(100,Math.round(todayP/totP*100)):0;
-  document.getElementById('pr-today-bar').style.width=todayPct+'%';
-  document.getElementById('pr-stat-today-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
 
   // WO snapshot
   renderAreaBudget();
