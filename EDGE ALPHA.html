@@ -6122,7 +6122,7 @@ function acctRender() {
     <tr style="${i % 2 === 1 ? 'background:#f9f9f9;' : ''}">
       <td style="${td}text-align:center;color:#888;font-size:.78rem;">${i + 1}</td>
       <td style="${td}font-weight:600;">${eh(r.displayName)}</td>
-      <td style="${tdR}font-weight:700;color:#1a56db;">$${r.amount.toFixed(2)}</td>
+      <td style="${tdR}font-weight:700;color:#1a56db;">$${r.amount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
     </tr>`).join('');
 
   printArea.innerHTML = `
@@ -6161,7 +6161,7 @@ function acctRender() {
               <td style="${td}font-weight:700;text-align:right;" colspan="2">
                 Total — <span style="color:#555;font-size:.82rem;font-weight:600;">${data.employeeCount} employee${data.employeeCount !== 1 ? 's' : ''}</span>
               </td>
-              <td style="${tdR}font-weight:900;font-size:1.05rem;color:#1a56db;">$${data.totalAmount.toFixed(2)}</td>
+              <td style="${tdR}font-weight:900;font-size:1.05rem;color:#1a56db;">$${data.totalAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
             </tr>
           </tfoot>
         </table>
