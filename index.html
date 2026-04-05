@@ -5860,7 +5860,8 @@ function acctGetData(weekEnding, jobFilter) {
       const crew = doc.crews && doc.crews[String(c)];
       if (!crew) continue;
       (crew.splits || []).forEach(s => {
-        const name   = (s.employeeName || '').trim();
+        // The splits field is `employee` (see _psEmptySplit: {empNum, employee, pctSplit, amount, signatureData})
+        const name   = (s.employee || '').trim();
         const amount = parseFloat(s.amount) || 0;
         if (!name) return; // skip blank rows
         const key = name.toLowerCase();
