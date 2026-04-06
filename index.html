@@ -4283,6 +4283,10 @@ async function psApprovePaysheet() {
     const syncCount   = await psApproveSync(approvedDoc);
 
     psRenderCrewTabs(); // re-render action buttons to show Approved status
+    // Keep Accounting tab selects fresh so the approved week/job appears
+    // immediately when the user switches tabs (avoids stale dropdown state).
+    acctPopulateWeekSelect();
+    acctPopulateJobSelect();
     alert(`Paysheet approved.\n\n${syncCount} payroll entr${syncCount === 1 ? 'y' : 'ies'} created/updated in the Payroll tab.`);
   } catch(e) {
     alert('Approval failed: ' + e.message);
@@ -5198,7 +5202,11 @@ function _psInitSigCanvas(canvas) {
 // Aggregates all daily paysheets in a folder into one compiled paysheet per crew
 async function psCompileWeeklyPaysheet(weekEnding) {
   if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can compile weekly paysheets.'); return; }
-  const daily = (_cache.paysheets || []).filter(p => p.weekEnding === weekEnding && p.type === 'daily');
+  const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
+  if (!activeJob) { alert('Please select a job before compiling.'); return; }
+  const daily = (_cache.paysheets || []).filter(p =>
+    p.weekEnding === weekEnding && p.type === 'daily' && p.job === activeJob
+  );
   if (!daily.length) {
     alert(`No daily paysheets found in this folder yet.\nSave at least one daily paysheet to this folder first.`);
     return;
@@ -5433,7 +5441,7 @@ function renderPSLoadList() {
                 ${weekly.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--green);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">★ Weekly Summary</div>
                   ${weekly.map(p => _psLoadRow(p, we)).join('')}` : ''}
                 <div style="padding:8px 14px 10px 36px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap;">
-                  ${canCompilePaysheet() ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">
+                  ${canCompilePaysheet() && activeJob ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">
                     📋 Compile into Weekly Paysheet
                   </button>
                   ${hasDone ? '<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>' : '<span style="font-size:.75rem;color:var(--muted);">Combines all daily paysheets into one per crew</span>'}` : ''}
@@ -6252,23 +6260,31 @@ function acctPopulateWeekSelect() {
 
   sel.innerHTML = '<option value="">— Select —</option>' +
     weeks.map(w => `<option value="${w}"${w === cur ? ' selected' : ''}>${_fmtWeekDate(w)}</option>`).join('');
+
+  // Auto-select the most recent approved week when no prior selection exists
+  if (!sel.value && weeks.length) sel.value = weeks[0];
 }
 
-/** Build the job dropdown from all approved weekly paysheets. */
+/** Build the job dropdown from approved weekly paysheets for the currently selected week. */
 function acctPopulateJobSelect() {
-  const sel = document.getElementById('acct-job-select');
+  const sel     = document.getElementById('acct-job-select');
+  const weekSel = document.getElementById('acct-week-select');
   if (!sel) return;
-  const cur = sel.value;
+  const cur          = sel.value;
+  const selectedWeek = weekSel ? weekSel.value : '';
 
   const jobs = [...new Set(
     (_cache.paysheets || [])
-      .filter(p => p.type === 'weekly' && p.approvedAt)
+      .filter(p => p.type === 'weekly' && p.approvedAt && (!selectedWeek || p.weekEnding === selectedWeek))
       .map(p => p.job)
       .filter(Boolean)
   )].sort();
 
   sel.innerHTML = '<option value="">All Jobs</option>' +
     jobs.map(j => `<option value="${j}"${j === cur ? ' selected' : ''}>${eh(j)}</option>`).join('');
+
+  // If the previous job selection no longer exists for this week, reset to All Jobs
+  if (cur && !jobs.includes(cur)) sel.value = '';
 }
 
 /**
@@ -6428,6 +6444,34 @@ function acctRender() {
     .join('');
 }
 
+/**
+ * Called when the week-ending dropdown changes.
+ * Rebuilds the job list for the new week, then renders.
+ */
+function acctOnWeekChange() {
+  acctPopulateJobSelect();
+  acctRender();
+}
+
+/**
+ * Re-fetch ALL paysheets from Firestore, merge into cache, then rebuild the
+ * Accounting tab from scratch.  Used by the ⟳ Refresh button so that paysheets
+ * approved on another device become visible without a full page reload.
+ */
+async function acctRefreshFromFirestore() {
+  const printArea = document.getElementById('acct-print-area');
+  if (printArea) printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">Refreshing…</div>`;
+  try {
+    const snap = await db.collection('paysheets').get();
+    // Full replace — guarantees no stale entries linger
+    _cache.paysheets = snap.docs.map(d => d.data());
+    acctInit();
+  } catch(e) {
+    console.error('acctRefreshFromFirestore:', e);
+    if (printArea) printArea.innerHTML = `<div style="padding:24px;text-align:center;color:#e53e3e;">Refresh failed: ${eh(e.message)}</div>`;
+  }
+}
+
 /** Export per-job accounting paysheets as PDF via browser print dialog. */
 function acctExportPDF() {
   const weekEnding = (document.getElementById('acct-week-select') || {}).value || '';
@@ -6512,7 +6556,7 @@ function acctExportPDF() {
       <!-- Week-ending selector -->
       <div style="display:flex;align-items:center;gap:6px;">
         <label style="font-size:.78rem;font-weight:700;color:var(--muted);white-space:nowrap;text-transform:uppercase;letter-spacing:.05em;">Week Ending</label>
-        <select id="acct-week-select" class="fi" style="min-width:160px;" onchange="acctRender()">
+        <select id="acct-week-select" class="fi" style="min-width:160px;" onchange="acctOnWeekChange()">
           <option value="">— Select —</option>
         </select>
       </div>
@@ -6523,7 +6567,7 @@ function acctExportPDF() {
           <option value="">All Jobs</option>
         </select>
       </div>
-      <button class="btn btn-outline" style="padding:7px 14px;font-size:.8rem;" onclick="acctRender()">⟳ Refresh</button>
+      <button class="btn btn-outline" style="padding:7px 14px;font-size:.8rem;" onclick="acctRefreshFromFirestore()">⟳ Refresh</button>
       <button class="btn" style="padding:7px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="acctExportPDF()">⬇ Export PDF</button>
     </div>
   </div>
