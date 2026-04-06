@@ -965,7 +965,7 @@
     <p style="color:var(--muted);font-size:.85rem;margin-top:0;">Organized by week ending. Create a folder, then save paysheets into it.</p>
     <div style="margin-bottom:10px;display:flex;gap:10px;align-items:center;">
       <input id="ps-load-search" class="fi" placeholder="Search by job, week ending, or foreman…" style="flex:1;" oninput="renderPSLoadList()">
-      <button class="btn btn-outline" style="white-space:nowrap;padding:7px 14px;margin-top:0;font-size:.83rem;" onclick="psToggleNewFolderForm()">+ New Folder</button>
+      <button id="ps-new-folder-btn" class="btn btn-outline" style="white-space:nowrap;padding:7px 14px;margin-top:0;font-size:.83rem;" onclick="psToggleNewFolderForm()">+ New Folder</button>
     </div>
     <!-- Inline new-folder form -->
     <div id="ps-new-folder-form" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px;">
@@ -990,7 +990,7 @@
     <h2>💾 Choose Save Folder</h2>
     <p style="color:var(--muted);font-size:.85rem;margin-top:4px;">Select which week ending folder to save this paysheet into:</p>
     <div id="ps-save-dest-list" style="margin:14px 0;max-height:280px;overflow-y:auto;"></div>
-    <div style="border-top:1px solid var(--border);padding-top:12px;">
+    <div id="ps-save-dest-new-section" style="border-top:1px solid var(--border);padding-top:12px;">
       <div style="font-size:.82rem;color:var(--muted);margin-bottom:8px;font-weight:600;">Or save to a new week ending:</div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <input type="date" id="ps-save-dest-new-date" class="fi" style="flex:1;min-width:160px;">
@@ -1136,17 +1136,18 @@ let _currentUserRole = null;
 let _currentUser     = null;
 
 // ─── In-memory data cache ───
-const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, paysheets: null };
+const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, paysheets: null, psFolders: null };
 
 async function loadAllData() {
   const loadMsg = document.getElementById('loading-msg');
   if (loadMsg) loadMsg.textContent = 'Loading data…';
-  const [jobsSnap, payrollSnap, woSnap, lcDoc, paysheetsSnap] = await Promise.all([
+  const [jobsSnap, payrollSnap, woSnap, lcDoc, paysheetsSnap, psFoldersSnap] = await Promise.all([
     db.collection('jobs').get(),
     db.collection('payroll').get(),
     db.collection('workorders').get(),
     db.collection('config').doc('laborcodes').get(),
     db.collection('paysheets').get(),
+    db.collection('psfolders').get(),
   ]);
   _cache.jobs = jobsSnap.docs.map(d => {
     const data = d.data();
@@ -1160,6 +1161,8 @@ async function loadAllData() {
   _cache.workorders = woSnap.docs.map(d => d.data());
   _cache.laborcodes = lcDoc.exists ? (lcDoc.data().codes || []) : [];
   _cache.paysheets  = paysheetsSnap.docs.map(d => d.data());
+  // Shared week-ending folders — Firestore-backed, visible to all roles
+  _cache.psFolders  = psFoldersSnap.docs.map(d => d.data().weekEnding).filter(Boolean).sort((a,b) => b.localeCompare(a));
   // Load job metadata (project name, foreman, crew name per job)
   try {
     const metaSnap = await db.collection('jobmeta').get();
@@ -1171,6 +1174,9 @@ function isAdmin()   { return _currentUserRole === 'admin'; }
 function isPM()      { return ['project_manager','vp_operations','operations_manager','accounting','estimating_manager'].includes(_currentUserRole); }
 function isForeman() { return ['foreman','framing_foreman','hanging_foreman','taping_foreman','pickup_foreman'].includes(_currentUserRole); }
 function canEdit()   { return isAdmin() || isPM(); }
+// Admin + VP of Operations + Project Manager can compile daily→weekly and manage shared folders
+function canCompilePaysheet() { return isAdmin() || _currentUserRole === 'vp_operations' || _currentUserRole === 'project_manager'; }
+function canManagePSFolders() { return canCompilePaysheet(); }
 
 // Returns true if the given cost code/group is visible to the current user.
 // Non-foreman roles always see all codes.  Each foreman class sees only its
@@ -1416,6 +1422,9 @@ function updateAdminUI() {
   if (budgetsTab)    budgetsTab.style.display    = isForeman() ? 'none' : '';  // foremen can't see Budgets
   if (accountingTab) accountingTab.style.display = isForeman() ? 'none' : '';  // foremen can't see Accounting
   if (lcTab)         lcTab.style.display         = '';                         // everyone can see Labor Codes
+  // Only management can create week-ending folders
+  const newFolderBtn = document.getElementById('ps-new-folder-btn');
+  if (newFolderBtn) newFolderBtn.style.display = canManagePSFolders() ? '' : 'none';
   renderTabBar();
 }
 
@@ -3234,8 +3243,8 @@ async function submitDailyInput() {
   try {
     await db.collection('dailyinput').doc(id).set(doc);
 
-    // Auto-fill paysheet for each crew that has entries
-    psAutoFillFromSubmission(crews, jobName, date, id);
+    // Auto-fill paysheet and auto-save into the matching week-ending folder
+    await psAutoFillFromSubmission(crews, jobName, date, id);
 
     await diClearDraft(); // draft promoted to real submission — remove it
     const badge = document.getElementById('di-saved-badge');
@@ -3247,8 +3256,8 @@ async function submitDailyInput() {
   }
 }
 
-// Fill paysheet from a just-submitted daily input
-function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
+// Fill paysheet from a just-submitted daily input and auto-save into the matching week-ending folder.
+async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
   crews.forEach(c => {
     const crewNum = c.crewNum;
     if (!_psState[crewNum]) return;
@@ -3307,9 +3316,15 @@ function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
   const el = document.getElementById('paysheet-print-area');
   if (el) el.scrollIntoView({ behavior: 'smooth' });
 
-  // Open folder picker so user can choose where to save
+  // Auto-save into the nearest matching week-ending folder if one exists;
+  // otherwise open the folder-picker modal so the user can choose.
   _psSavePendingData = { defaultDate: date, type: 'daily', dailyDate: date, submissionId: submissionId || null };
-  openSaveDestModal();
+  const autoWE = _findMatchingWeekEndingFolder(date);
+  if (autoWE) {
+    await psSaveToFolder(autoWE);
+  } else {
+    openSaveDestModal();
+  }
 }
 
 let _diLogDocs   = [];   // cached from real-time listener
@@ -4920,8 +4935,9 @@ async function savePaysheetToCloud(silent, opts = {}) {
     weekEnding: weekEnd,
     type,
     ...(isDailyType ? { date: opts.dailyDate || weekEnd, submissionId: opts.submissionId || null } : {}),
-    savedAt: new Date().toISOString(),
-    savedBy: _currentUser ? _currentUser.email : 'unknown',
+    savedAt:      new Date().toISOString(),
+    savedBy:      _currentUser ? _currentUser.email : 'unknown',
+    savedByRole:  _currentUserRole || 'unknown',
     crews,
   };
   try {
@@ -5083,6 +5099,7 @@ function _psInitSigCanvas(canvas) {
 // ─── Compile Weekly Paysheet ───
 // Aggregates all daily paysheets in a folder into one compiled paysheet per crew
 async function psCompileWeeklyPaysheet(weekEnding) {
+  if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can compile weekly paysheets.'); return; }
   const daily = (_cache.paysheets || []).filter(p => p.weekEnding === weekEnding && p.type === 'daily');
   if (!daily.length) {
     alert(`No daily paysheets found in this folder yet.\nSave at least one daily paysheet to this folder first.`);
@@ -5166,12 +5183,21 @@ async function psCompileWeeklyPaysheet(weekEnding) {
 }
 
 // ─── Load paysheet modal ───
-// Folders stored as array of weekEnding strings (YYYY-MM-DD) in localStorage
-let _psFolders = JSON.parse(localStorage.getItem('d9_ps_folders') || '[]');
+// Week-ending folders are stored in Firestore (psfolders collection) and cached in _cache.psFolders.
 // Track which week-ending folders are expanded
 let _psLoadOpenFolders = new Set();
 // Pending save data when user hasn't chosen a folder yet
 let _psSavePendingData = null;
+
+// Find the nearest management-created week-ending folder that covers a given daily input date.
+// Returns the closest YYYY-MM-DD where weekEnding >= dailyDate, or null if none exists.
+function _findMatchingWeekEndingFolder(dailyDate) {
+  if (!dailyDate) return null;
+  const candidates = (_cache.psFolders || [])
+    .filter(we => we >= dailyDate)
+    .sort((a, b) => a.localeCompare(b)); // ascending — nearest first
+  return candidates[0] || null;
+}
 
 // Format a YYYY-MM-DD date as "Mar 28, 2026"
 function _fmtWeekDate(we) {
@@ -5192,30 +5218,41 @@ function psToggleNewFolderForm() {
   }
 }
 
-function psCreateFolder() {
+async function psCreateFolder() {
+  if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can create week-ending folders.'); return; }
   const d = document.getElementById('ps-new-folder-date').value;
   if (!d) { alert('Please select a week ending date.'); return; }
-  if (!_psFolders.includes(d)) {
-    _psFolders.push(d);
-    _psFolders.sort((a, b) => b.localeCompare(a)); // newest first
-    localStorage.setItem('d9_ps_folders', JSON.stringify(_psFolders));
+  if (!(_cache.psFolders || []).includes(d)) {
+    try {
+      await db.collection('psfolders').doc(d).set({
+        weekEnding: d,
+        createdBy:  _currentUser ? _currentUser.email : 'unknown',
+        createdAt:  new Date().toISOString(),
+      });
+      if (!_cache.psFolders) _cache.psFolders = [];
+      _cache.psFolders.push(d);
+      _cache.psFolders.sort((a, b) => b.localeCompare(a));
+    } catch(e) { alert('Failed to create folder: ' + e.message); return; }
   }
   _psLoadOpenFolders.add(d);
   document.getElementById('ps-new-folder-form').style.display = 'none';
   renderPSLoadList();
 }
 
-function psDeleteFolder(we) {
+async function psDeleteFolder(we) {
+  if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can delete folders.'); return; }
   if (!confirm(`Delete empty folder "Week Ending: ${_fmtWeekDate(we)}"?\nThis cannot be undone.`)) return;
-  _psFolders = _psFolders.filter(f => f !== we);
-  localStorage.setItem('d9_ps_folders', JSON.stringify(_psFolders));
+  try {
+    await db.collection('psfolders').doc(we).delete();
+    _cache.psFolders = (_cache.psFolders || []).filter(f => f !== we);
+  } catch(e) { alert('Failed to delete folder: ' + e.message); return; }
   _psLoadOpenFolders.delete(we);
   renderPSLoadList();
 }
 
 function openLoadPaysheetModal() {
   // Auto-expand the most recent folder
-  const allWE = [...new Set([..._psFolders, ...(_cache.paysheets||[]).map(p=>p.weekEnding).filter(Boolean)])].sort((a,b)=>b.localeCompare(a));
+  const allWE = [...new Set([...(_cache.psFolders||[]), ...(_cache.paysheets||[]).map(p=>p.weekEnding).filter(Boolean)])].sort((a,b)=>b.localeCompare(a));
   if (allWE.length) _psLoadOpenFolders.add(allWE[0]);
   renderPSLoadList();
   document.getElementById('ps-load-modal').classList.add('open');
@@ -5245,12 +5282,18 @@ function renderPSLoadList() {
     return;
   }
 
-  // Collect all week endings: user-created folders + from saved paysheets
-  const weekEndingSet = new Set([..._psFolders, ...all.map(p => p.weekEnding).filter(Boolean)]);
+  // Collect all week endings: shared Firestore folders + from saved paysheets
+  // Non-foremen also see all paysheet weekEndings (management sees all foremen's paysheets)
+  const allPsWE = isForeman()
+    ? all.map(p => p.weekEnding).filter(Boolean)
+    : (_cache.paysheets||[]).map(p => p.weekEnding).filter(Boolean);
+  const weekEndingSet = new Set([...(_cache.psFolders||[]), ...allPsWE]);
   const weekEndings = [...weekEndingSet].sort((a,b) => b.localeCompare(a)); // newest first
 
   if (!weekEndings.length) {
-    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);">No folders yet. Click "+ New Folder" to create one, or submit daily input to auto-create.</div>';
+    list.innerHTML = canManagePSFolders()
+      ? '<div style="padding:24px;text-align:center;color:var(--muted);">No folders yet. Click &ldquo;+ New Folder&rdquo; to create one, or submit daily input to auto-create.</div>'
+      : '<div style="padding:24px;text-align:center;color:var(--muted);">No week-ending folders available yet. Ask your manager to create one.</div>';
     return;
   }
 
@@ -5278,7 +5321,7 @@ function renderPSLoadList() {
         ${isEmpty
           ? `<div style="padding:10px 36px;font-size:.82rem;color:var(--muted);display:flex;align-items:center;justify-content:space-between;">
                <span>Empty — save a paysheet here.</span>
-               ${isAdmin() ? `<button class="btn-sm btn-danger" style="font-size:.75rem;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
+               ${canManagePSFolders() ? `<button class="btn-sm btn-danger" style="font-size:.75rem;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
              </div>`
           : (() => {
               const daily   = sheets.filter(p => p.type === 'daily');
@@ -5289,12 +5332,12 @@ function renderPSLoadList() {
                   ${daily.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(p => _psLoadRow(p, we)).join('')}` : ''}
                 ${weekly.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--green);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">★ Weekly Summary</div>
                   ${weekly.map(p => _psLoadRow(p, we)).join('')}` : ''}
-                <div style="padding:8px 14px 10px 36px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);margin-top:4px;">
-                  <button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">
+                <div style="padding:8px 14px 10px 36px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap;">
+                  ${canCompilePaysheet() ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">
                     📋 Compile into Weekly Paysheet
                   </button>
-                  ${hasDone ? '<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>' : '<span style="font-size:.75rem;color:var(--muted);">Combines all daily paysheets into one per crew</span>'}
-                  ${isAdmin() && sheets.length === 0 ? `<button class="btn-sm btn-danger" style="font-size:.75rem;margin-left:auto;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
+                  ${hasDone ? '<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>' : '<span style="font-size:.75rem;color:var(--muted);">Combines all daily paysheets into one per crew</span>'}` : ''}
+                  ${canManagePSFolders() && sheets.length === 0 ? `<button class="btn-sm btn-danger" style="font-size:.75rem;margin-left:auto;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
                 </div>`;
             })()
         }
@@ -5316,25 +5359,30 @@ function _psLoadRow(p, currentFolder) {
     ? `<span style="font-size:.72rem;background:rgba(201,168,76,.15);color:var(--accent);border:1px solid rgba(201,168,76,.3);padding:1px 6px;border-radius:4px;font-weight:700;">DAILY · ${p.date ? _fmtWeekDate(p.date) : d}</span>`
     : `<span style="font-size:.72rem;background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3);padding:1px 6px;border-radius:4px;font-weight:700;">★ WEEKLY SUMMARY</span>`;
 
-  // Build "Move to…" options — all other folders
-  const allWE = [...new Set([..._psFolders, ...(_cache.paysheets||[]).map(ps=>ps.weekEnding).filter(Boolean)])].sort((a,b)=>b.localeCompare(a));
-  const moveOpts = allWE.filter(f => f !== p.weekEnding)
-    .map(f => `<option value="${f}">${_fmtWeekDate(f)}</option>`).join('');
+  // Build "Move to…" options — management only, all other folders
+  const allWE = [...new Set([...(_cache.psFolders||[]), ...(_cache.paysheets||[]).map(ps=>ps.weekEnding).filter(Boolean)])].sort((a,b)=>b.localeCompare(a));
+  const moveOpts = canManagePSFolders()
+    ? allWE.filter(f => f !== p.weekEnding).map(f => `<option value="${f}">${_fmtWeekDate(f)}</option>`).join('')
+    : '';
 
   const safeId = (p.id||'').replace(/'/g,"\\'");
+  // Show savedByRole badge so management can see which foreman classification submitted
+  const roleLabel = p.savedByRole && p.savedByRole !== 'unknown'
+    ? `<span style="font-size:.68rem;background:rgba(201,168,76,.1);color:var(--accent);border:1px solid rgba(201,168,76,.2);padding:1px 5px;border-radius:3px;">${eh(p.savedByRole.replace(/_/g,' '))}</span> `
+    : '';
   return `<div style="display:flex;align-items:center;gap:8px;padding:10px 14px 10px 36px;border-top:1px solid var(--border);flex-wrap:wrap;">
     <div style="flex:1;min-width:120px;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
         ${typeLabel}
         <span style="font-weight:600;font-size:.88rem;">${eh(p.job||'No Job')}</span>
       </div>
-      <div style="font-size:.75rem;color:var(--muted);">Saved ${d} ${t} · ${who} · ${crewCount} crew${crewCount!==1?'s':''} with data</div>
+      <div style="font-size:.75rem;color:var(--muted);">${roleLabel}Saved ${d} ${t} · ${who} · ${crewCount} crew${crewCount!==1?'s':''} with data</div>
     </div>
     <button class="btn" style="font-size:.78rem;padding:5px 12px;white-space:nowrap;margin-top:0;" onclick="loadPaysheetFromCloud('${safeId}')">Load</button>
     ${moveOpts ? `<select class="fi" style="font-size:.75rem;padding:4px 8px;height:30px;margin-top:0;" title="Move to another folder" onchange="psMovePaysheetTo('${safeId}',this.value,this)">
       <option value="">Move to…</option>${moveOpts}
     </select>` : ''}
-    ${isAdmin()?`<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;border-color:#ef4444;color:#ef4444;white-space:nowrap;margin-top:0;" onclick="deleteSavedPaysheet('${safeId}',event)">Delete</button>`:''}
+    ${canManagePSFolders()?`<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;border-color:#ef4444;color:#ef4444;white-space:nowrap;margin-top:0;" onclick="deleteSavedPaysheet('${safeId}',event)">Delete</button>`:''}
   </div>`;
 }
 
@@ -5366,11 +5414,19 @@ async function psMovePaysheetTo(docId, newWeekEnding, selectEl) {
       const existing = _cache.paysheets.findIndex(p => p.id === newDocId);
       if (existing !== -1) _cache.paysheets[existing] = newDoc; else _cache.paysheets.push(newDoc);
     }
-    // Make sure the destination folder exists in _psFolders
-    if (!_psFolders.includes(newWeekEnding)) {
-      _psFolders.push(newWeekEnding);
-      _psFolders.sort((a,b) => b.localeCompare(a));
-      localStorage.setItem('d9_ps_folders', JSON.stringify(_psFolders));
+    // Ensure the destination folder exists in Firestore so all users see it
+    if (!(_cache.psFolders||[]).includes(newWeekEnding)) {
+      try {
+        await db.collection('psfolders').doc(newWeekEnding).set({
+          weekEnding:  newWeekEnding,
+          createdBy:   _currentUser ? _currentUser.email : 'unknown',
+          createdAt:   new Date().toISOString(),
+          autoCreated: true,
+        });
+        if (!_cache.psFolders) _cache.psFolders = [];
+        _cache.psFolders.push(newWeekEnding);
+        _cache.psFolders.sort((a,b) => b.localeCompare(a));
+      } catch(e) { /* non-fatal — folder will appear from paysheet weekEnding */ }
     }
     _psLoadOpenFolders.add(newWeekEnding);
     renderPSLoadList();
@@ -5382,11 +5438,14 @@ async function psMovePaysheetTo(docId, newWeekEnding, selectEl) {
 // ─── Save Destination Modal ───
 
 function openSaveDestModal() {
-  const allWE = [...new Set([..._psFolders, ...(_cache.paysheets||[]).map(p=>p.weekEnding).filter(Boolean)])].sort((a,b)=>b.localeCompare(a));
+  // Foremen see only management-created Firestore folders (they cannot create new ones)
+  const allWE = [...new Set([...(_cache.psFolders||[]), ...(_cache.paysheets||[]).map(p=>p.weekEnding).filter(Boolean)])].sort((a,b)=>b.localeCompare(a));
   const list = document.getElementById('ps-save-dest-list');
 
   if (!allWE.length) {
-    list.innerHTML = '<div style="color:var(--muted);font-size:.85rem;padding:8px 0;">No folders yet — use the form below to save to a new week ending.</div>';
+    list.innerHTML = canManagePSFolders()
+      ? '<div style="color:var(--muted);font-size:.85rem;padding:8px 0;">No folders yet — use the form below to save to a new week ending.</div>'
+      : '<div style="color:var(--muted);font-size:.85rem;padding:8px 0;">No week-ending folders available yet. Ask your manager to create one.</div>';
   } else {
     list.innerHTML = allWE.map(f => `
       <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface2);">
@@ -5404,6 +5463,10 @@ function openSaveDestModal() {
     document.getElementById('ps-save-dest-new-date').value = _psSavePendingData.defaultDate;
   }
 
+  // Foremen cannot create new week-ending folders — hide the "new week ending" section for them
+  const newSection = document.getElementById('ps-save-dest-new-section');
+  if (newSection) newSection.style.display = isForeman() ? 'none' : '';
+
   document.getElementById('ps-save-dest-modal').classList.add('open');
 }
 
@@ -5414,10 +5477,19 @@ async function psSaveToFolder(weekEnding) {
     _psState[c].header.weekEnding = weekEnding;
   }
   document.getElementById('ps-save-dest-modal').classList.remove('open');
-  if (!_psFolders.includes(weekEnding)) {
-    _psFolders.push(weekEnding);
-    _psFolders.sort((a,b) => b.localeCompare(a));
-    localStorage.setItem('d9_ps_folders', JSON.stringify(_psFolders));
+  // Auto-register this week-ending in Firestore so all users see the folder
+  if (!(_cache.psFolders||[]).includes(weekEnding)) {
+    try {
+      await db.collection('psfolders').doc(weekEnding).set({
+        weekEnding,
+        createdBy:   _currentUser ? _currentUser.email : 'unknown',
+        createdAt:   new Date().toISOString(),
+        autoCreated: true,
+      });
+      if (!_cache.psFolders) _cache.psFolders = [];
+      _cache.psFolders.push(weekEnding);
+      _cache.psFolders.sort((a,b) => b.localeCompare(a));
+    } catch(e) { /* non-fatal — paysheet still saves; folder visible from weekEnding field */ }
   }
   // Carry over type/date/submissionId from pending save context
   const opts = (_psSavePendingData && _psSavePendingData.type)
