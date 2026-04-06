@@ -5617,10 +5617,12 @@ function renderPSLoadList() {
 
     // Foreman controls when folder is locked and they don't have active access
     const foremanLockControls = (isForeman() && isLocked && !myGrant) ? (() => {
-      if (!myRequest)                         return `<button class="btn-sm" onclick="event.stopPropagation();psRequestFolderAccess('${we}')" style="white-space:nowrap;font-size:.72rem;padding:3px 9px;" title="Request temporary 1-hour access">Request to View</button>`;
-      if (myRequest.status === 'pending')     return `<span style="font-size:.72rem;color:#f59e0b;white-space:nowrap;">⏳ Request Pending</span>`;
-      if (myRequest.status === 'denied')      return `<span style="font-size:.72rem;color:#ef4444;white-space:nowrap;">✗ Request Denied</span>`;
-      return '';
+      // Only suppress the button when a request is actively waiting for review
+      if (myRequest && myRequest.status === 'pending')
+        return `<span style="font-size:.72rem;color:#f59e0b;white-space:nowrap;">⏳ Request Pending</span>`;
+      // No request, expired approval, or denied — always show the request button
+      const btnLabel = (myRequest && myRequest.status === 'denied') ? 'Request Again' : 'Request to View';
+      return `<button class="btn-sm" onclick="event.stopPropagation();psRequestFolderAccess('${we}')" style="white-space:nowrap;font-size:.72rem;padding:3px 9px;" title="Request temporary 1-hour access">${btnLabel}</button>`;
     })() : '';
 
     // Export ZIP button — only when contents are visible and non-empty
@@ -5688,8 +5690,8 @@ function renderPSLoadList() {
     if (!canView) {
       // Foreman is blocked — show locked message and request state
       const deniedMsg = myRequest && myRequest.status === 'denied'
-        ? `<div style="padding:14px 36px;font-size:.83rem;color:#ef4444;">🔒 Access request denied. Contact your manager to request access again.</div>`
-        : `<div style="padding:14px 36px;font-size:.83rem;color:var(--muted);">🔒 This folder is locked. You do not have permission to view its contents.</div>`;
+        ? `<div style="padding:14px 36px;font-size:.83rem;color:#ef4444;">🔒 Access request denied. Use the "Request Again" button to submit a new request.</div>`
+        : `<div style="padding:14px 36px;font-size:.83rem;color:var(--muted);">🔒 This folder is locked. Use the "Request to View" button to request temporary access.</div>`;
       folderBody = deniedMsg;
     } else if (sheets.length === 0) {
       folderBody = `<div style="padding:10px 36px;font-size:.82rem;color:var(--muted);display:flex;align-items:center;justify-content:space-between;">
