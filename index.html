@@ -5588,7 +5588,7 @@ function renderPSLoadList() {
         ? `<button class="btn-sm" onclick="event.stopPropagation();psUnlockFolder('${we}')" style="white-space:nowrap;font-size:.72rem;padding:3px 9px;background:rgba(34,197,94,.15);color:var(--green);border:1px solid var(--green);" title="Unlock — allow foremen to view">🔓 Unlock</button>`
         : `<button class="btn-sm" onclick="event.stopPropagation();psLockFolder('${we}')" style="white-space:nowrap;font-size:.72rem;padding:3px 9px;background:rgba(239,68,68,.1);color:#ef4444;border:1px solid #ef4444;" title="Lock — block foremen from viewing">🔒 Lock</button>`
       }
-      ${pendingReqs.length ? `<span style="font-size:.72rem;padding:3px 8px;background:rgba(251,191,36,.2);color:#f59e0b;border:1px solid #f59e0b;border-radius:4px;white-space:nowrap;">⏳ ${pendingReqs.length} Request${pendingReqs.length!==1?'s':''}</span>` : ''}
+      ${pendingReqs.length ? `<button class="btn-sm" onclick="event.stopPropagation();if(!_psLoadOpenFolders.has('${we}')){_psLoadOpenFolders.add('${we}');}renderPSLoadList();" style="font-size:.72rem;padding:3px 10px;background:rgba(251,191,36,.2);color:#f59e0b;border:1px solid #f59e0b;border-radius:4px;white-space:nowrap;cursor:pointer;" title="Click to review access requests">⏳ ${pendingReqs.length} Request${pendingReqs.length!==1?'s':''} — Review</button>` : ''}
     ` : '';
 
     // Foreman controls when folder is locked and they don't have active access
@@ -5622,15 +5622,22 @@ function renderPSLoadList() {
 
     // ── Pending-requests panel (shown to management inside open folder) ─
     const requestsPanel = (canManagePSFolders() && pendingReqs.length) ? `
-      <div style="padding:8px 14px 10px;background:rgba(251,191,36,.06);border-bottom:1px solid rgba(251,191,36,.2);">
-        <div style="font-size:.78rem;font-weight:700;color:#f59e0b;margin-bottom:6px;">⏳ Pending Access Requests</div>
-        ${pendingReqs.map(r => `
-          <div style="display:flex;align-items:center;gap:8px;padding:5px 0;flex-wrap:wrap;">
-            <span style="font-size:.78rem;color:var(--text);flex:1;min-width:160px;">${eh(r.requestedBy)}<br><span style="color:var(--muted);">${eh((r.requestedByRole||'').replace(/_/g,' '))} · ${r.requestedAt ? new Date(r.requestedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : ''}</span></span>
-            <button class="btn-sm" onclick="psApproveFolderRequest('${r.id}')" style="font-size:.72rem;padding:3px 10px;background:rgba(34,197,94,.2);color:var(--green);border:1px solid var(--green);">✓ Grant 1 Hour</button>
-            <button class="btn-sm btn-danger" onclick="psDenyFolderRequest('${r.id}')" style="font-size:.72rem;padding:3px 10px;">✗ Deny</button>
-          </div>
-        `).join('')}
+      <div style="padding:10px 14px 12px;background:rgba(251,191,36,.06);border-bottom:1px solid rgba(251,191,36,.2);">
+        <div style="font-size:.78rem;font-weight:700;color:#f59e0b;margin-bottom:8px;">⏳ Pending Access Requests</div>
+        ${pendingReqs.map(r => {
+          const shortEmail = eh(r.requestedBy || '');
+          const roleLabel  = eh((r.requestedByRole || '').replace(/_/g,' '));
+          const timeLabel  = r.requestedAt ? new Date(r.requestedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+          return `
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;margin-bottom:4px;background:rgba(255,255,255,.03);border:1px solid rgba(251,191,36,.15);border-radius:6px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:160px;">
+              <div style="font-size:.82rem;font-weight:600;color:var(--text);">${shortEmail}</div>
+              <div style="font-size:.72rem;color:var(--muted);">${roleLabel} · Requested ${timeLabel}</div>
+            </div>
+            <button class="btn-sm" onclick="psApproveFolderRequest('${r.id}')" style="font-size:.75rem;padding:4px 12px;background:rgba(34,197,94,.2);color:var(--green);border:1px solid var(--green);white-space:nowrap;" title="Grant temporary 1-hour access to this person only">✓ Grant Access to ${shortEmail}</button>
+            <button class="btn-sm btn-danger" onclick="psDenyFolderRequest('${r.id}')" style="font-size:.75rem;padding:4px 10px;white-space:nowrap;">✗ Deny</button>
+          </div>`;
+        }).join('')}
       </div>` : '';
 
     // ── Folder body content ─────────────────────────────────────────────
