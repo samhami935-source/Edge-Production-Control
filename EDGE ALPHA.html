@@ -3674,7 +3674,8 @@ function _psSaveHeaderFields() {
 
 function psLoadHeaderFields() {
   const h       = _ps().header;
-  const locked  = _psCurrentType === 'daily' && !_psEditMode;
+  // Lock: daily read-only view, OR weekly summary viewed by a foreman (they can't edit header)
+  const locked  = (_psCurrentType === 'daily' && !_psEditMode) || (_psCurrentType === 'weekly' && isForeman());
   const map     = {project:'ps-project', foreman:'ps-foreman', crewName:'ps-crew', weekEnding:'ps-weekending'};
   Object.entries(map).forEach(([k, id]) => {
     const el = document.getElementById(id);
@@ -3716,13 +3717,19 @@ function psRenderCrewTabs() {
   const isDaily  = _psCurrentType === 'daily';
 
   if (!isDaily) {
-    // Summary (weekly) paysheet — Edit + Export PDF + Approve + Save Paysheet
+    // Summary (weekly) paysheet action buttons
     if (_psEditMode) {
+      // Management full-edit mode: Save Edits / Cancel
       actWrap.innerHTML = `
         <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="psFinishEdit()">💾 Save Edits</button>
         <button class="btn btn-outline" style="white-space:nowrap;" onclick="psCancelEdit()">✕ Cancel</button>`;
+    } else if (isForeman()) {
+      // Foreman view: Export PDF + Save My Entries (restricted merge-save only)
+      actWrap.innerHTML = `
+        <button class="btn btn-outline" style="white-space:nowrap;" onclick="psExportPDF()">⬇ Export PDF</button>
+        <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="psSaveWeeklySummaryForeman()">💾 Save My Entries</button>`;
     } else {
-      // Check approval status of the currently-loaded doc
+      // Management view: Edit + Export PDF + Approve + Save Paysheet
       const _acctDoc      = _psCurrentDocId ? (_cache.paysheets||[]).find(p => p.id === _psCurrentDocId) : null;
       const _acctApproved = _acctDoc && _acctDoc.approvedAt;
       const _approveBtn   = isAdmin()
@@ -4830,7 +4837,8 @@ function psRenderCrewTable() {
         </td>
       </tr>`;
     }
-    // Weekly crew splits — Employee #/Name editable, % and Amount both independently editable
+    // Weekly crew splits — % Split, Amount, Signature always editable;
+    // Employee #/Name editable for management, read-only for foremen.
     const optCols = `
       <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
         <input type="number" id="ps-split-pct-${i}" style="${inp}text-align:center;" value="${s.pctSplit||''}" placeholder="0"
@@ -4852,6 +4860,15 @@ function psRenderCrewTable() {
           : `<button onclick="psOpenSignature(${i})" style="border:1px solid #aaa;background:#f5f5f5;padding:4px 12px;font-size:11px;cursor:pointer;border-radius:4px;">Sign</button>`
         }
       </td>`;
+    if (isForeman()) {
+      // Foremen: Employee # and Name are locked — they can only fill % Split, Amount, Signature
+      return `<tr>
+        <td style="border:1px solid #000;padding:4px 8px;font-size:12px;text-align:center;color:#555;">${eh(s.empNum||'—')}</td>
+        <td style="border:1px solid #000;padding:4px 8px;font-size:12px;color:#555;">${eh(s.employee||'')}</td>
+        ${optCols}
+      </tr>`;
+    }
+    // Management: Employee # and Name are editable
     return `<tr>
       <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
         <input style="${inp}text-align:center;" value="${eh(s.empNum)}" placeholder="—"
@@ -4895,16 +4912,97 @@ function printPaysheet() {
   window.print();
 }
 
+// ─── Foreman restricted save for weekly summary paysheets ───
+// Merges only the fields foremen are allowed to edit (weAmount, pctSplit, amount,
+// signatureData, foremanSig) into the existing compiled doc without overwriting
+// management-compiled fields (Area, Code, Notes, PTD, header metadata, savedBy, etc.).
+// No duplicate is created — uses the same deterministic docId.
+async function psSaveWeeklySummaryForeman() {
+  if (!isForeman()) { alert('This save path is for foreman roles only.'); return; }
+  if (!_psCurrentDocId) { alert('Please load a weekly summary paysheet first before saving.'); return; }
+  if (_psCurrentType !== 'weekly') { alert('This action only applies to weekly summary paysheets.'); return; }
+
+  // Fetch the authoritative existing doc (prefer cache to avoid an extra read)
+  let existingDoc = (_cache.paysheets || []).find(p => p.id === _psCurrentDocId);
+  if (!existingDoc) {
+    try {
+      const snap = await db.collection('paysheets').doc(_psCurrentDocId).get();
+      if (!snap.exists) { alert('Paysheet not found. It may have been deleted by management.'); return; }
+      existingDoc = snap.data();
+    } catch(e) { alert('Save failed: ' + e.message); return; }
+  }
+
+  // Build merged crews — carry over all management-compiled fields;
+  // only replace the foreman-editable fields from current _psState.
+  const mergedCrews = {};
+  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+    const existing = existingDoc.crews && existingDoc.crews[String(c)];
+    if (!existing) continue; // do not create new crew records
+    const state = _psState[c];
+
+    // Main rows: preserve everything except weAmount
+    const mergedRows = (existing.rows || []).map((r, idx) => {
+      const stateRow = state.rows[idx];
+      return Object.assign({}, r, { weAmount: stateRow ? (stateRow.weAmount || '') : (r.weAmount || '') });
+    });
+
+    // Splits: preserve Employee # and Name; only update pctSplit, amount, signatureData
+    const mergedSplits = (existing.splits || []).map((s, idx) => {
+      const ss = state.splits[idx];
+      if (!ss) return s;
+      return Object.assign({}, s, {
+        pctSplit:      ss.pctSplit      !== undefined ? ss.pctSplit      : (s.pctSplit      || ''),
+        amount:        ss.amount        !== undefined ? ss.amount        : (s.amount        || ''),
+        signatureData: ss.signatureData || s.signatureData || '',
+      });
+    });
+
+    // Header: preserve Project, Foreman, Crew, WeekEnding; only update foremanSig
+    const mergedHeader = Object.assign({}, existing.header || {}, {
+      foremanSig: state.header.foremanSig || (existing.header || {}).foremanSig || '',
+    });
+
+    mergedCrews[String(c)] = { header: mergedHeader, rows: mergedRows, splits: mergedSplits };
+  }
+
+  // Compose updated doc — preserve original savedBy/savedAt; add last-edit metadata
+  const updatedDoc = Object.assign({}, existingDoc, {
+    crews:            mergedCrews,
+    lastEditedAt:     new Date().toISOString(),
+    lastEditedBy:     _currentUser ? _currentUser.email : 'unknown',
+    lastEditedByRole: _currentUserRole || 'unknown',
+  });
+
+  try {
+    await db.collection('paysheets').doc(_psCurrentDocId).set(updatedDoc);
+    // Sync cache
+    if (!_cache.paysheets) _cache.paysheets = [];
+    const idx = _cache.paysheets.findIndex(p => p.id === _psCurrentDocId);
+    if (idx !== -1) _cache.paysheets[idx] = updatedDoc; else _cache.paysheets.push(updatedDoc);
+    alert('Your entries have been saved to the summary paysheet.');
+  } catch(e) {
+    alert('Save failed: ' + e.message);
+  }
+}
+
 // ─── Save paysheet to Firestore ───
 // silent = true  → no alert
 // opts.type      = 'daily' | 'weekly' (default 'weekly')
 // opts.dailyDate = YYYY-MM-DD required when type='daily' (used as docId suffix)
 async function savePaysheetToCloud(silent, opts = {}) {
+  // Backend guard: foremen must use the restricted foreman save path for weekly summaries.
+  // This blocks direct calls (e.g., from the console) that would overwrite management fields.
+  const _saveType = opts.type || 'weekly';
+  if (isForeman() && _saveType === 'weekly') {
+    if (!silent) alert('Use the "Save My Entries" button to save your changes to the summary paysheet.');
+    return;
+  }
+
   _psSaveHeaderFields();
   const jobName = document.getElementById('ps-job-select').value;
   if (!jobName) { if (!silent) alert('Please select a job before saving.'); return; }
 
-  const type = opts.type || 'weekly';
+  const type = _saveType;
   const isDailyType = type === 'daily';
 
   let weekEnd = '';
@@ -5127,9 +5225,9 @@ async function psCompileWeeklyPaysheet(weekEnding) {
       sheets.forEach(p => {
         const sc = p.crews && p.crews[String(c)];
         if (!sc) return;
-        // Take header from first crew that has one
+        // Take header from first crew that has one; always clear foremanSig — signatures are manual only
         if (!header.crewName && sc.header && sc.header.crewName) {
-          header = Object.assign(_psEmptyHeader(), sc.header);
+          header = Object.assign(_psEmptyHeader(), sc.header, { foremanSig: '' });
         }
         // Aggregate main rows by area+code
         (sc.rows || []).forEach(r => {
@@ -5153,7 +5251,8 @@ async function psCompileWeeklyPaysheet(weekEnding) {
       // Pad rows to a full page boundary so there are no jagged partial pages
       const rows = _psPadRows(Object.values(areaMap));
 
-      const splits = [...empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp }));
+      // signatureData always starts empty — signatures must be drawn manually after compilation
+      const splits = [...empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
       while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
 
       crews[String(c)] = { header, rows, splits };
@@ -5264,7 +5363,8 @@ function renderPSLoadList() {
   const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
   const all  = (_cache.paysheets || [])
     .filter(p => !activeJob || (p.job || '') === activeJob)
-    .filter(p => !isForeman() || !_currentUser || (p.savedBy || '') === _currentUser.email)
+    // Foremen see their own daily paysheets + ALL compiled weekly summaries
+    .filter(p => !isForeman() || !_currentUser || (p.savedBy || '') === _currentUser.email || p.type === 'weekly')
     .slice().sort((a,b) => (b.savedAt||'').localeCompare(a.savedAt||''));
 
   // Search mode — flat filtered list
@@ -5370,6 +5470,10 @@ function _psLoadRow(p, currentFolder) {
   const roleLabel = p.savedByRole && p.savedByRole !== 'unknown'
     ? `<span style="font-size:.68rem;background:rgba(201,168,76,.1);color:var(--accent);border:1px solid rgba(201,168,76,.2);padding:1px 5px;border-radius:3px;">${eh(p.savedByRole.replace(/_/g,' '))}</span> `
     : '';
+  // For management viewing weekly summaries: show when a foreman last saved their entries
+  const lastEditLine = (!isForeman() && p.type === 'weekly' && p.lastEditedAt && p.lastEditedBy)
+    ? `<div style="font-size:.7rem;color:var(--green);margin-top:2px;">✏ Foreman entries saved ${new Date(p.lastEditedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} ${new Date(p.lastEditedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})} by ${eh(p.lastEditedBy)}${p.lastEditedByRole && p.lastEditedByRole !== 'unknown' ? ' (' + eh(p.lastEditedByRole.replace(/_/g,' ')) + ')' : ''}</div>`
+    : '';
   return `<div style="display:flex;align-items:center;gap:8px;padding:10px 14px 10px 36px;border-top:1px solid var(--border);flex-wrap:wrap;">
     <div style="flex:1;min-width:120px;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
@@ -5377,6 +5481,7 @@ function _psLoadRow(p, currentFolder) {
         <span style="font-weight:600;font-size:.88rem;">${eh(p.job||'No Job')}</span>
       </div>
       <div style="font-size:.75rem;color:var(--muted);">${roleLabel}Saved ${d} ${t} · ${who} · ${crewCount} crew${crewCount!==1?'s':''} with data</div>
+      ${lastEditLine}
     </div>
     <button class="btn" style="font-size:.78rem;padding:5px 12px;white-space:nowrap;margin-top:0;" onclick="loadPaysheetFromCloud('${safeId}')">Load</button>
     ${moveOpts ? `<select class="fi" style="font-size:.75rem;padding:4px 8px;height:30px;margin-top:0;" title="Move to another folder" onchange="psMovePaysheetTo('${safeId}',this.value,this)">
