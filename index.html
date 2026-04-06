@@ -226,6 +226,60 @@
     .users-table th { padding:8px 10px; text-align:left; color:var(--muted); font-size:.72rem; text-transform:uppercase; border-bottom:1px solid var(--border); }
     .users-table td { padding:8px 10px; border-bottom:1px solid var(--border); }
     .users-table select { background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:4px 8px; font-size:.82rem; }
+
+    /* ── Accounting-only role layout ───────────────────────── */
+    body.accounting-mode .tab-bar          { display:none !important; }
+    body.accounting-mode .container        { padding-top:8px; }
+    body.accounting-mode header            { margin-bottom:16px; }
+    body.accounting-mode #accounting-content { padding-top:0; }
+
+    /* Toolbar: keep everything on one row, spread evenly */
+    #acct-toolbar {
+      display:flex;
+      align-items:center;
+      gap:12px;
+      flex-wrap:wrap;
+      padding:14px 20px;
+      background:var(--surface);
+      border:1px solid var(--border);
+      border-top:2px solid #1a56db;
+      border-radius:var(--radius);
+      margin-bottom:24px;
+    }
+    #acct-toolbar .acct-title {
+      font-size:1rem;
+      font-weight:800;
+      color:#1a56db;
+      letter-spacing:.02em;
+      white-space:nowrap;
+      margin-right:auto;
+    }
+    #acct-toolbar .acct-controls {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    #acct-toolbar .acct-controls label {
+      font-size:.75rem;
+      font-weight:700;
+      color:var(--muted);
+      white-space:nowrap;
+      text-transform:uppercase;
+      letter-spacing:.05em;
+    }
+    /* Center the white paysheet card */
+    #acct-print-area > div[style*="background:#fff"] {
+      margin-left:auto;
+      margin-right:auto;
+    }
+    @media(max-width:640px) {
+      #acct-toolbar { flex-direction:column; align-items:flex-start; }
+      #acct-toolbar .acct-title { margin-right:0; }
+      #acct-toolbar .acct-controls { width:100%; }
+      #acct-toolbar .acct-controls select { flex:1; min-width:120px; }
+    }
+    /* ────────────────────────────────────────────────────────── */
   </style>
 </head>
 <body>
@@ -6417,6 +6471,7 @@ function appInit() {
   if (isForeman()) {
     switchToPaysheet();
   } else if (isAccounting()) {
+    document.body.classList.add('accounting-mode');
     switchToAccounting();
   } else {
     switchToBudgets();
@@ -6681,7 +6736,7 @@ function _acctBuildJobCard(jobData, weekEnding) {
     </tr>`).join('');
 
   return `
-    <div style="background:#fff;color:#000;border-radius:8px;padding:32px;max-width:860px;font-family:Arial,sans-serif;font-size:13px;border:1px solid var(--border);">
+    <div style="background:#fff;color:#000;border-radius:8px;padding:32px;max-width:860px;margin:0 auto;font-family:Arial,sans-serif;font-size:13px;border:1px solid var(--border);">
 
       <!-- Letterhead -->
       <div style="text-align:center;margin-bottom:24px;border-bottom:3px solid #1a56db;padding-bottom:16px;">
@@ -6858,23 +6913,17 @@ function acctExportPDF() {
 <div id="accounting-content" style="display:none;">
 
   <!-- Header bar -->
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px;padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);border-top:2px solid #1a56db;">
-    <div style="font-size:1.1rem;font-weight:800;color:#1a56db;letter-spacing:.02em;white-space:nowrap;">🧾 Accounting Weekly Paysheet</div>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;">
-      <!-- Week-ending selector -->
-      <div style="display:flex;align-items:center;gap:6px;">
-        <label style="font-size:.78rem;font-weight:700;color:var(--muted);white-space:nowrap;text-transform:uppercase;letter-spacing:.05em;">Week Ending</label>
-        <select id="acct-week-select" class="fi" style="min-width:160px;" onchange="acctOnWeekChange()">
-          <option value="">— Select —</option>
-        </select>
-      </div>
-      <!-- Job filter -->
-      <div style="display:flex;align-items:center;gap:6px;">
-        <label style="font-size:.78rem;font-weight:700;color:var(--muted);white-space:nowrap;text-transform:uppercase;letter-spacing:.05em;">Job</label>
-        <select id="acct-job-select" class="fi" style="min-width:160px;" onchange="acctRender()">
-          <option value="">All Jobs</option>
-        </select>
-      </div>
+  <div id="acct-toolbar">
+    <div class="acct-title">🧾 Accounting Weekly Paysheet</div>
+    <div class="acct-controls">
+      <label>Week Ending</label>
+      <select id="acct-week-select" class="fi" style="min-width:150px;" onchange="acctOnWeekChange()">
+        <option value="">— Select —</option>
+      </select>
+      <label>Job</label>
+      <select id="acct-job-select" class="fi" style="min-width:150px;" onchange="acctRender()">
+        <option value="">All Jobs</option>
+      </select>
       <button class="btn btn-outline" style="padding:7px 14px;font-size:.8rem;" onclick="acctRefreshFromFirestore()">⟳ Refresh</button>
       <button class="btn" style="padding:7px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="acctExportPDF()">⬇ Export PDF</button>
     </div>
