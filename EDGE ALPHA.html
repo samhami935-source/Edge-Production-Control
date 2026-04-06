@@ -1136,18 +1136,19 @@ let _currentUserRole = null;
 let _currentUser     = null;
 
 // ─── In-memory data cache ───
-const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, paysheets: null, psFolders: null };
+const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, paysheets: null, psFolders: null, psFolderMeta: {}, psFolderRequests: [] };
 
 async function loadAllData() {
   const loadMsg = document.getElementById('loading-msg');
   if (loadMsg) loadMsg.textContent = 'Loading data…';
-  const [jobsSnap, payrollSnap, woSnap, lcDoc, paysheetsSnap, psFoldersSnap] = await Promise.all([
+  const [jobsSnap, payrollSnap, woSnap, lcDoc, paysheetsSnap, psFoldersSnap, psFolderReqSnap] = await Promise.all([
     db.collection('jobs').get(),
     db.collection('payroll').get(),
     db.collection('workorders').get(),
     db.collection('config').doc('laborcodes').get(),
     db.collection('paysheets').get(),
     db.collection('psfolders').get(),
+    db.collection('psfolderrequests').get(),
   ]);
   _cache.jobs = jobsSnap.docs.map(d => {
     const data = d.data();
@@ -1162,7 +1163,10 @@ async function loadAllData() {
   _cache.laborcodes = lcDoc.exists ? (lcDoc.data().codes || []) : [];
   _cache.paysheets  = paysheetsSnap.docs.map(d => d.data());
   // Shared week-ending folders — Firestore-backed, visible to all roles
-  _cache.psFolders  = psFoldersSnap.docs.map(d => d.data().weekEnding).filter(Boolean).sort((a,b) => b.localeCompare(a));
+  _cache.psFolders    = psFoldersSnap.docs.map(d => d.data().weekEnding).filter(Boolean).sort((a,b) => b.localeCompare(a));
+  _cache.psFolderMeta = {};
+  psFoldersSnap.docs.forEach(d => { const data = d.data(); if (data.weekEnding) _cache.psFolderMeta[data.weekEnding] = data; });
+  _cache.psFolderRequests = psFolderReqSnap.docs.map(d => d.data());
   // Load job metadata (project name, foreman, crew name per job)
   try {
     const metaSnap = await db.collection('jobmeta').get();
@@ -1177,6 +1181,41 @@ function canEdit()   { return isAdmin() || isPM(); }
 // Admin + VP of Operations + Project Manager can compile daily→weekly and manage shared folders
 function canCompilePaysheet() { return isAdmin() || _currentUserRole === 'vp_operations' || _currentUserRole === 'project_manager'; }
 function canManagePSFolders() { return canCompilePaysheet(); }
+
+// ─── Folder lock helpers ───
+// Returns true if the given week-ending folder is locked.
+function _isFolderLocked(we) {
+  const meta = (_cache.psFolderMeta || {})[we];
+  return !!(meta && meta.locked);
+}
+// Returns the active (non-expired) grant object for the current user in a folder, or null.
+function _getActiveFolderGrant(we) {
+  if (!_currentUser) return null;
+  const meta = (_cache.psFolderMeta || {})[we];
+  if (!meta || !meta.grants) return null;
+  const grant = meta.grants[_currentUser.email];
+  if (!grant || !grant.expiresAt) return null;
+  return new Date(grant.expiresAt) > new Date() ? grant : null;
+}
+// Returns true if the current user may view the contents of a folder.
+// Management always can. Foremen can only if the folder is unlocked or they have an active grant.
+function _canViewFolder(we) {
+  if (canManagePSFolders()) return true;
+  if (!_isFolderLocked(we)) return true;
+  return !!_getActiveFolderGrant(we);
+}
+// Returns the most recent access request for the current user in a given folder, or null.
+function _getLatestFolderRequest(we) {
+  if (!_currentUser) return null;
+  const reqs = (_cache.psFolderRequests || []).filter(r =>
+    r.weekEnding === we && r.requestedBy === _currentUser.email
+  );
+  return reqs.sort((a, b) => (b.requestedAt || '').localeCompare(a.requestedAt || ''))[0] || null;
+}
+// Returns all pending access requests for a given folder (used by management).
+function _getPendingRequestsForFolder(we) {
+  return (_cache.psFolderRequests || []).filter(r => r.weekEnding === we && r.status === 'pending');
+}
 
 // Returns true if the given cost code/group is visible to the current user.
 // Non-foreman roles always see all codes.  Each foreman class sees only its
@@ -4574,6 +4613,11 @@ function psExportPDF() {
 }
 
 async function psExportFolderZip(weekEnding) {
+  // Enforce folder lock — foremen without an active grant cannot export locked folders
+  if (!_canViewFolder(weekEnding)) {
+    alert('This folder is locked. Request access from your manager to export it.');
+    return;
+  }
   if (typeof JSZip === 'undefined') { alert('ZIP library not loaded — please wait a moment and try again.'); return; }
   if (typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined') {
     alert('PDF library not loaded — please wait a moment and try again.'); return;
@@ -5357,25 +5401,142 @@ async function psDeleteFolder(we) {
   renderPSLoadList();
 }
 
+// ─── Folder lock / access-request actions ───
+
+async function psLockFolder(we) {
+  if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can lock folders.'); return; }
+  if (!confirm(`Lock folder "Week Ending: ${_fmtWeekDate(we)}"?\n\nForeman-class users will be blocked from viewing this folder and its paysheets until unlocked or granted temporary access.`)) return;
+  const now = new Date().toISOString();
+  try {
+    await db.collection('psfolders').doc(we).update({
+      locked: true,
+      lockedBy: _currentUser ? _currentUser.email : 'unknown',
+      lockedAt: now,
+    });
+    if (!_cache.psFolderMeta) _cache.psFolderMeta = {};
+    if (!_cache.psFolderMeta[we]) _cache.psFolderMeta[we] = { weekEnding: we };
+    Object.assign(_cache.psFolderMeta[we], { locked: true, lockedBy: _currentUser ? _currentUser.email : 'unknown', lockedAt: now });
+    renderPSLoadList();
+  } catch(e) { alert('Failed to lock folder: ' + e.message); }
+}
+
+async function psUnlockFolder(we) {
+  if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can unlock folders.'); return; }
+  if (!confirm(`Unlock folder "Week Ending: ${_fmtWeekDate(we)}"?\n\nForeman-class users will be able to view this folder again.`)) return;
+  try {
+    await db.collection('psfolders').doc(we).update({ locked: false, lockedBy: null, lockedAt: null });
+    if (_cache.psFolderMeta && _cache.psFolderMeta[we]) {
+      _cache.psFolderMeta[we].locked   = false;
+      _cache.psFolderMeta[we].lockedBy = null;
+      _cache.psFolderMeta[we].lockedAt = null;
+    }
+    renderPSLoadList();
+  } catch(e) { alert('Failed to unlock folder: ' + e.message); }
+}
+
+async function psRequestFolderAccess(we) {
+  if (!isForeman() || !_currentUser) return;
+  // Block if request already pending
+  const existing = (_cache.psFolderRequests || []).find(r =>
+    r.weekEnding === we && r.requestedBy === _currentUser.email && r.status === 'pending'
+  );
+  if (existing) { alert('You already have a pending access request for this folder. Please wait for a manager to review it.'); return; }
+  const reqId = 'req_' + we + '_' + (_currentUser.email || '').replace(/[^\w]/g, '_') + '_' + Date.now();
+  const req = {
+    id:               reqId,
+    weekEnding:       we,
+    requestedBy:      _currentUser.email,
+    requestedByRole:  _currentUserRole || 'unknown',
+    requestedAt:      new Date().toISOString(),
+    status:           'pending',
+    reviewedBy:       null,
+    reviewedAt:       null,
+    expiresAt:        null,
+  };
+  try {
+    await db.collection('psfolderrequests').doc(reqId).set(req);
+    if (!_cache.psFolderRequests) _cache.psFolderRequests = [];
+    _cache.psFolderRequests.push(req);
+    renderPSLoadList();
+    alert('Access request submitted. A manager will review your request shortly.');
+  } catch(e) { alert('Failed to submit request: ' + e.message); }
+}
+
+async function psApproveFolderRequest(reqId) {
+  if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can approve requests.'); return; }
+  const req = (_cache.psFolderRequests || []).find(r => r.id === reqId);
+  if (!req) { alert('Request not found.'); return; }
+  if (req.status !== 'pending') { alert('This request has already been reviewed.'); return; }
+  const now       = new Date();
+  const expiresAt = new Date(now.getTime() + 60 * 60 * 1000).toISOString(); // 1 hour
+  const reviewedAt = now.toISOString();
+  try {
+    await db.collection('psfolderrequests').doc(reqId).update({
+      status: 'approved', reviewedBy: _currentUser ? _currentUser.email : 'unknown', reviewedAt, expiresAt,
+    });
+    // Write grant into folder document (replace whole grants map to avoid Firestore path issues)
+    const meta   = (_cache.psFolderMeta || {})[req.weekEnding] || {};
+    const grants = Object.assign({}, meta.grants || {});
+    grants[req.requestedBy] = { grantedAt: reviewedAt, expiresAt, grantedBy: _currentUser ? _currentUser.email : 'unknown' };
+    await db.collection('psfolders').doc(req.weekEnding).update({ grants });
+    // Update caches
+    Object.assign(req, { status: 'approved', reviewedBy: _currentUser ? _currentUser.email : 'unknown', reviewedAt, expiresAt });
+    if (!_cache.psFolderMeta) _cache.psFolderMeta = {};
+    if (!_cache.psFolderMeta[req.weekEnding]) _cache.psFolderMeta[req.weekEnding] = { weekEnding: req.weekEnding };
+    _cache.psFolderMeta[req.weekEnding].grants = grants;
+    renderPSLoadList();
+    alert(`Temporary access granted to ${req.requestedBy} for 1 hour.`);
+  } catch(e) { alert('Failed to approve request: ' + e.message); }
+}
+
+async function psDenyFolderRequest(reqId) {
+  if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can deny requests.'); return; }
+  const req = (_cache.psFolderRequests || []).find(r => r.id === reqId);
+  if (!req) { alert('Request not found.'); return; }
+  if (req.status !== 'pending') { alert('This request has already been reviewed.'); return; }
+  const reviewedAt = new Date().toISOString();
+  try {
+    await db.collection('psfolderrequests').doc(reqId).update({
+      status: 'denied', reviewedBy: _currentUser ? _currentUser.email : 'unknown', reviewedAt,
+    });
+    Object.assign(req, { status: 'denied', reviewedBy: _currentUser ? _currentUser.email : 'unknown', reviewedAt });
+    renderPSLoadList();
+  } catch(e) { alert('Failed to deny request: ' + e.message); }
+}
+
+// Re-fetches all folder requests from Firestore (call when opening modal to catch cross-device approvals).
+async function psRefreshFolderRequests() {
+  try {
+    const snap = await db.collection('psfolderrequests').get();
+    _cache.psFolderRequests = snap.docs.map(d => d.data());
+  } catch(e) { console.error('psRefreshFolderRequests:', e); }
+}
+
 function openLoadPaysheetModal() {
   // Auto-expand the most recent folder
   const allWE = [...new Set([...(_cache.psFolders||[]), ...(_cache.paysheets||[]).map(p=>p.weekEnding).filter(Boolean)])].sort((a,b)=>b.localeCompare(a));
   if (allWE.length) _psLoadOpenFolders.add(allWE[0]);
+  // Refresh requests from Firestore so approvals/denials from other devices show up
+  psRefreshFolderRequests().then(() => renderPSLoadList());
   renderPSLoadList();
   document.getElementById('ps-load-modal').classList.add('open');
 }
 
 function renderPSLoadList() {
-  const list    = document.getElementById('ps-load-list');
-  const q       = (document.getElementById('ps-load-search').value || '').toLowerCase().trim();
+  const list      = document.getElementById('ps-load-list');
+  const q         = (document.getElementById('ps-load-search').value || '').toLowerCase().trim();
   const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
-  const all  = (_cache.paysheets || [])
+
+  // Base paysheet list for the current user.
+  // Foremen only see their own daily paysheets + all compiled weekly summaries.
+  // Paysheets inside locked folders that the user cannot access are hidden.
+  const all = (_cache.paysheets || [])
     .filter(p => !activeJob || (p.job || '') === activeJob)
-    // Foremen see their own daily paysheets + ALL compiled weekly summaries
     .filter(p => !isForeman() || !_currentUser || (p.savedBy || '') === _currentUser.email || p.type === 'weekly')
+    .filter(p => _canViewFolder(p.weekEnding || ''))
     .slice().sort((a,b) => (b.savedAt||'').localeCompare(a.savedAt||''));
 
-  // Search mode — flat filtered list
+  // Search mode — flat filtered list (locked-folder paysheets already excluded above)
   if (q) {
     const filt = all.filter(p =>
       (p.job||'').toLowerCase().includes(q) ||
@@ -5390,13 +5551,14 @@ function renderPSLoadList() {
     return;
   }
 
-  // Collect all week endings: shared Firestore folders + from saved paysheets
-  // Non-foremen also see all paysheet weekEndings (management sees all foremen's paysheets)
+  // Collect all week endings: shared Firestore folders + paysheet weekEndings visible to this user.
+  // For foremen, locked folders they cannot access are still included (so they can request access).
   const allPsWE = isForeman()
     ? all.map(p => p.weekEnding).filter(Boolean)
     : (_cache.paysheets||[]).map(p => p.weekEnding).filter(Boolean);
+  // Always include all management-created folders (locked ones visible to foremen as "locked")
   const weekEndingSet = new Set([...(_cache.psFolders||[]), ...allPsWE]);
-  const weekEndings = [...weekEndingSet].sort((a,b) => b.localeCompare(a)); // newest first
+  const weekEndings   = [...weekEndingSet].sort((a,b) => b.localeCompare(a));
 
   if (!weekEndings.length) {
     list.innerHTML = canManagePSFolders()
@@ -5407,48 +5569,124 @@ function renderPSLoadList() {
 
   // Folder view grouped by weekEnding
   list.innerHTML = weekEndings.map(we => {
-    const sheets = all.filter(p => p.weekEnding === we);
+    const isLocked       = _isFolderLocked(we);
+    const canView        = _canViewFolder(we);
+    const myGrant        = (isForeman() && isLocked) ? _getActiveFolderGrant(we) : null;
+    const myRequest      = (isForeman() && isLocked) ? _getLatestFolderRequest(we) : null;
+    const pendingReqs    = canManagePSFolders() ? _getPendingRequestsForFolder(we) : [];
+
+    // Only count/show paysheets the user can see (locked-folder paysheets already stripped from `all`)
+    const sheets   = all.filter(p => p.weekEnding === we);
     const folderId = 'pswe_' + we.replace(/[^\w]/g,'_');
-    const isOpen = _psLoadOpenFolders.has(we);
-    const label = _fmtWeekDate(we);
-    const isEmpty = sheets.length === 0;
-    return `
-    <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden;">
-      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface2);user-select:none;">
-        <div onclick="psToggleFolder('${we}','${folderId}')" style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer;">
-          <span style="font-size:1rem;">${isOpen ? '📂' : '📁'}</span>
-          <div style="flex:1;">
-            <div style="font-weight:700;font-size:.93rem;">Week Ending: ${eh(label)}</div>
-            <div style="font-size:.75rem;color:var(--muted);margin-top:1px;">${isEmpty ? 'Empty folder' : sheets.length + ' paysheet' + (sheets.length!==1?'s':'')}</div>
+    const isOpen   = _psLoadOpenFolders.has(we);
+    const label    = _fmtWeekDate(we);
+
+    // ── Folder header controls ──────────────────────────────────────────
+    // Management: lock/unlock toggle + pending-requests badge
+    const mgmtControls = canManagePSFolders() ? `
+      ${isLocked
+        ? `<button class="btn-sm" onclick="event.stopPropagation();psUnlockFolder('${we}')" style="white-space:nowrap;font-size:.72rem;padding:3px 9px;background:rgba(34,197,94,.15);color:var(--green);border:1px solid var(--green);" title="Unlock — allow foremen to view">🔓 Unlock</button>`
+        : `<button class="btn-sm" onclick="event.stopPropagation();psLockFolder('${we}')" style="white-space:nowrap;font-size:.72rem;padding:3px 9px;background:rgba(239,68,68,.1);color:#ef4444;border:1px solid #ef4444;" title="Lock — block foremen from viewing">🔒 Lock</button>`
+      }
+      ${pendingReqs.length ? `<span style="font-size:.72rem;padding:3px 8px;background:rgba(251,191,36,.2);color:#f59e0b;border:1px solid #f59e0b;border-radius:4px;white-space:nowrap;">⏳ ${pendingReqs.length} Request${pendingReqs.length!==1?'s':''}</span>` : ''}
+    ` : '';
+
+    // Foreman controls when folder is locked and they don't have active access
+    const foremanLockControls = (isForeman() && isLocked && !myGrant) ? (() => {
+      if (!myRequest)                         return `<button class="btn-sm" onclick="event.stopPropagation();psRequestFolderAccess('${we}')" style="white-space:nowrap;font-size:.72rem;padding:3px 9px;" title="Request temporary 1-hour access">Request to View</button>`;
+      if (myRequest.status === 'pending')     return `<span style="font-size:.72rem;color:#f59e0b;white-space:nowrap;">⏳ Request Pending</span>`;
+      if (myRequest.status === 'denied')      return `<span style="font-size:.72rem;color:#ef4444;white-space:nowrap;">✗ Request Denied</span>`;
+      return '';
+    })() : '';
+
+    // Export ZIP button — only when contents are visible and non-empty
+    const exportBtn = (canView && sheets.length)
+      ? `<button class="btn-sm" onclick="event.stopPropagation();psExportFolderZip('${we}')" style="white-space:nowrap;font-size:.75rem;padding:4px 10px;" title="Export all paysheets as PDF bundle">⬇ Export ZIP</button>`
+      : '';
+
+    // ── Folder header subtitle ──────────────────────────────────────────
+    let subtitle;
+    if (isLocked && !canView) {
+      subtitle = '<span style="color:#ef4444;">🔒 Locked</span>';
+    } else {
+      const cnt = sheets.length;
+      subtitle = cnt === 0 ? 'Empty folder' : cnt + ' paysheet' + (cnt !== 1 ? 's' : '');
+    }
+
+    // ── Temporary-access banner (shown to foreman with active grant) ────
+    const accessBanner = (isForeman() && myGrant) ? (() => {
+      const exp      = new Date(myGrant.expiresAt);
+      const minsLeft = Math.max(0, Math.ceil((exp - new Date()) / 60000));
+      return `<div style="padding:6px 14px;font-size:.75rem;background:rgba(34,197,94,.1);color:var(--green);border-bottom:1px solid rgba(34,197,94,.2);">⏰ Temporary access — expires in ${minsLeft} min (${exp.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})})</div>`;
+    })() : '';
+
+    // ── Pending-requests panel (shown to management inside open folder) ─
+    const requestsPanel = (canManagePSFolders() && pendingReqs.length) ? `
+      <div style="padding:8px 14px 10px;background:rgba(251,191,36,.06);border-bottom:1px solid rgba(251,191,36,.2);">
+        <div style="font-size:.78rem;font-weight:700;color:#f59e0b;margin-bottom:6px;">⏳ Pending Access Requests</div>
+        ${pendingReqs.map(r => `
+          <div style="display:flex;align-items:center;gap:8px;padding:5px 0;flex-wrap:wrap;">
+            <span style="font-size:.78rem;color:var(--text);flex:1;min-width:160px;">${eh(r.requestedBy)}<br><span style="color:var(--muted);">${eh((r.requestedByRole||'').replace(/_/g,' '))} · ${r.requestedAt ? new Date(r.requestedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : ''}</span></span>
+            <button class="btn-sm" onclick="psApproveFolderRequest('${r.id}')" style="font-size:.72rem;padding:3px 10px;background:rgba(34,197,94,.2);color:var(--green);border:1px solid var(--green);">✓ Grant 1 Hour</button>
+            <button class="btn-sm btn-danger" onclick="psDenyFolderRequest('${r.id}')" style="font-size:.72rem;padding:3px 10px;">✗ Deny</button>
           </div>
-          <span style="color:var(--muted);font-size:.85rem;">${isOpen ? '▲' : '▼'}</span>
+        `).join('')}
+      </div>` : '';
+
+    // ── Folder body content ─────────────────────────────────────────────
+    let folderBody;
+    if (!canView) {
+      // Foreman is blocked — show locked message and request state
+      const deniedMsg = myRequest && myRequest.status === 'denied'
+        ? `<div style="padding:14px 36px;font-size:.83rem;color:#ef4444;">🔒 Access request denied. Contact your manager to request access again.</div>`
+        : `<div style="padding:14px 36px;font-size:.83rem;color:var(--muted);">🔒 This folder is locked. You do not have permission to view its contents.</div>`;
+      folderBody = deniedMsg;
+    } else if (sheets.length === 0) {
+      folderBody = `<div style="padding:10px 36px;font-size:.82rem;color:var(--muted);display:flex;align-items:center;justify-content:space-between;">
+        <span>Empty — save a paysheet here.</span>
+        ${canManagePSFolders() ? `<button class="btn-sm btn-danger" style="font-size:.75rem;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
+      </div>`;
+    } else {
+      const daily  = sheets.filter(p => p.type === 'daily');
+      const weekly = sheets.filter(p => p.type !== 'daily');
+      const hasDone = weekly.length > 0;
+      folderBody = `
+        ${daily.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Paysheets (${daily.length})</div>
+          ${daily.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(p => _psLoadRow(p, we)).join('')}` : ''}
+        ${weekly.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--green);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">★ Weekly Summary</div>
+          ${weekly.map(p => _psLoadRow(p, we)).join('')}` : ''}
+        <div style="padding:8px 14px 10px 36px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap;">
+          ${canCompilePaysheet() && activeJob ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">
+            📋 Compile into Weekly Paysheet
+          </button>
+          ${hasDone ? '<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>' : '<span style="font-size:.75rem;color:var(--muted);">Combines all daily paysheets into one per crew</span>'}` : ''}
+          ${canManagePSFolders() && sheets.length === 0 ? `<button class="btn-sm btn-danger" style="font-size:.75rem;margin-left:auto;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
+        </div>`;
+    }
+
+    const borderColor = isLocked ? 'rgba(239,68,68,.35)' : 'var(--border)';
+    const headerBg    = isLocked ? 'rgba(239,68,68,.05)' : 'var(--surface2)';
+    const folderEmoji = isLocked ? '🔒' : (isOpen ? '📂' : '📁');
+
+    return `
+    <div style="border:1px solid ${borderColor};border-radius:8px;margin-bottom:8px;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:8px;padding:12px 14px;background:${headerBg};user-select:none;flex-wrap:wrap;">
+        <div onclick="psToggleFolder('${we}','${folderId}')" style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer;min-width:0;">
+          <span style="font-size:1rem;flex-shrink:0;">${folderEmoji}</span>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:700;font-size:.93rem;">Week Ending: ${eh(label)}</div>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:1px;">${subtitle}</div>
+          </div>
+          <span style="color:var(--muted);font-size:.85rem;flex-shrink:0;">${isOpen ? '▲' : '▼'}</span>
         </div>
-        ${!isEmpty ? `<button class="btn-sm" onclick="event.stopPropagation();psExportFolderZip('${we}')" style="white-space:nowrap;font-size:.75rem;padding:4px 10px;" title="Export all paysheets as PDF bundle">⬇ Export ZIP</button>` : ''}
+        ${mgmtControls}
+        ${foremanLockControls}
+        ${exportBtn}
       </div>
       <div id="${folderId}" style="display:${isOpen?'block':'none'};">
-        ${isEmpty
-          ? `<div style="padding:10px 36px;font-size:.82rem;color:var(--muted);display:flex;align-items:center;justify-content:space-between;">
-               <span>Empty — save a paysheet here.</span>
-               ${canManagePSFolders() ? `<button class="btn-sm btn-danger" style="font-size:.75rem;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
-             </div>`
-          : (() => {
-              const daily   = sheets.filter(p => p.type === 'daily');
-              const weekly  = sheets.filter(p => p.type !== 'daily');
-              const hasDone = weekly.length > 0;
-              return `
-                ${daily.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Paysheets (${daily.length})</div>
-                  ${daily.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(p => _psLoadRow(p, we)).join('')}` : ''}
-                ${weekly.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--green);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">★ Weekly Summary</div>
-                  ${weekly.map(p => _psLoadRow(p, we)).join('')}` : ''}
-                <div style="padding:8px 14px 10px 36px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap;">
-                  ${canCompilePaysheet() && activeJob ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">
-                    📋 Compile into Weekly Paysheet
-                  </button>
-                  ${hasDone ? '<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>' : '<span style="font-size:.75rem;color:var(--muted);">Combines all daily paysheets into one per crew</span>'}` : ''}
-                  ${canManagePSFolders() && sheets.length === 0 ? `<button class="btn-sm btn-danger" style="font-size:.75rem;margin-left:auto;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
-                </div>`;
-            })()
-        }
+        ${accessBanner}
+        ${requestsPanel}
+        ${folderBody}
       </div>
     </div>`;
   }).join('');
@@ -5661,6 +5899,11 @@ async function loadPaysheetFromCloud(docId) {
       if (!snap.exists) { alert('Paysheet not found.'); return; }
       doc = snap.data();
     } catch(e) { alert('Load failed: ' + e.message); return; }
+  }
+  // Enforce folder lock — foremen without an active grant cannot load paysheets from locked folders
+  if (!_canViewFolder(doc.weekEnding || '')) {
+    alert('This paysheet is in a locked folder. Request access from your manager to view it.');
+    return;
   }
 
   // Restore all crews
