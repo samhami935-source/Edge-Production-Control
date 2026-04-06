@@ -1170,8 +1170,9 @@ async function loadAllData() {
 }
 
 function isAdmin()   { return _currentUserRole === 'admin'; }
-function isPM()      { return ['project_manager','vp_operations','operations_manager','accounting','estimating_manager'].includes(_currentUserRole); }
+function isPM()      { return ['project_manager','vp_operations','operations_manager','estimating_manager'].includes(_currentUserRole); }
 function isForeman() { return ['foreman','framing_foreman','hanging_foreman','taping_foreman','pickup_foreman'].includes(_currentUserRole); }
+function isAccounting() { return _currentUserRole === 'accounting'; }
 function canEdit()   { return isAdmin() || isPM(); }
 // Admin + VP of Operations + Project Manager can compile daily→weekly and manage shared folders
 function canCompilePaysheet() { return isAdmin() || _currentUserRole === 'vp_operations' || _currentUserRole === 'project_manager'; }
@@ -1461,10 +1462,12 @@ function updateAdminUI() {
   const budgetsTab = document.getElementById('budgets-tab');
   const lcTab      = document.getElementById('lc-tab');
   const accountingTab = document.getElementById('accounting-tab');
-  if (payrollTab)    payrollTab.style.display    = isForeman() ? 'none' : '';  // foremen can't see Payroll
-  if (budgetsTab)    budgetsTab.style.display    = isForeman() ? 'none' : '';  // foremen can't see Budgets
+  if (payrollTab)    payrollTab.style.display    = (isForeman() || isAccounting()) ? 'none' : '';  // foremen + accounting can't see Payroll
+  if (budgetsTab)    budgetsTab.style.display    = (isForeman() || isAccounting()) ? 'none' : '';  // foremen + accounting can't see Budgets
   if (accountingTab) accountingTab.style.display = isForeman() ? 'none' : '';  // foremen can't see Accounting
-  if (lcTab)         lcTab.style.display         = '';                         // everyone can see Labor Codes
+  const psTab = document.getElementById('paysheet-tab');
+  if (psTab)         psTab.style.display         = isAccounting() ? 'none' : '';  // accounting can't see Paysheet
+  if (lcTab)         lcTab.style.display         = isAccounting() ? 'none' : '';  // accounting can't see Labor Codes
   // Only management can create week-ending folders
   const newFolderBtn = document.getElementById('ps-new-folder-btn');
   if (newFolderBtn) newFolderBtn.style.display = canManagePSFolders() ? '' : 'none';
@@ -1566,7 +1569,7 @@ function saveLaborCodes(list) {
 //  BUDGETS TAB
 // ═══════════════════════════
 function switchToBudgets() {
-  if (isForeman()) return;
+  if (isForeman() || isAccounting()) return;
   activeCSVName=null;
   activeTab='budgets';
   renderTabBar();
@@ -1870,6 +1873,7 @@ function renderBurnLog() {
 }
 
 function switchToLaborCodes() {
+  if (isAccounting()) return;
   activeTab='lc';
   renderTabBar();
   showPanel('lc');
@@ -1946,7 +1950,7 @@ function renderTabBar() {
 }
 
 function switchToPayroll() {
-  if (isForeman()) return;
+  if (isForeman() || isAccounting()) return;
   activeTab = 'payroll';
   renderTabBar();
   showPanel('payroll');
@@ -1961,6 +1965,7 @@ function switchToPayroll() {
 }
 
 function switchToCSV(name) {
+  if (isAccounting()) return;
   const entry = getSavedCSVFiles().find(f => f.name === name);
   if (!entry) return;
   activeCSVName = name;
@@ -3829,6 +3834,7 @@ function psAutoFillCrewFromDaily(crewNum) {
 }
 
 function switchToPaysheet() {
+  if (isAccounting()) return;
   activeTab = 'paysheet';
   renderTabBar();
   ['csv-content','payroll-content','budgets-content','lc-content','accounting-content'].forEach(id => document.getElementById(id).style.display = 'none');
@@ -6398,8 +6404,11 @@ function appInit() {
   populatePRDropdowns();
   renderWOTable();
   // Foremen skip Budgets/Payroll — land directly on Paysheet (which also inits Daily Input)
+  // Accounting lands directly on Accounting tab
   if (isForeman()) {
     switchToPaysheet();
+  } else if (isAccounting()) {
+    switchToAccounting();
   } else {
     switchToBudgets();
   }
