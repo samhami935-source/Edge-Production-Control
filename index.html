@@ -915,6 +915,43 @@
     </div><!-- /paysheet-print-area -->
   </div><!-- /paysheet-content -->
 
+<!-- ════════════════════════════════════════════════════════════
+     ACCOUNTING CONTENT PANEL
+     Source of truth: approved weekly paysheets in _cache.paysheets
+     ════════════════════════════════════════════════════════════ -->
+<div id="accounting-content" style="display:none;">
+
+  <!-- Header bar -->
+  <div id="acct-toolbar">
+    <div class="acct-title">🧾 Accounting Weekly Paysheet</div>
+    <div class="acct-controls">
+      <label>Week Ending</label>
+      <select id="acct-week-select" class="fi" style="min-width:120px;" onchange="acctOnWeekChange()">
+        <option value="">— Select —</option>
+      </select>
+      <label>Job</label>
+      <select id="acct-job-select" class="fi" style="min-width:120px;" onchange="acctRender()">
+        <option value="">All Jobs</option>
+      </select>
+      <button class="btn btn-outline" style="padding:7px 14px;font-size:.8rem;" onclick="acctRefreshFromFirestore()">⟳ Refresh</button>
+      <button class="btn" style="padding:7px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="acctExportPDF()">⬇ Export PDF</button>
+    </div>
+  </div>
+
+  <!-- Admin notice about approvals -->
+  <div id="acct-admin-notice" style="display:none;padding:10px 16px;background:rgba(26,86,219,.08);border:1px solid rgba(26,86,219,.3);border-radius:8px;font-size:.82rem;color:#93c5fd;margin-bottom:16px;">
+    <strong style="color:#1a56db;">Admin tip:</strong> Only <em>approved</em> weekly paysheets appear here. Open the Paysheet tab, load a Weekly Summary, and click <strong>✓ Approve for Accounting</strong> to make it visible.
+  </div>
+
+  <!-- Main printable area -->
+  <div id="acct-print-area">
+    <!-- Populated by acctRender() -->
+    <div style="padding:48px;text-align:center;color:var(--muted);">
+      Select a week ending above to view the accounting paysheet.
+    </div>
+  </div>
+
+</div>
 </div><!-- /container -->
 
 <!-- Signature Pad Modal -->
@@ -6903,43 +6940,6 @@ function acctExportPDF() {
 
 </script>
 
-<!-- ════════════════════════════════════════════════════════════
-     ACCOUNTING CONTENT PANEL
-     Source of truth: approved weekly paysheets in _cache.paysheets
-     ════════════════════════════════════════════════════════════ -->
-<div id="accounting-content" style="display:none;">
-
-  <!-- Header bar -->
-  <div id="acct-toolbar">
-    <div class="acct-title">🧾 Accounting Weekly Paysheet</div>
-    <div class="acct-controls">
-      <label>Week Ending</label>
-      <select id="acct-week-select" class="fi" style="min-width:120px;" onchange="acctOnWeekChange()">
-        <option value="">— Select —</option>
-      </select>
-      <label>Job</label>
-      <select id="acct-job-select" class="fi" style="min-width:120px;" onchange="acctRender()">
-        <option value="">All Jobs</option>
-      </select>
-      <button class="btn btn-outline" style="padding:7px 14px;font-size:.8rem;" onclick="acctRefreshFromFirestore()">⟳ Refresh</button>
-      <button class="btn" style="padding:7px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="acctExportPDF()">⬇ Export PDF</button>
-    </div>
-  </div>
-
-  <!-- Admin notice about approvals -->
-  <div id="acct-admin-notice" style="display:none;padding:10px 16px;background:rgba(26,86,219,.08);border:1px solid rgba(26,86,219,.3);border-radius:8px;font-size:.82rem;color:#93c5fd;margin-bottom:16px;">
-    <strong style="color:#1a56db;">Admin tip:</strong> Only <em>approved</em> weekly paysheets appear here. Open the Paysheet tab, load a Weekly Summary, and click <strong>✓ Approve for Accounting</strong> to make it visible.
-  </div>
-
-  <!-- Main printable area -->
-  <div id="acct-print-area">
-    <!-- Populated by acctRender() -->
-    <div style="padding:48px;text-align:center;color:var(--muted);">
-      Select a week ending above to view the accounting paysheet.
-    </div>
-  </div>
-
-</div>
 
 <!-- Unlock Requests Modal (admin only) -->
 <div class="modal-overlay" id="di-unlock-requests-modal" onclick="if(event.target===this)diCloseUnlockRequestsModal()">
