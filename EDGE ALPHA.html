@@ -3417,15 +3417,9 @@ async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
   const el = document.getElementById('paysheet-print-area');
   if (el) el.scrollIntoView({ behavior: 'smooth' });
 
-  // Auto-save into the nearest matching week-ending folder if one exists;
-  // otherwise open the folder-picker modal so the user can choose.
+  // Always open folder picker so the user can choose which week-ending folder to save into.
   _psSavePendingData = { defaultDate: date, type: 'daily', dailyDate: date, submissionId: submissionId || null };
-  const autoWE = _findMatchingWeekEndingFolder(date);
-  if (autoWE) {
-    await psSaveToFolder(autoWE);
-  } else {
-    openSaveDestModal();
-  }
+  openSaveDestModal();
 }
 
 let _diLogDocs   = [];   // cached from real-time listener
@@ -5904,15 +5898,19 @@ function openSaveDestModal() {
       ? '<div style="color:var(--muted);font-size:.85rem;padding:8px 0;">No folders yet — use the form below to save to a new week ending.</div>'
       : '<div style="color:var(--muted);font-size:.85rem;padding:8px 0;">No week-ending folders available yet. Ask your manager to create one.</div>';
   } else {
-    list.innerHTML = allWE.map(f => `
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface2);">
-        <span style="font-size:1.1rem;">📁</span>
+    list.innerHTML = allWE.map(f => {
+      const locked = _isFolderLocked(f);
+      return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface2);${locked ? 'opacity:.55;' : ''}">
+        <span style="font-size:1.1rem;">${locked ? '🔒' : '📁'}</span>
         <div style="flex:1;">
           <div style="font-weight:600;font-size:.88rem;">Week Ending: ${_fmtWeekDate(f)}</div>
+          ${locked ? '<div style="font-size:.75rem;color:#ef4444;margin-top:2px;">Locked — saves not allowed</div>' : ''}
         </div>
-        <button class="btn" style="margin-top:0;padding:5px 16px;font-size:.8rem;" onclick="psSaveToFolder('${f}')">Save Here</button>
+        <button class="btn" style="margin-top:0;padding:5px 16px;font-size:.8rem;" onclick="psSaveToFolder('${f}')" ${locked ? 'disabled style="opacity:.4;cursor:not-allowed;"' : ''}>Save Here</button>
       </div>
-    `).join('');
+    `;
+    }).join('');
   }
 
   // Pre-fill new date with daily input date
@@ -5929,6 +5927,11 @@ function openSaveDestModal() {
 
 async function psSaveToFolder(weekEnding) {
   if (!weekEnding) return;
+  // Block saves into locked folders
+  if (_isFolderLocked(weekEnding)) {
+    alert('This week-ending folder is locked. Saves are not allowed until a manager unlocks it.');
+    return;
+  }
   // Always force the selected folder's week ending onto all crew headers
   for (let c = 1; c <= PS_NUM_CREWS; c++) {
     _psState[c].header.weekEnding = weekEnding;
@@ -5962,6 +5965,10 @@ async function psSaveToFolder(weekEnding) {
 async function psSaveToNewFolder() {
   const d = document.getElementById('ps-save-dest-new-date').value;
   if (!d) { alert('Please select a week ending date.'); return; }
+  if (_isFolderLocked(d)) {
+    alert('That week-ending folder is locked. Saves are not allowed until a manager unlocks it.');
+    return;
+  }
   await psSaveToFolder(d);
 }
 
