@@ -238,13 +238,14 @@
       display:flex;
       align-items:center;
       gap:12px;
-      flex-wrap:wrap;
-      padding:14px 20px;
+      flex-wrap:nowrap;
+      padding:10px 16px;
       background:var(--surface);
       border:1px solid var(--border);
       border-top:2px solid #1a56db;
       border-radius:var(--radius);
-      margin-bottom:24px;
+      margin-bottom:20px;
+      overflow-x:auto;
     }
     #acct-toolbar .acct-title {
       font-size:1rem;
@@ -257,8 +258,8 @@
     #acct-toolbar .acct-controls {
       display:flex;
       align-items:center;
-      gap:10px;
-      flex-wrap:wrap;
+      gap:8px;
+      flex-wrap:nowrap;
     }
     #acct-toolbar .acct-controls label {
       font-size:.75rem;
@@ -272,12 +273,6 @@
     #acct-print-area > div[style*="background:#fff"] {
       margin-left:auto;
       margin-right:auto;
-    }
-    @media(max-width:640px) {
-      #acct-toolbar { flex-direction:column; align-items:flex-start; }
-      #acct-toolbar .acct-title { margin-right:0; }
-      #acct-toolbar .acct-controls { width:100%; }
-      #acct-toolbar .acct-controls select { flex:1; min-width:120px; }
     }
     /* ────────────────────────────────────────────────────────── */
   </style>
@@ -6917,11 +6912,11 @@ function acctExportPDF() {
     <div class="acct-title">🧾 Accounting Weekly Paysheet</div>
     <div class="acct-controls">
       <label>Week Ending</label>
-      <select id="acct-week-select" class="fi" style="min-width:150px;" onchange="acctOnWeekChange()">
+      <select id="acct-week-select" class="fi" style="min-width:120px;" onchange="acctOnWeekChange()">
         <option value="">— Select —</option>
       </select>
       <label>Job</label>
-      <select id="acct-job-select" class="fi" style="min-width:150px;" onchange="acctRender()">
+      <select id="acct-job-select" class="fi" style="min-width:120px;" onchange="acctRender()">
         <option value="">All Jobs</option>
       </select>
       <button class="btn btn-outline" style="padding:7px 14px;font-size:.8rem;" onclick="acctRefreshFromFirestore()">⟳ Refresh</button>
