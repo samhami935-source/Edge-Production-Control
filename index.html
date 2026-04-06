@@ -2401,7 +2401,10 @@ function refreshLaborCodeOptions() {
     // Show individual CSV line items for this area
     const areaRows = f.rows.filter(r => r.area === area);
     areaRows.forEach(r => {
-      const paid = allEntries.filter(e=>e.area===area&&e.costCode===r.costCode&&e.description===r.description).reduce((s,e)=>s+e.price,0);
+      // Match on area+costCode only — description may differ between manual and synced entries.
+      const exactPaid3 = allEntries.filter(e=>e.area===area&&e.costCode===r.costCode).reduce((s,e)=>s+e.price,0);
+      const paid = exactPaid3 > 0 ? exactPaid3
+        : allEntries.filter(e=>e.area===area&&getCodeGroup(e.costCode)===getCodeGroup(r.costCode)).reduce((s,e)=>s+e.price,0);
       const rem  = r.amount - paid;
       const remStr = rem<0?`-${fm(Math.abs(rem))}`:fm(rem);
       const o=document.createElement('option');
@@ -2824,7 +2827,11 @@ function diRenderCrewTable() {
       const areaEntries = getPayrollEntries().filter(e => e.csvFile === jobName && e.area === row.area);
       if (areaRows.length) {
         areaRows.filter(r => isForemanAllowedCode(r.costCode)).forEach(r => {
-          const paid = areaEntries.filter(e => e.costCode === r.costCode && e.description === r.description).reduce((s,e) => s+e.price, 0);
+          // Match on costCode only (no description) — synced payroll entries may use
+          // a group description that differs from the CSV row description.
+          const exactPaid2 = areaEntries.filter(e => e.costCode === r.costCode).reduce((s,e) => s+e.price, 0);
+          const paid = exactPaid2 > 0 ? exactPaid2
+            : areaEntries.filter(e => getCodeGroup(e.costCode) === getCodeGroup(r.costCode)).reduce((s,e) => s+e.price, 0);
           const rem  = r.amount - paid;
           const remStr = rem < 0 ? `-${fm(Math.abs(rem))}` : fm(rem);
           codeOpts += `<option value="${eh(r.costCode)}" data-desc="${eh(r.description)}" ${row.costCode===r.costCode?'selected':''}>${r.costCode} – ${r.description}   |   Rem: ${remStr}</option>`;
@@ -4080,7 +4087,12 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
   if (jobName && row.area && row.costCode) {
     budgetVal = psGetAreaCodeData(jobName, row.area, row.costCode).budget || 0;
   }
-  const ptdVal     = parseFloat(row.ptd) || 0;
+  // For weekly summary: always compute PTD live from payroll entries so it stays
+  // in sync when payroll is added/edited/deleted after the paysheet was saved.
+  // For daily paysheets: read the manually-entered row.ptd value.
+  const ptdVal = (!isDaily && jobName && row.area && row.costCode)
+    ? (psGetAreaCodeData(jobName, row.area, row.costCode).ptd || 0)
+    : (parseFloat(row.ptd) || 0);
   const weAmount   = parseFloat(row.weAmount) || 0;
   const remaining  = budgetVal - ptdVal;
   const budgetDisp = budgetVal > 0 ? _fmt$(budgetVal) : '';
