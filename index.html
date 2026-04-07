@@ -163,7 +163,7 @@
     /* ── Searchable area combobox (DI rows + Budget by Area) ── */
     .di-area-wrap { position:relative; width:100%; }
     .di-area-wrap input { width:100%; }
-    .di-area-dropdown { position:fixed; background:var(--surface2); border:1px solid var(--accent); max-height:220px; overflow-y:auto; z-index:9999; display:none; box-shadow:0 4px 16px rgba(0,0,0,.35); }
+    .di-area-dropdown { position:absolute; background:var(--surface2); border:1px solid var(--accent); max-height:220px; overflow-y:auto; z-index:9999; display:none; box-shadow:0 4px 16px rgba(0,0,0,.35); }
     .di-area-opt { padding:7px 12px; font-size:.83rem; cursor:pointer; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .di-area-opt:hover, .di-area-opt.hi { background:var(--accent); color:#000; font-weight:600; }
     .budget-area-wrap { position:relative; max-width:280px; }
@@ -2962,16 +2962,29 @@ function _diAreaList() {
   return jobName ? psGetAreas(jobName) : [];
 }
 
+function _diGetPortal() {
+  // Single shared dropdown portal appended to <body>.
+  // Escapes every overflow/clip container without position:fixed transform pitfalls.
+  let p = document.getElementById('_di-area-portal');
+  if (!p) {
+    p = document.createElement('div');
+    p.id = '_di-area-portal';
+    p.className = 'di-area-dropdown';
+    document.body.appendChild(p);
+  }
+  return p;
+}
+
 function _diAreaRenderDropdown(input, crew, rowIdx) {
   const q        = input.value.trim().toLowerCase();
-  const dropdown = input.nextElementSibling;
+  const dropdown = _diGetPortal();
   const all      = _diAreaList();
   const filtered = q ? all.filter(a => a.toLowerCase().includes(q)) : all;
   if (!filtered.length) { dropdown.style.display = 'none'; return; }
   dropdown.innerHTML = filtered.map(a =>
     `<div class="di-area-opt" data-area="${eh(a)}" data-crew="${crew}" data-row="${rowIdx}">${eh(a)}</div>`
   ).join('');
-  // Attach mousedown listeners directly so special chars in area names don't break anything
+  // Attach listeners directly so special chars in area names don't break anything
   dropdown.querySelectorAll('.di-area-opt').forEach(el => {
     el.addEventListener('mousedown', e => {
       e.preventDefault();
@@ -2987,32 +3000,33 @@ function _diAreaRenderDropdown(input, crew, rowIdx) {
       }
     });
   });
-  // ── Fixed-position placement (escapes overflow:hidden / scroll clipping) ──
-  // Uses visualViewport so iPad on-screen keyboard is accounted for.
-  const rect    = input.getBoundingClientRect();
-  const vvh     = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
-  const vvLeft  = (window.visualViewport ? window.visualViewport.offsetLeft : 0);
-  const itemH   = 34; // approx height per option
-  const needed  = Math.min(220, filtered.length * itemH + 8);
-  const below   = vvh - rect.bottom;
-  const above   = rect.top;
-  dropdown.style.left   = rect.left + 'px';
-  dropdown.style.width  = rect.width + 'px';
-  dropdown.style.right  = '';
+  // ── Portal positioning (document-space absolute — escapes all overflow/clip) ──
+  // getBoundingClientRect() gives viewport coords; add scroll offset for document coords.
+  const rect   = input.getBoundingClientRect();
+  const scrollX = window.pageXOffset || 0;
+  const scrollY = window.pageYOffset || 0;
+  const vvh    = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  const itemH  = 34;
+  const needed = Math.min(220, filtered.length * itemH + 8);
+  const below  = vvh - rect.bottom;
+  const above  = rect.top;
+  dropdown.style.left  = (rect.left + scrollX) + 'px';
+  dropdown.style.width = rect.width + 'px';
+  dropdown.style.right = '';
   if (below >= needed || below >= above) {
     // Open downward
-    dropdown.style.top           = rect.bottom + 'px';
-    dropdown.style.bottom        = '';
-    dropdown.style.borderRadius  = '0 0 8px 8px';
-    dropdown.style.borderTop     = 'none';
-    dropdown.style.borderBottom  = '1px solid var(--accent)';
+    dropdown.style.top          = (rect.bottom + scrollY) + 'px';
+    dropdown.style.bottom       = '';
+    dropdown.style.borderRadius = '0 0 8px 8px';
+    dropdown.style.borderTop    = 'none';
+    dropdown.style.borderBottom = '';
   } else {
-    // Flip upward — no space below (keyboard is covering it)
-    dropdown.style.bottom        = (vvh - rect.top) + 'px';
-    dropdown.style.top           = '';
-    dropdown.style.borderRadius  = '8px 8px 0 0';
-    dropdown.style.borderBottom  = 'none';
-    dropdown.style.borderTop     = '1px solid var(--accent)';
+    // Flip upward — not enough space below (iPad keyboard covering last row)
+    dropdown.style.top          = (rect.top + scrollY - needed) + 'px';
+    dropdown.style.bottom       = '';
+    dropdown.style.borderRadius = '8px 8px 0 0';
+    dropdown.style.borderBottom = 'none';
+    dropdown.style.borderTop    = '';
   }
   dropdown.style.display = 'block';
 }
@@ -3040,7 +3054,7 @@ function diAreaPick(area, crew, rowIdx) {
 }
 
 function diAreaKey(e, input) {
-  const dropdown = input.nextElementSibling;
+  const dropdown = _diGetPortal();
   if (!dropdown || dropdown.style.display === 'none') return;
   const opts = dropdown.querySelectorAll('.di-area-opt');
   let hi = [...opts].findIndex(o => o.classList.contains('hi'));
@@ -6743,8 +6757,10 @@ function budgetAreaKey(e, input) {
 // On touch devices: do NOT close on outside touch — only close via selection or Escape
 // This allows iPad users to scroll the page or dismiss the keyboard without losing the dropdown or typed text
 document.addEventListener('mousedown', e => {
-  if (!e.target.closest('.di-area-wrap') && !e.target.closest('.di-area-dropdown')) {
-    document.querySelectorAll('.di-area-dropdown').forEach(d => d.style.display = 'none');
+  // Close the portal dropdown when clicking outside the input wrap OR the portal itself
+  if (!e.target.closest('.di-area-wrap') && !e.target.closest('#_di-area-portal')) {
+    const portal = document.getElementById('_di-area-portal');
+    if (portal) portal.style.display = 'none';
   }
   if (!e.target.closest('.budget-area-wrap')) {
     document.querySelectorAll('.budget-area-dropdown').forEach(d => d.style.display = 'none');
