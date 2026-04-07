@@ -5576,10 +5576,17 @@ async function psCreateFolder() {
 
 async function psDeleteFolder(we) {
   if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can delete folders.'); return; }
+  // Guard: refuse if any paysheets exist in this folder (across all jobs)
+  const sheetsInFolder = (_cache.paysheets || []).filter(p => p.weekEnding === we);
+  if (sheetsInFolder.length > 0) {
+    alert('Cannot delete — this folder contains paysheets. Delete or move all paysheets first.');
+    return;
+  }
   if (!confirm(`Delete empty folder "Week Ending: ${_fmtWeekDate(we)}"?\nThis cannot be undone.`)) return;
   try {
     await db.collection('psfolders').doc(we).delete();
     _cache.psFolders = (_cache.psFolders || []).filter(f => f !== we);
+    if (_cache.psFolderMeta) delete _cache.psFolderMeta[we];
   } catch(e) { alert('Failed to delete folder: ' + e.message); return; }
   _psLoadOpenFolders.delete(we);
   renderPSLoadList();
@@ -5775,6 +5782,8 @@ function renderPSLoadList() {
 
     // Only count/show paysheets the user can see (locked-folder paysheets already stripped from `all`)
     const sheets   = all.filter(p => p.weekEnding === we);
+    // Unfiltered count across ALL jobs — used for Delete Folder eligibility (folder is truly empty only when this is 0)
+    const allSheetsInFolder = (_cache.paysheets || []).filter(p => p.weekEnding === we);
     const folderId = 'pswe_' + we.replace(/[^\w]/g,'_');
     const isOpen   = _psLoadOpenFolders.has(we);
     const label    = _fmtWeekDate(we);
@@ -5869,9 +5878,10 @@ function renderPSLoadList() {
         : `<div style="padding:14px 36px;font-size:.83rem;color:var(--muted);">🔒 This folder is locked. Use the "Request to View" button to request temporary access.</div>`;
       folderBody = deniedMsg;
     } else if (sheets.length === 0) {
-      folderBody = `<div style="padding:10px 36px;font-size:.82rem;color:var(--muted);display:flex;align-items:center;justify-content:space-between;">
-        <span>Empty — save a paysheet here.</span>
-        ${canManagePSFolders() ? `<button class="btn-sm btn-danger" style="font-size:.75rem;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
+      const hasOtherJobSheets = allSheetsInFolder.length > 0;
+      folderBody = `<div style="padding:10px 36px;font-size:.82rem;color:var(--muted);display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span>${hasOtherJobSheets ? 'No paysheets for the selected job — switch jobs to view.' : 'Empty — save a paysheet here.'}</span>
+        ${(canManagePSFolders() && !hasOtherJobSheets) ? `<button class="btn-sm btn-danger" style="font-size:.75rem;white-space:nowrap;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
       </div>`;
     } else {
       const daily  = sheets.filter(p => p.type === 'daily');
@@ -5887,7 +5897,6 @@ function renderPSLoadList() {
             📋 Compile into Weekly Paysheet
           </button>
           ${hasDone ? '<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>' : '<span style="font-size:.75rem;color:var(--muted);">Combines all daily paysheets into one per crew</span>'}` : ''}
-          ${canManagePSFolders() && sheets.length === 0 ? `<button class="btn-sm btn-danger" style="font-size:.75rem;margin-left:auto;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
         </div>`;
     }
 
