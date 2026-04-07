@@ -163,7 +163,7 @@
     /* ── Searchable area combobox (DI rows + Budget by Area) ── */
     .di-area-wrap { position:relative; width:100%; }
     .di-area-wrap input { width:100%; }
-    .di-area-dropdown { position:absolute; top:100%; left:0; right:0; background:var(--surface2); border:1px solid var(--accent); border-top:none; border-radius:0 0 8px 8px; max-height:220px; overflow-y:auto; z-index:999; display:none; }
+    .di-area-dropdown { position:fixed; background:var(--surface2); border:1px solid var(--accent); max-height:220px; overflow-y:auto; z-index:9999; display:none; box-shadow:0 4px 16px rgba(0,0,0,.35); }
     .di-area-opt { padding:7px 12px; font-size:.83rem; cursor:pointer; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .di-area-opt:hover, .di-area-opt.hi { background:var(--accent); color:#000; font-weight:600; }
     .budget-area-wrap { position:relative; max-width:280px; }
@@ -2987,6 +2987,33 @@ function _diAreaRenderDropdown(input, crew, rowIdx) {
       }
     });
   });
+  // ── Fixed-position placement (escapes overflow:hidden / scroll clipping) ──
+  // Uses visualViewport so iPad on-screen keyboard is accounted for.
+  const rect    = input.getBoundingClientRect();
+  const vvh     = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+  const vvLeft  = (window.visualViewport ? window.visualViewport.offsetLeft : 0);
+  const itemH   = 34; // approx height per option
+  const needed  = Math.min(220, filtered.length * itemH + 8);
+  const below   = vvh - rect.bottom;
+  const above   = rect.top;
+  dropdown.style.left   = rect.left + 'px';
+  dropdown.style.width  = rect.width + 'px';
+  dropdown.style.right  = '';
+  if (below >= needed || below >= above) {
+    // Open downward
+    dropdown.style.top           = rect.bottom + 'px';
+    dropdown.style.bottom        = '';
+    dropdown.style.borderRadius  = '0 0 8px 8px';
+    dropdown.style.borderTop     = 'none';
+    dropdown.style.borderBottom  = '1px solid var(--accent)';
+  } else {
+    // Flip upward — no space below (keyboard is covering it)
+    dropdown.style.bottom        = (vvh - rect.top) + 'px';
+    dropdown.style.top           = '';
+    dropdown.style.borderRadius  = '8px 8px 0 0';
+    dropdown.style.borderBottom  = 'none';
+    dropdown.style.borderTop     = '1px solid var(--accent)';
+  }
   dropdown.style.display = 'block';
 }
 
@@ -6716,13 +6743,27 @@ function budgetAreaKey(e, input) {
 // On touch devices: do NOT close on outside touch — only close via selection or Escape
 // This allows iPad users to scroll the page or dismiss the keyboard without losing the dropdown or typed text
 document.addEventListener('mousedown', e => {
-  if (!e.target.closest('.di-area-wrap')) {
+  if (!e.target.closest('.di-area-wrap') && !e.target.closest('.di-area-dropdown')) {
     document.querySelectorAll('.di-area-dropdown').forEach(d => d.style.display = 'none');
   }
   if (!e.target.closest('.budget-area-wrap')) {
     document.querySelectorAll('.budget-area-dropdown').forEach(d => d.style.display = 'none');
   }
 });
+
+// Close DI area dropdowns when the page scrolls — fixed-position dropdown
+// stays in place while the input moves, so close is the cleanest UX.
+document.addEventListener('scroll', () => {
+  document.querySelectorAll('.di-area-dropdown').forEach(d => d.style.display = 'none');
+}, { passive: true, capture: true });
+
+// On iPad, when the software keyboard appears/disappears the visual viewport
+// changes size. Close any open DI dropdown so it doesn't float at a stale position.
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    document.querySelectorAll('.di-area-dropdown').forEach(d => d.style.display = 'none');
+  });
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  ACCOUNTING TAB
