@@ -1183,6 +1183,7 @@ function getCodeGroup(codeStr) {
 }
 
 let activeTab  = null;
+let _lcEditingCode = null; // tracks which labor code row is in edit mode
 let allRows    = [], filtered = [];
 let csvSort    = { key:'amount', dir:-1 };
 let csvPage    = 1;
@@ -1236,7 +1237,7 @@ async function loadAllData() {
   });
   _cache.payroll    = payrollSnap.docs.map(d => d.data());
   _cache.workorders = woSnap.docs.map(d => d.data());
-  _cache.laborcodes = lcDoc.exists ? (lcDoc.data().codes || []) : [];
+  _cache.laborcodes = sortLaborCodes(lcDoc.exists ? (lcDoc.data().codes || []) : []);
   _cache.paysheets  = paysheetsSnap.docs.map(d => d.data());
   // Shared week-ending folders — Firestore-backed, visible to all roles
   _cache.psFolders    = psFoldersSnap.docs.map(d => d.data().weekEnding).filter(Boolean).sort((a,b) => b.localeCompare(a));
@@ -1654,6 +1655,22 @@ function saveLaborCodes(list) {
   _cache.laborcodes = list;
   db.collection('config').doc('laborcodes').set({ codes: list }).catch(e => console.error('laborcodes write:', e));
 }
+// Sort labor codes numerically ascending; non-numeric codes fall to end
+function sortLaborCodes(list) {
+  return list.slice().sort((a, b) => {
+    const na = parseInt(a.code, 10), nb = parseInt(b.code, 10);
+    const aNaN = isNaN(na), bNaN = isNaN(nb);
+    if (aNaN && bNaN) return a.code.localeCompare(b.code);
+    if (aNaN) return 1;
+    if (bNaN) return -1;
+    return na - nb;
+  });
+}
+// Check if a labor code number is referenced in existing payroll entries or budget rows
+function isLaborCodeInUse(codeStr) {
+  if (getPayrollEntries().some(e => e.costCode === codeStr)) return true;
+  return getSavedCSVFiles().some(f => f.rows && f.rows.some(r => r.costCode === codeStr));
+}
 
 // ═══════════════════════════
 //  BUDGETS TAB
@@ -1964,39 +1981,99 @@ function renderBurnLog() {
 
 function switchToLaborCodes() {
   if (isAccounting()) return;
+  _lcEditingCode = null;
   activeTab='lc';
   renderTabBar();
   showPanel('lc');
   renderLCTable();
   const canEditLC = isAdmin() || isPM();
   document.getElementById('lc-admin-form').style.display = canEditLC ? 'block' : 'none';
-  document.getElementById('lc-action-col').textContent   = canEditLC ? 'Action' : '';
+  document.getElementById('lc-action-col').textContent   = (isAdmin() || isPM()) ? 'Action' : '';
 }
 
 function renderLCTable() {
   const q=(document.getElementById('lc-search').value||'').toLowerCase();
-  const codes=getLaborCodes().filter(lc=>
+  const canEdit=isAdmin()||isPM();
+  const sorted=sortLaborCodes(getLaborCodes());
+  const codes=sorted.filter(lc=>
     isForemanAllowedCode(lc.code) &&
     (!q || lc.code.toLowerCase().includes(q) || lc.description.toLowerCase().includes(q))
   );
-  const admin=isAdmin();
-  document.getElementById('lc-tbody').innerHTML=codes.map((lc,i)=>{
+  const pencilSVG=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>`;
+  document.getElementById('lc-tbody').innerHTML=codes.map(lc=>{
+    if(_lcEditingCode===lc.code){
+      const inUse=isLaborCodeInUse(lc.code);
+      return`<tr id="lc-edit-row">
+        <td><input type="text" id="lc-edit-code" value="${eh(lc.code)}" ${inUse?'disabled title="Code is referenced in payroll or budgets — cannot be changed"':''} style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-family:monospace;font-size:.85rem;${inUse?'opacity:.55;cursor:not-allowed;':''}" /></td>
+        <td><input type="text" id="lc-edit-desc" value="${eh(lc.description)}" style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:.85rem;" /></td>
+        <td style="text-align:center;white-space:nowrap;">
+          <button class="btn-sm" onclick="saveLaborCodeEdit('${ea(lc.code)}','${ea(lc.description)}')" style="margin-right:4px;">Save</button>
+          <button class="btn-sm btn-danger" onclick="cancelLaborCodeEdit()">Cancel</button>
+        </td>
+      </tr>`;
+    }
     const isHeader=lc.description&&!lc.code.match(/[A-Za-z]/);
     return`<tr>
       <td><span class="lc-badge">${eh(lc.code)}</span></td>
       <td class="${isHeader?'lc-cat':''}">${eh(lc.description)}</td>
-      <td style="text-align:center">${admin?`<button class="btn-sm btn-danger" onclick="deleteLaborCode('${ea(lc.code)}','${ea(lc.description)}')">✕</button>`:'—'}</td>
+      <td style="text-align:center;white-space:nowrap;">
+        ${canEdit?`<button class="btn-sm" onclick="editLaborCode('${ea(lc.code)}')" style="margin-right:4px;padding:3px 7px;" title="Edit">${pencilSVG}</button>`:''}
+        ${isAdmin()?`<button class="btn-sm btn-danger" onclick="deleteLaborCode('${ea(lc.code)}','${ea(lc.description)}')">✕</button>`:''}
+        ${!canEdit?'—':''}
+      </td>
     </tr>`;
   }).join('');
+}
+
+function editLaborCode(code) {
+  _lcEditingCode = code;
+  renderLCTable();
+  // Focus description field after render
+  const descEl = document.getElementById('lc-edit-desc');
+  if (descEl) descEl.focus();
+}
+
+function cancelLaborCodeEdit() {
+  _lcEditingCode = null;
+  renderLCTable();
+}
+
+function saveLaborCodeEdit(oldCode, oldDesc) {
+  const newCodeRaw = (document.getElementById('lc-edit-code').value||'').trim();
+  const newDesc    = (document.getElementById('lc-edit-desc').value||'').trim();
+  // Validation
+  if (!newCodeRaw) { alert('Code cannot be empty.'); return; }
+  if (!newDesc)    { alert('Description cannot be empty.'); return; }
+  if (!/^\d+$/.test(newCodeRaw)) { alert('Code must be a number (digits only).'); return; }
+  const list = getLaborCodes();
+  const inUse = isLaborCodeInUse(oldCode);
+  // If code is referenced, it cannot be changed — use the original code
+  const newCode = inUse ? oldCode : newCodeRaw;
+  // Duplicate check (only if code actually changed)
+  if (newCode !== oldCode && list.some(lc => lc.code === newCode)) {
+    alert(`Code ${newCode} already exists. Please choose a unique code.`);
+    return;
+  }
+  const updated = list.map(lc =>
+    (lc.code === oldCode && lc.description === oldDesc)
+      ? { code: newCode, description: newDesc }
+      : lc
+  );
+  saveLaborCodes(sortLaborCodes(updated));
+  _lcEditingCode = null;
+  renderLCTable();
 }
 
 function addLaborCode() {
   const code=document.getElementById('lc-new-code').value.trim();
   const desc=document.getElementById('lc-new-desc').value.trim();
   if(!code){alert('Please enter a code.');return;}
+  if(!/^\d+$/.test(code)){alert('Code must be a number (digits only).');return;}
+  if(!desc){alert('Please enter a description.');return;}
   const list=getLaborCodes();
-  list.push({code,description:desc});
-  saveLaborCodes(list);
+  if(list.some(lc=>lc.code===code)){alert(`Code ${code} already exists.`);return;}
+  const sorted=sortLaborCodes([...list,{code,description:desc}]);
+  saveLaborCodes(sorted);
   document.getElementById('lc-new-code').value='';
   document.getElementById('lc-new-desc').value='';
   renderLCTable();
@@ -2007,6 +2084,7 @@ function deleteLaborCode(code, description) {
   if(!confirm(`Delete code ${code} — ${description||'(no description)'}?`)) return;
   const list=getLaborCodes().filter(lc=>!(lc.code===code&&lc.description===description));
   saveLaborCodes(list);
+  _lcEditingCode = null;
   renderLCTable();
 }
 
