@@ -6751,19 +6751,6 @@ document.addEventListener('mousedown', e => {
   }
 });
 
-// Close DI area dropdowns when the page scrolls — fixed-position dropdown
-// stays in place while the input moves, so close is the cleanest UX.
-document.addEventListener('scroll', () => {
-  document.querySelectorAll('.di-area-dropdown').forEach(d => d.style.display = 'none');
-}, { passive: true, capture: true });
-
-// On iPad, when the software keyboard appears/disappears the visual viewport
-// changes size. Close any open DI dropdown so it doesn't float at a stale position.
-if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', () => {
-    document.querySelectorAll('.di-area-dropdown').forEach(d => d.style.display = 'none');
-  });
-}
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  ACCOUNTING TAB
