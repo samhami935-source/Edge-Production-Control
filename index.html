@@ -1005,13 +1005,12 @@
           <th>Status</th>
           <th>Photos</th>
           <th>COR #</th>
-          <th>COR PDF</th>
           <th>Budget Used</th>
           <th>Action</th>
         </tr>
       </thead>
       <tbody id="co-log-tbody">
-        <tr><td colspan="10" style="padding:32px;text-align:center;color:var(--muted);">Loading…</td></tr>
+        <tr><td colspan="9" style="padding:32px;text-align:center;color:var(--muted);">Loading…</td></tr>
       </tbody>
     </table>
   </div>
@@ -7287,9 +7286,6 @@ function renderCOLog() {
     })() : '—';
     const dateStr    = co.submittedAt ? new Date(co.submittedAt).toLocaleDateString() : '—';
     const photoCount = (co.photoUrls || []).length;
-    const corPdf = co.corPdfUrl
-      ? `<a href="${co.corPdfUrl}" target="_blank" style="color:var(--accent);font-size:.8rem;">View PDF</a>`
-      : '—';
     return `<tr>
       <td style="font-weight:600;">${eh(co.workOrderNumber || '—')}</td>
       <td>${eh(co.jobId || '—')}</td>
@@ -7298,7 +7294,6 @@ function renderCOLog() {
       <td>${coStatusBadge(co.status)}</td>
       <td style="text-align:center;">${photoCount > 0 ? `📷 ${photoCount}` : '—'}</td>
       <td>${co.corNumber ? `<strong>${eh(co.corNumber)}</strong>` : '—'}</td>
-      <td>${corPdf}</td>
       <td>${budgetUsed}</td>
       <td><button class="btn-sm" onclick="coOpenDetail('${ea(co.id)}')">View</button></td>
     </tr>`;
@@ -7335,10 +7330,30 @@ function coPreviewPhotos() {
   });
 }
 
-async function _coUploadFile(path, file) {
-  const ref = storage.ref(path);
-  await ref.put(file);
-  return await ref.getDownloadURL();
+// Compress an image file client-side and return a base64 data URL (no Storage needed)
+async function _coCompressImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 800;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+          else       { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.65));
+      };
+      img.onerror = () => reject(new Error('Could not load image: ' + file.name));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('Could not read file: ' + file.name));
+    reader.readAsDataURL(file);
+  });
 }
 
 async function coSubmit() {
@@ -7359,12 +7374,12 @@ async function coSubmit() {
   const id = `co_${Date.now()}`;
   let photoUrls = [];
   try {
-    const files = document.getElementById('co-submit-photos').files;
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      if (!f.type.startsWith('image/')) { alert(`"${f.name}" is not an image. Skipped.`); continue; }
-      prog.textContent = `Uploading photo ${i + 1} of ${files.length}…`;
-      photoUrls.push(await _coUploadFile(`change-orders/${id}/${Date.now()}_${f.name}`, f));
+    const allFiles  = document.getElementById('co-submit-photos').files;
+    const fileArr   = [...allFiles].filter(f => f.type.startsWith('image/')).slice(0, 5);
+    if (fileArr.length < [...allFiles].length) alert('Only image files are accepted. Non-image files were skipped.');
+    for (let i = 0; i < fileArr.length; i++) {
+      prog.textContent = `Compressing photo ${i + 1} of ${fileArr.length}…`;
+      photoUrls.push(await _coCompressImage(fileArr[i]));
     }
     prog.textContent = 'Saving change order…';
     const doc = {
@@ -7430,12 +7445,7 @@ function coOpenDetail(coId) {
             <label style="font-size:.82rem;color:var(--muted);display:block;margin-bottom:4px;">COR # <span style="color:#ef4444;">*</span></label>
             <input id="co-review-cor-num" class="fi" style="width:100%;" placeholder="e.g. COR-2025-001" oninput="coCheckApprovalReady()" />
           </div>
-          <div>
-            <label style="font-size:.82rem;color:var(--muted);display:block;margin-bottom:4px;">COR PDF <span style="color:#ef4444;">*</span></label>
-            <input type="file" id="co-review-pdf-input" accept="application/pdf,image/*" style="display:none;" onchange="coCheckApprovalReady()" />
-            <button class="btn btn-outline" style="margin:0;padding:6px 14px;font-size:.82rem;" onclick="document.getElementById('co-review-pdf-input').click()">📄 Choose PDF</button>
-            <span id="co-review-pdf-name" style="font-size:.8rem;color:var(--muted);margin-left:8px;">No file chosen</span>
-          </div>
+          <div style="font-size:.78rem;color:var(--muted);font-style:italic;">PDF attachment available after upgrading to Firebase Blaze plan.</div>
           <button id="co-review-approve-btn" class="btn" style="margin:0;padding:8px 16px;background:#22c55e;border-color:#22c55e;opacity:.5;cursor:not-allowed;" disabled onclick="coApprove('${ea(coId)}')">✓ Confirm Approval</button>
         </div>
       </div>
@@ -7452,7 +7462,6 @@ function coOpenDetail(coId) {
       ${co.reviewerEmail ? `<div><span style="color:var(--muted);">Reviewed By</span><br/><strong>${eh(co.reviewerEmail)}</strong></div>` : ''}
       ${co.reviewedAt    ? `<div><span style="color:var(--muted);">Reviewed At</span><br/><strong>${reviewedStr}</strong></div>` : ''}
       ${co.corNumber     ? `<div><span style="color:var(--muted);">COR #</span><br/><strong>${eh(co.corNumber)}</strong></div>` : ''}
-      ${co.corPdfUrl     ? `<div><span style="color:var(--muted);">COR PDF</span><br/><a href="${co.corPdfUrl}" target="_blank" style="color:var(--accent);">View PDF ↗</a></div>` : ''}
     </div>
     ${co.description ? `<div><span style="font-size:.78rem;color:var(--muted);font-weight:700;text-transform:uppercase;">Description</span><p style="margin-top:6px;font-size:.85rem;">${eh(co.description)}</p></div>` : ''}
     <div>
@@ -7476,28 +7485,22 @@ function coStartApproval(coId) {
 }
 
 function coCheckApprovalReady() {
-  const corNum  = (document.getElementById('co-review-cor-num') || {}).value || '';
-  const pdfFile = document.getElementById('co-review-pdf-input');
-  const btn     = document.getElementById('co-review-approve-btn');
-  const nameEl  = document.getElementById('co-review-pdf-name');
-  if (pdfFile && pdfFile.files[0]) nameEl.textContent = pdfFile.files[0].name;
-  const ready = corNum.trim() && pdfFile && pdfFile.files[0];
+  const corNum = (document.getElementById('co-review-cor-num') || {}).value || '';
+  const btn    = document.getElementById('co-review-approve-btn');
+  const ready  = corNum.trim().length > 0;
   if (btn) { btn.disabled = !ready; btn.style.opacity = ready ? '1' : '.5'; btn.style.cursor = ready ? 'pointer' : 'not-allowed'; }
 }
 
 async function coApprove(coId) {
   if (!canReviewCO()) return;
-  const corNum   = (document.getElementById('co-review-cor-num') || {}).value.trim();
-  const pdfInput = document.getElementById('co-review-pdf-input');
-  if (!corNum)                   { alert('Please enter a COR number.'); return; }
-  if (!pdfInput || !pdfInput.files[0]) { alert('Please attach the COR PDF.'); return; }
+  const corNum = (document.getElementById('co-review-cor-num') || {}).value.trim();
+  if (!corNum) { alert('Please enter a COR number.'); return; }
   const btn = document.getElementById('co-review-approve-btn');
   if (btn) btn.disabled = true;
   try {
-    const pdfUrl = await _coUploadFile(`cor-pdfs/${coId}/${Date.now()}_${pdfInput.files[0].name}`, pdfInput.files[0]);
     _coPendingCoId      = coId;
     _coPendingCorNumber = corNum;
-    _coPendingCorPdfUrl = pdfUrl;
+    _coPendingCorPdfUrl = null;
     coCloseDetail();
     coOpenBudgetModal(coId);
   } catch(e) {
@@ -7564,7 +7567,7 @@ async function coConfirmBudget() {
     };
     await db.collection('corbudgets').doc(corbId).set(corb);
     const coUpdate = {
-      status: 'approved', corNumber: _coPendingCorNumber, corPdfUrl: _coPendingCorPdfUrl,
+      status: 'approved', corNumber: _coPendingCorNumber, corPdfUrl: null,
       linkedCorBudgetId: corbId, reviewerEmail: _currentUser.email,
       reviewerUid: _currentUser.uid, reviewedAt: new Date().toISOString(),
     };
