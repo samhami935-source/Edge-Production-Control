@@ -22,6 +22,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -171,6 +172,22 @@
     .budget-area-dropdown { position:absolute; top:100%; left:0; right:0; background:var(--surface2); border:1px solid var(--accent); border-top:none; border-radius:0 0 8px 8px; max-height:260px; overflow-y:auto; z-index:999; display:none; min-width:220px; }
     .budget-area-opt { padding:8px 12px; font-size:.83rem; cursor:pointer; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .budget-area-opt:hover, .budget-area-opt.hi { background:var(--accent); color:#000; font-weight:600; }
+
+    /* ── Change Orders ── */
+    .co-status-badge { display:inline-block; padding:2px 10px; border-radius:20px; font-size:.75rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+    .co-status-submitted { background:#1e3a5f; color:#60a5fa; }
+    .co-status-pending   { background:#3d2c00; color:#f59e0b; }
+    .co-status-approved  { background:#14311a; color:#22c55e; }
+    .co-status-declined  { background:#3d1414; color:#ef4444; }
+    .co-photo-thumb { width:72px; height:72px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer; }
+    .co-photo-grid  { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+    #co-content table { min-width:700px; width:100%; border-collapse:collapse; font-size:.83rem; }
+    #co-content thead tr { background:var(--surface2); }
+    #co-content th { padding:8px 10px; text-align:left; font-size:.72rem; color:var(--muted); text-transform:uppercase; border-bottom:1px solid var(--border); white-space:nowrap; }
+    #co-content td { padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+    #co-content tr:hover td { background:var(--surface2); }
+    .co-progress-bar-wrap { width:80px; height:6px; background:var(--border); border-radius:3px; overflow:hidden; display:inline-block; vertical-align:middle; margin-right:4px; }
+    .co-progress-bar      { height:100%; background:var(--accent); border-radius:3px; }
 
     /* ── Auth Screen ── */
     #auth-screen { position:fixed; inset:0; background:var(--bg); z-index:9999; display:none; align-items:center; justify-content:center; padding:24px; }
@@ -387,6 +404,10 @@
     </div>
     <div class="tab" id="accounting-tab" onclick="switchToAccounting()">
       <span>🧾</span><span class="tab-name">Accounting</span>
+    </div>
+    <div class="tab" id="co-tab" onclick="switchToCO()" style="position:relative;">
+      <span>📋</span><span class="tab-name">Change Orders</span>
+      <span id="co-badge" style="display:none;position:absolute;top:4px;right:4px;background:#ef4444;color:#fff;border-radius:9px;padding:1px 6px;font-size:.65rem;font-weight:700;line-height:1.4;">0</span>
     </div>
   </div>
 
@@ -950,6 +971,53 @@
   </div>
 
 </div>
+
+<!-- ═══════════════════════════════════════════
+     CHANGE ORDERS TAB
+════════════════════════════════════════════ -->
+<div id="co-content" style="display:none;">
+
+  <!-- Toolbar -->
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
+    <span style="font-weight:700;font-size:.95rem;color:var(--accent);flex:1;">📋 Change Orders</span>
+    <select id="co-filter-status" class="fi" style="padding:6px 10px;font-size:.83rem;width:auto;" onchange="renderCOLog()">
+      <option value="">All Statuses</option>
+      <option value="submitted">Submitted</option>
+      <option value="pending">Pending</option>
+      <option value="approved">Approved</option>
+      <option value="declined">Declined</option>
+    </select>
+    <select id="co-filter-job" class="fi" style="padding:6px 10px;font-size:.83rem;width:auto;" onchange="renderCOLog()">
+      <option value="">All Jobs</option>
+    </select>
+    <button id="co-submit-btn" class="btn" style="margin:0;padding:7px 16px;font-size:.83rem;" onclick="coOpenSubmitModal()">+ Submit Change Order</button>
+  </div>
+
+  <!-- CO Log Table -->
+  <div style="overflow-x:auto;">
+    <table id="co-log-table">
+      <thead>
+        <tr>
+          <th>WO #</th>
+          <th>Job</th>
+          <th>Submitted By</th>
+          <th>Date</th>
+          <th>Status</th>
+          <th>Photos</th>
+          <th>COR #</th>
+          <th>COR PDF</th>
+          <th>Budget Used</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="co-log-tbody">
+        <tr><td colspan="10" style="padding:32px;text-align:center;color:var(--muted);">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
 </div><!-- /container -->
 
 <!-- Signature Pad Modal -->
@@ -1205,18 +1273,19 @@ const firebaseConfig = {
   appId: "1:865996013069:web:1a15b469159e713aed1f44"
 };
 firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const db      = firebase.firestore();
+const storage = firebase.storage();
 
 let _currentUserRole = null;
 let _currentUser     = null;
 
 // ─── In-memory data cache ───
-const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, paysheets: null, psFolders: null, psFolderMeta: {}, psFolderRequests: [] };
+const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, paysheets: null, psFolders: null, psFolderMeta: {}, psFolderRequests: [], changeorders: [], corbudgets: [] };
 
 async function loadAllData() {
   const loadMsg = document.getElementById('loading-msg');
   if (loadMsg) loadMsg.textContent = 'Loading data…';
-  const [jobsSnap, payrollSnap, woSnap, lcDoc, paysheetsSnap, psFoldersSnap, psFolderReqSnap] = await Promise.all([
+  const [jobsSnap, payrollSnap, woSnap, lcDoc, paysheetsSnap, psFoldersSnap, psFolderReqSnap, coSnap, corbSnap] = await Promise.all([
     db.collection('jobs').get(),
     db.collection('payroll').get(),
     db.collection('workorders').get(),
@@ -1224,6 +1293,8 @@ async function loadAllData() {
     db.collection('paysheets').get(),
     db.collection('psfolders').get(),
     db.collection('psfolderrequests').get(),
+    db.collection('changeorders').get(),
+    db.collection('corbudgets').get(),
   ]);
   _cache.jobs = jobsSnap.docs.map(d => {
     const data = d.data();
@@ -1242,6 +1313,8 @@ async function loadAllData() {
   _cache.psFolderMeta = {};
   psFoldersSnap.docs.forEach(d => { const data = d.data(); if (data.weekEnding) _cache.psFolderMeta[data.weekEnding] = data; });
   _cache.psFolderRequests = psFolderReqSnap.docs.map(d => d.data());
+  _cache.changeorders = coSnap.docs.map(d => d.data());
+  _cache.corbudgets   = corbSnap.docs.map(d => d.data());
   // Load job metadata (project name, foreman, crew name per job)
   try {
     const metaSnap = await db.collection('jobmeta').get();
@@ -1253,10 +1326,15 @@ function isAdmin()   { return _currentUserRole === 'admin'; }
 function isPM()      { return ['project_manager','vp_operations','operations_manager','estimating_manager'].includes(_currentUserRole); }
 function isForeman() { return ['foreman','framing_foreman','hanging_foreman','taping_foreman','pickup_foreman'].includes(_currentUserRole); }
 function isAccounting() { return _currentUserRole === 'accounting'; }
+function isVP()      { return _currentUserRole === 'vp_operations'; }
 function canEdit()   { return isAdmin() || isPM(); }
 // Admin + VP of Operations + Project Manager can compile daily→weekly and manage shared folders
 function canCompilePaysheet() { return isAdmin() || _currentUserRole === 'vp_operations' || _currentUserRole === 'project_manager'; }
 function canManagePSFolders() { return canCompilePaysheet(); }
+// Change Order permissions
+function canViewCO()   { return isAdmin() || isVP() || isForeman(); }
+function canSubmitCO() { return isAdmin() || isForeman(); }
+function canReviewCO() { return isVP(); }
 
 // ─── Folder lock helpers ───
 // Returns true if the given week-ending folder is locked.
@@ -1557,6 +1635,10 @@ function updateAdminUI() {
   const psTab = document.getElementById('paysheet-tab');
   if (psTab)         psTab.style.display         = isAccounting() ? 'none' : '';  // accounting can't see Paysheet
   if (lcTab)         lcTab.style.display         = isAccounting() ? 'none' : '';  // accounting can't see Labor Codes
+  const coTab = document.getElementById('co-tab');
+  if (coTab)         coTab.style.display         = canViewCO() ? '' : 'none';  // only foreman, VP, admin
+  const coSubmitBtn = document.getElementById('co-submit-btn');
+  if (coSubmitBtn)   coSubmitBtn.style.display   = canSubmitCO() ? '' : 'none';
   // Only management can create week-ending folders
   const newFolderBtn = document.getElementById('ps-new-folder-btn');
   if (newFolderBtn) newFolderBtn.style.display = canManagePSFolders() ? '' : 'none';
@@ -2096,8 +2178,8 @@ function exportLCCSV() {
 //  TAB ROUTING
 // ═══════════════════════════
 function showPanel(name) {
-  ['csv-content','payroll-content','budgets-content','lc-content','paysheet-content','accounting-content'].forEach(id => document.getElementById(id).style.display = 'none');
-  const map = { csv:'csv-content', payroll:'payroll-content', budgets:'budgets-content', lc:'lc-content', accounting:'accounting-content' };
+  ['csv-content','payroll-content','budgets-content','lc-content','paysheet-content','accounting-content','co-content'].forEach(id => document.getElementById(id).style.display = 'none');
+  const map = { csv:'csv-content', payroll:'payroll-content', budgets:'budgets-content', lc:'lc-content', accounting:'accounting-content', co:'co-content' };
   if (map[name]) document.getElementById(map[name]).style.display = 'block';
   if (name === 'budgets') {
     const hasFiles = getSavedCSVFiles().length > 0;
@@ -2113,6 +2195,8 @@ function renderTabBar() {
   document.getElementById('lc-tab').classList.toggle('active',         activeTab === 'lc');
   document.getElementById('paysheet-tab').classList.toggle('active',   activeTab === 'paysheet');
   document.getElementById('accounting-tab').classList.toggle('active', activeTab === 'accounting');
+  const coTabEl = document.getElementById('co-tab');
+  if (coTabEl) coTabEl.classList.toggle('active', activeTab === 'co');
 }
 
 function switchToPayroll() {
@@ -2897,7 +2981,18 @@ function diRenderCrewTable() {
   tbody.innerHTML = rows.map((row, i) => {
 
     let codeOpts = '<option value=""></option>';
-    if (csvFile && row.area) {
+    // ── COR area: show the COR's labor code as the sole option ──
+    if (row.area && row.area.startsWith('[COR]')) {
+      const corb = (_cache.corbudgets || []).find(b =>
+        `[COR] ${b.corNumber} \u2013 ${b.description}` === row.area && b.jobId === jobName
+      );
+      if (corb) {
+        const paid = computeCorPaid(corb);
+        const rem  = corb.amount - paid;
+        const remStr = rem < 0 ? `-${fm(Math.abs(rem))}` : fm(rem);
+        codeOpts = `<option value="${eh(corb.laborCode)}" ${row.costCode===corb.laborCode?'selected':''}>${corb.laborCode} \u2013 ${eh(corb.description)} | COR ${eh(corb.corNumber)} | Rem: ${remStr}</option>`;
+      }
+    } else if (csvFile && row.area) {
       // Show individual CSV line items for this area (matches Budget by Area breakdown)
       const areaRows = csvFile.rows.filter(r => r.area === row.area);
       const areaEntries = getPayrollEntries().filter(e => e.csvFile === jobName && e.area === row.area);
@@ -2923,7 +3018,8 @@ function diRenderCrewTable() {
       });
     }
 
-    return `<tr style="border-top:1px solid var(--border);">
+    const isCorRow = row.area && row.area.startsWith('[COR]');
+    return `<tr style="border-top:1px solid var(--border);${isCorRow ? 'background:rgba(201,168,76,.07);' : ''}">
       <td style="padding:6px 8px;">
         <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
           oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft()" />
@@ -2957,7 +3053,14 @@ function diRenderCrewTable() {
 // ── Area combobox helpers ──
 function _diAreaList() {
   const jobName = document.getElementById('ps-job-select').value;
-  return jobName ? psGetAreas(jobName) : [];
+  const regularAreas = jobName ? psGetAreas(jobName) : [];
+  // Prepend approved COR budget areas for this job so they appear at the top
+  const corAreas = jobName
+    ? (_cache.corbudgets || [])
+        .filter(b => b.jobId === jobName)
+        .map(b => `[COR] ${b.corNumber} \u2013 ${b.description}`)
+    : [];
+  return [...corAreas, ...regularAreas];
 }
 
 function _diGetPortal() {
@@ -6638,6 +6741,7 @@ function appInit() {
   updateAdminUI();
   populatePRDropdowns();
   renderWOTable();
+  if (canViewCO()) coInit();
   // Foremen skip Budgets/Payroll — land directly on Paysheet (which also inits Daily Input)
   // Accounting lands directly on Accounting tab
   if (isForeman()) {
@@ -7079,8 +7183,508 @@ function acctExportPDF() {
   setTimeout(() => { win.focus(); win.print(); }, 500);
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  CHANGE ORDERS
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _coUnsub       = null;
+let _coNotifUnsub  = null;
+let _coPendingCoId = null;
+let _coPendingCorNumber = null;
+let _coPendingCorPdfUrl = null;
+
+function switchToCO() {
+  if (!canViewCO()) return;
+  activeTab = 'co';
+  renderTabBar();
+  showPanel('co');
+  coPopulateJobFilter();
+  renderCOLog();
+}
+
+function coInit() {
+  if (_coUnsub) _coUnsub();
+  _coUnsub = db.collection('changeorders')
+    .orderBy('submittedAt', 'desc')
+    .onSnapshot(snap => {
+      _cache.changeorders = snap.docs.map(d => d.data());
+      renderCOLog();
+    }, () => {});
+
+  db.collection('corbudgets').onSnapshot(snap => {
+    _cache.corbudgets = snap.docs.map(d => d.data());
+    renderCOLog();
+  }, () => {});
+
+  if (canReviewCO()) coSubscribeNotifications();
+}
+
+function coSubscribeNotifications() {
+  if (_coNotifUnsub) _coNotifUnsub();
+  _coNotifUnsub = db.collection('coNotifications')
+    .where('read', '==', false)
+    .onSnapshot(snap => {
+      const badge = document.getElementById('co-badge');
+      if (!badge) return;
+      badge.textContent = snap.size;
+      badge.style.display = snap.size > 0 ? '' : 'none';
+    }, () => {});
+}
+
+async function coMarkNotificationsRead(coId) {
+  try {
+    const snap = await db.collection('coNotifications')
+      .where('coId', '==', coId).where('read', '==', false).get();
+    const batch = db.batch();
+    snap.docs.forEach(d => batch.update(d.ref, { read: true }));
+    await batch.commit();
+  } catch(e) {}
+}
+
+function coPopulateJobFilter() {
+  const sel = document.getElementById('co-filter-job');
+  if (!sel) return;
+  const jobs = getSavedCSVFiles().map(f => f.name).sort();
+  sel.innerHTML = '<option value="">All Jobs</option>' +
+    jobs.map(j => `<option value="${eh(j)}">${eh(j)}</option>`).join('');
+}
+
+function coStatusBadge(status) {
+  const map = {
+    submitted: ['co-status-submitted', 'Submitted'],
+    pending:   ['co-status-pending',   'Pending'],
+    approved:  ['co-status-approved',  'Approved'],
+    declined:  ['co-status-declined',  'Declined'],
+  };
+  const [cls, label] = map[status] || ['co-status-submitted', status];
+  return `<span class="co-status-badge ${cls}">${label}</span>`;
+}
+
+function renderCOLog() {
+  const tbody = document.getElementById('co-log-tbody');
+  if (!tbody) return;
+  const filterStatus = (document.getElementById('co-filter-status') || {}).value || '';
+  const filterJob    = (document.getElementById('co-filter-job') || {}).value || '';
+
+  let list = (_cache.changeorders || []).slice();
+  if (filterStatus) list = list.filter(c => c.status === filterStatus);
+  if (filterJob)    list = list.filter(c => c.jobId === filterJob);
+
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--muted);">No change orders found.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map(co => {
+    const corb = (_cache.corbudgets || []).find(b => b.changeOrderId === co.id);
+    const paid = corb ? computeCorPaid(corb) : 0;
+    const budgetUsed = corb ? (() => {
+      const pct = corb.amount > 0 ? Math.min(100, Math.round(paid / corb.amount * 100)) : 0;
+      return `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+        <div class="co-progress-bar-wrap"><div class="co-progress-bar" style="width:${pct}%"></div></div>
+        <span style="font-size:.78rem;">${fm(paid)} / ${fm(corb.amount)}</span>
+      </div>`;
+    })() : '—';
+    const dateStr    = co.submittedAt ? new Date(co.submittedAt).toLocaleDateString() : '—';
+    const photoCount = (co.photoUrls || []).length;
+    const corPdf = co.corPdfUrl
+      ? `<a href="${co.corPdfUrl}" target="_blank" style="color:var(--accent);font-size:.8rem;">View PDF</a>`
+      : '—';
+    return `<tr>
+      <td style="font-weight:600;">${eh(co.workOrderNumber || '—')}</td>
+      <td>${eh(co.jobId || '—')}</td>
+      <td style="font-size:.8rem;">${eh(co.submittedByEmail || '—')}</td>
+      <td style="font-size:.8rem;white-space:nowrap;">${dateStr}</td>
+      <td>${coStatusBadge(co.status)}</td>
+      <td style="text-align:center;">${photoCount > 0 ? `📷 ${photoCount}` : '—'}</td>
+      <td>${co.corNumber ? `<strong>${eh(co.corNumber)}</strong>` : '—'}</td>
+      <td>${corPdf}</td>
+      <td>${budgetUsed}</td>
+      <td><button class="btn-sm" onclick="coOpenDetail('${ea(co.id)}')">View</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function coOpenSubmitModal() {
+  if (!canSubmitCO()) return;
+  const sel = document.getElementById('co-submit-job');
+  sel.innerHTML = '<option value="">— Select Job —</option>' +
+    getSavedCSVFiles().map(f => f.name).sort().map(j => `<option value="${eh(j)}">${eh(j)}</option>`).join('');
+  document.getElementById('co-submit-wo').value = '';
+  document.getElementById('co-submit-desc').value = '';
+  document.getElementById('co-submit-photos').value = '';
+  document.getElementById('co-photo-preview').innerHTML = '';
+  document.getElementById('co-submit-progress').style.display = 'none';
+  document.getElementById('co-submit-confirm-btn').disabled = false;
+  document.getElementById('co-submit-modal').classList.add('open');
+}
+
+function coCloseSubmitModal() {
+  document.getElementById('co-submit-modal').classList.remove('open');
+}
+
+function coPreviewPhotos() {
+  const files = document.getElementById('co-submit-photos').files;
+  const preview = document.getElementById('co-photo-preview');
+  preview.innerHTML = '';
+  [...files].forEach(f => {
+    const img = document.createElement('img');
+    img.className = 'co-photo-thumb';
+    img.src = URL.createObjectURL(f);
+    preview.appendChild(img);
+  });
+}
+
+async function _coUploadFile(path, file) {
+  const ref = storage.ref(path);
+  await ref.put(file);
+  return await ref.getDownloadURL();
+}
+
+async function coSubmit() {
+  if (!canSubmitCO()) return;
+  const jobId = document.getElementById('co-submit-job').value.trim();
+  const wo    = document.getElementById('co-submit-wo').value.trim();
+  const desc  = document.getElementById('co-submit-desc').value.trim();
+  if (!jobId) { alert('Please select a job.'); return; }
+  if (!wo)    { alert('Please enter a Work Order Number.'); return; }
+  const dupe = (_cache.changeorders || []).find(c => c.jobId === jobId && c.workOrderNumber === wo);
+  if (dupe) { alert(`Work Order "${wo}" already exists for this job.`); return; }
+
+  const btn  = document.getElementById('co-submit-confirm-btn');
+  const prog = document.getElementById('co-submit-progress');
+  btn.disabled = true;
+  prog.style.display = 'block';
+
+  const id = `co_${Date.now()}`;
+  let photoUrls = [];
+  try {
+    const files = document.getElementById('co-submit-photos').files;
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      if (!f.type.startsWith('image/')) { alert(`"${f.name}" is not an image. Skipped.`); continue; }
+      prog.textContent = `Uploading photo ${i + 1} of ${files.length}…`;
+      photoUrls.push(await _coUploadFile(`change-orders/${id}/${Date.now()}_${f.name}`, f));
+    }
+    prog.textContent = 'Saving change order…';
+    const doc = {
+      id, jobId, workOrderNumber: wo, description: desc, photoUrls,
+      submittedByEmail: _currentUser.email, submittedByUid: _currentUser.uid,
+      submittedByRole: _currentUserRole, submittedAt: new Date().toISOString(),
+      status: 'submitted', reviewerEmail: null, reviewerUid: null, reviewedAt: null,
+      corNumber: null, corPdfUrl: null, linkedCorBudgetId: null,
+    };
+    await db.collection('changeorders').doc(id).set(doc);
+    await db.collection('coNotifications').add({
+      type: 'co_submitted', coId: id, jobId, woNumber: wo,
+      submittedByEmail: _currentUser.email, createdAt: new Date().toISOString(), read: false,
+    });
+    coCloseSubmitModal();
+    renderCOLog();
+  } catch(e) {
+    alert('Submission failed: ' + e.message);
+    btn.disabled = false;
+    prog.style.display = 'none';
+  }
+}
+
+function coOpenDetail(coId) {
+  const co = (_cache.changeorders || []).find(c => c.id === coId);
+  if (!co) return;
+  if (canReviewCO()) coMarkNotificationsRead(coId);
+  const corb = (_cache.corbudgets || []).find(b => b.changeOrderId === coId);
+  const dateStr    = co.submittedAt ? new Date(co.submittedAt).toLocaleString() : '—';
+  const reviewedStr = co.reviewedAt ? new Date(co.reviewedAt).toLocaleString() : '—';
+
+  const photos = (co.photoUrls || []).length > 0
+    ? `<div class="co-photo-grid">${co.photoUrls.map(u =>
+        `<img class="co-photo-thumb" src="${u}" onclick="window.open('${u}','_blank')" title="Click to open full size" />`
+      ).join('')}</div>`
+    : '<span style="color:var(--muted);font-size:.83rem;">No photos attached.</span>';
+
+  const budgetSection = corb ? `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;">
+      <div style="font-size:.78rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">COR Budget</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:.83rem;">
+        <div><span style="color:var(--muted);">Labor Code</span><br/><strong>${eh(corb.laborCode)}</strong></div>
+        <div><span style="color:var(--muted);">Budget</span><br/><strong>${fm(corb.amount)}</strong></div>
+        <div><span style="color:var(--muted);">Used</span><br/><strong>${fm(computeCorPaid(corb))}</strong></div>
+        <div><span style="color:var(--muted);">Remaining</span><br/><strong>${fm(corb.amount - computeCorPaid(corb))}</strong></div>
+        <div style="grid-column:span 2"><span style="color:var(--muted);">Description</span><br/><strong>${eh(corb.description)}</strong></div>
+      </div>
+    </div>` : '';
+
+  let vpSection = '';
+  if (canReviewCO() && co.status !== 'declined' && co.status !== 'approved') {
+    vpSection = `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;">
+      <div style="font-size:.78rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;">VP Review</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <button class="btn btn-outline" style="margin:0;padding:6px 14px;font-size:.82rem;border-color:#f59e0b;color:#f59e0b;" onclick="coSetStatus('${ea(coId)}','pending')">⏳ Mark Pending</button>
+        <button class="btn" style="margin:0;padding:6px 14px;font-size:.82rem;background:#22c55e;border-color:#22c55e;" onclick="coStartApproval('${ea(coId)}')">✓ Approve</button>
+        <button class="btn" style="margin:0;padding:6px 14px;font-size:.82rem;background:#ef4444;border-color:#ef4444;" onclick="coSetStatus('${ea(coId)}','declined')">✕ Decline</button>
+      </div>
+      <div id="co-approval-form" style="display:none;border-top:1px solid var(--border);padding-top:12px;">
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div>
+            <label style="font-size:.82rem;color:var(--muted);display:block;margin-bottom:4px;">COR # <span style="color:#ef4444;">*</span></label>
+            <input id="co-review-cor-num" class="fi" style="width:100%;" placeholder="e.g. COR-2025-001" oninput="coCheckApprovalReady()" />
+          </div>
+          <div>
+            <label style="font-size:.82rem;color:var(--muted);display:block;margin-bottom:4px;">COR PDF <span style="color:#ef4444;">*</span></label>
+            <input type="file" id="co-review-pdf-input" accept="application/pdf,image/*" style="display:none;" onchange="coCheckApprovalReady()" />
+            <button class="btn btn-outline" style="margin:0;padding:6px 14px;font-size:.82rem;" onclick="document.getElementById('co-review-pdf-input').click()">📄 Choose PDF</button>
+            <span id="co-review-pdf-name" style="font-size:.8rem;color:var(--muted);margin-left:8px;">No file chosen</span>
+          </div>
+          <button id="co-review-approve-btn" class="btn" style="margin:0;padding:8px 16px;background:#22c55e;border-color:#22c55e;opacity:.5;cursor:not-allowed;" disabled onclick="coApprove('${ea(coId)}')">✓ Confirm Approval</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  document.getElementById('co-detail-title').textContent = `Change Order — WO# ${co.workOrderNumber}`;
+  document.getElementById('co-detail-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:.83rem;">
+      <div><span style="color:var(--muted);">Job</span><br/><strong>${eh(co.jobId)}</strong></div>
+      <div><span style="color:var(--muted);">Status</span><br/>${coStatusBadge(co.status)}</div>
+      <div><span style="color:var(--muted);">Submitted By</span><br/><strong>${eh(co.submittedByEmail)}</strong></div>
+      <div><span style="color:var(--muted);">Submitted At</span><br/><strong>${dateStr}</strong></div>
+      ${co.reviewerEmail ? `<div><span style="color:var(--muted);">Reviewed By</span><br/><strong>${eh(co.reviewerEmail)}</strong></div>` : ''}
+      ${co.reviewedAt    ? `<div><span style="color:var(--muted);">Reviewed At</span><br/><strong>${reviewedStr}</strong></div>` : ''}
+      ${co.corNumber     ? `<div><span style="color:var(--muted);">COR #</span><br/><strong>${eh(co.corNumber)}</strong></div>` : ''}
+      ${co.corPdfUrl     ? `<div><span style="color:var(--muted);">COR PDF</span><br/><a href="${co.corPdfUrl}" target="_blank" style="color:var(--accent);">View PDF ↗</a></div>` : ''}
+    </div>
+    ${co.description ? `<div><span style="font-size:.78rem;color:var(--muted);font-weight:700;text-transform:uppercase;">Description</span><p style="margin-top:6px;font-size:.85rem;">${eh(co.description)}</p></div>` : ''}
+    <div>
+      <div style="font-size:.78rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Photos</div>
+      ${photos}
+    </div>
+    ${budgetSection}
+    ${vpSection}
+  `;
+  document.getElementById('co-detail-modal').classList.add('open');
+}
+
+function coCloseDetail() {
+  document.getElementById('co-detail-modal').classList.remove('open');
+}
+
+function coStartApproval(coId) {
+  _coPendingCoId = coId;
+  const form = document.getElementById('co-approval-form');
+  if (form) form.style.display = 'block';
+}
+
+function coCheckApprovalReady() {
+  const corNum  = (document.getElementById('co-review-cor-num') || {}).value || '';
+  const pdfFile = document.getElementById('co-review-pdf-input');
+  const btn     = document.getElementById('co-review-approve-btn');
+  const nameEl  = document.getElementById('co-review-pdf-name');
+  if (pdfFile && pdfFile.files[0]) nameEl.textContent = pdfFile.files[0].name;
+  const ready = corNum.trim() && pdfFile && pdfFile.files[0];
+  if (btn) { btn.disabled = !ready; btn.style.opacity = ready ? '1' : '.5'; btn.style.cursor = ready ? 'pointer' : 'not-allowed'; }
+}
+
+async function coApprove(coId) {
+  if (!canReviewCO()) return;
+  const corNum   = (document.getElementById('co-review-cor-num') || {}).value.trim();
+  const pdfInput = document.getElementById('co-review-pdf-input');
+  if (!corNum)                   { alert('Please enter a COR number.'); return; }
+  if (!pdfInput || !pdfInput.files[0]) { alert('Please attach the COR PDF.'); return; }
+  const btn = document.getElementById('co-review-approve-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const pdfUrl = await _coUploadFile(`cor-pdfs/${coId}/${Date.now()}_${pdfInput.files[0].name}`, pdfInput.files[0]);
+    _coPendingCoId      = coId;
+    _coPendingCorNumber = corNum;
+    _coPendingCorPdfUrl = pdfUrl;
+    coCloseDetail();
+    coOpenBudgetModal(coId);
+  } catch(e) {
+    alert('PDF upload failed: ' + e.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function coSetStatus(coId, status) {
+  if (!canReviewCO()) return;
+  if (status === 'declined' && !confirm('Mark this Change Order as Declined? The foreman will not be able to proceed.')) return;
+  try {
+    const update = { status, reviewerEmail: _currentUser.email, reviewerUid: _currentUser.uid, reviewedAt: new Date().toISOString() };
+    await db.collection('changeorders').doc(coId).update(update);
+    const idx = (_cache.changeorders || []).findIndex(c => c.id === coId);
+    if (idx !== -1) Object.assign(_cache.changeorders[idx], update);
+    coCloseDetail();
+    renderCOLog();
+  } catch(e) { alert('Update failed: ' + e.message); }
+}
+
+function coOpenBudgetModal(coId) {
+  _coPendingCoId = coId;
+  const lcSel = document.getElementById('co-budget-lc');
+  lcSel.innerHTML = getLaborCodes().map(lc =>
+    `<option value="${eh(lc.code)}">${lc.code} – ${eh(lc.description)}</option>`
+  ).join('');
+  document.getElementById('co-budget-desc').value = '';
+  document.getElementById('co-budget-amount').value = '';
+  document.getElementById('co-budget-progress').style.display = 'none';
+  document.getElementById('co-budget-confirm-btn').disabled = false;
+  document.getElementById('co-budget-modal').classList.add('open');
+}
+
+function coCloseBudgetModal() {
+  document.getElementById('co-budget-modal').classList.remove('open');
+}
+
+async function coConfirmBudget() {
+  if (!canReviewCO()) return;
+  const coId = _coPendingCoId;
+  const lc   = document.getElementById('co-budget-lc').value;
+  const desc = document.getElementById('co-budget-desc').value.trim();
+  const amt  = parseFloat(document.getElementById('co-budget-amount').value);
+  if (!lc)              { alert('Please select a labor code.'); return; }
+  if (!desc)            { alert('Please enter a description.'); return; }
+  if (isNaN(amt)||amt<0){ alert('Please enter a valid budget amount.'); return; }
+
+  const btn  = document.getElementById('co-budget-confirm-btn');
+  const prog = document.getElementById('co-budget-progress');
+  btn.disabled = true;
+  prog.style.display = 'block';
+  prog.textContent = 'Creating COR budget…';
+
+  const co = (_cache.changeorders || []).find(c => c.id === coId);
+  if (!co) { alert('Change order not found.'); btn.disabled = false; prog.style.display = 'none'; return; }
+
+  try {
+    const corbId = `corb_${Date.now()}`;
+    const corb = {
+      id: corbId, jobId: co.jobId, changeOrderId: coId,
+      corNumber: _coPendingCorNumber, laborCode: lc, description: desc, amount: amt,
+      createdAt: new Date().toISOString(), createdByEmail: _currentUser.email, createdByUid: _currentUser.uid,
+    };
+    await db.collection('corbudgets').doc(corbId).set(corb);
+    const coUpdate = {
+      status: 'approved', corNumber: _coPendingCorNumber, corPdfUrl: _coPendingCorPdfUrl,
+      linkedCorBudgetId: corbId, reviewerEmail: _currentUser.email,
+      reviewerUid: _currentUser.uid, reviewedAt: new Date().toISOString(),
+    };
+    await db.collection('changeorders').doc(coId).update(coUpdate);
+    _cache.corbudgets = [...(_cache.corbudgets || []), corb];
+    const idx = (_cache.changeorders || []).findIndex(c => c.id === coId);
+    if (idx !== -1) Object.assign(_cache.changeorders[idx], coUpdate);
+    coCloseBudgetModal();
+    renderCOLog();
+    if (activeTab === 'paysheet') diRenderCrewTable();
+  } catch(e) {
+    alert('Failed to create COR budget: ' + e.message);
+    btn.disabled = false;
+    prog.style.display = 'none';
+  }
+}
+
+function computeCorPaid(corb) {
+  if (!corb) return 0;
+  const areaKey = `[COR] ${corb.corNumber} \u2013 ${corb.description}`;
+  let paid = 0;
+  if (typeof _diLogDocs !== 'undefined') {
+    _diLogDocs.forEach(doc => {
+      if (doc.job !== corb.jobId) return;
+      (doc.crews || []).forEach(crew => {
+        (crew.entries || []).forEach(e => {
+          if (e.area === areaKey && e.costCode === corb.laborCode) paid += Number(e.price || 0);
+        });
+      });
+    });
+  }
+  return paid;
+}
+
 </script>
 
+
+<!-- ══════════════════════════════════════════
+     CO SUBMIT MODAL
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="co-submit-modal" onclick="if(event.target===this)coCloseSubmitModal()">
+  <div class="modal" style="width:560px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <h2 style="margin:0;font-size:1.1rem;">📋 Submit Change Order</h2>
+      <button onclick="coCloseSubmitModal()" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:4px;">×</button>
+    </div>
+    <div style="overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Job <span style="color:#ef4444;">*</span></label>
+        <select id="co-submit-job" class="fi" style="width:100%;"></select>
+      </div>
+      <div>
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Work Order Number <span style="color:#ef4444;">*</span></label>
+        <input id="co-submit-wo" class="fi" style="width:100%;" placeholder="e.g. WO-2025-001" />
+      </div>
+      <div>
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Description / Notes</label>
+        <textarea id="co-submit-desc" class="fi" style="width:100%;height:80px;resize:vertical;" placeholder="Describe the work…"></textarea>
+      </div>
+      <div>
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Photos <span style="color:var(--muted);font-style:italic;">(optional)</span></label>
+        <input type="file" id="co-submit-photos" accept="image/*" multiple style="display:none;" onchange="coPreviewPhotos()" />
+        <button class="btn btn-outline" style="margin:0;padding:7px 14px;font-size:.82rem;" onclick="document.getElementById('co-submit-photos').click()">📷 Choose Photos</button>
+        <div id="co-photo-preview" class="co-photo-grid" style="margin-top:8px;"></div>
+      </div>
+      <div id="co-submit-progress" style="display:none;padding:10px;background:var(--surface2);border-radius:8px;font-size:.83rem;color:var(--muted);text-align:center;">Uploading…</div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:18px;flex-shrink:0;">
+      <button class="btn btn-outline" style="flex:1;margin:0;" onclick="coCloseSubmitModal()">Cancel</button>
+      <button class="btn" id="co-submit-confirm-btn" style="flex:1;margin:0;" onclick="coSubmit()">Submit Change Order</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     CO DETAIL / REVIEW MODAL
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="co-detail-modal" onclick="if(event.target===this)coCloseDetail()">
+  <div class="modal" style="width:640px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-shrink:0;">
+      <h2 style="margin:0;font-size:1.1rem;" id="co-detail-title">Change Order Detail</h2>
+      <button onclick="coCloseDetail()" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:4px;">×</button>
+    </div>
+    <div id="co-detail-body" style="overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;display:flex;flex-direction:column;gap:14px;">
+      <!-- populated by coOpenDetail() -->
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     COR BUDGET ENTRY MODAL (VP approval step)
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="co-budget-modal" onclick="if(event.target===this)coCloseBudgetModal()">
+  <div class="modal" style="width:480px;max-width:96vw;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <h2 style="margin:0;font-size:1.1rem;">💰 Create COR Budget</h2>
+      <button onclick="coCloseBudgetModal()" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:4px;">×</button>
+    </div>
+    <p style="font-size:.83rem;color:var(--muted);margin-bottom:16px;">Enter the budget details for this approved Change Order. This will appear in Daily Input tracking.</p>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Labor Code <span style="color:#ef4444;">*</span></label>
+        <select id="co-budget-lc" class="fi" style="width:100%;"></select>
+      </div>
+      <div>
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Description <span style="color:#ef4444;">*</span></label>
+        <input id="co-budget-desc" class="fi" style="width:100%;" placeholder="e.g. Change Order framing work" />
+      </div>
+      <div>
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Budget Amount ($) <span style="color:#ef4444;">*</span></label>
+        <input id="co-budget-amount" class="fi" type="number" min="0" step="0.01" style="width:100%;" placeholder="0.00" />
+      </div>
+      <div id="co-budget-progress" style="display:none;padding:10px;background:var(--surface2);border-radius:8px;font-size:.83rem;color:var(--muted);text-align:center;">Creating budget…</div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button class="btn btn-outline" style="flex:1;margin:0;" onclick="coCloseBudgetModal()">Cancel</button>
+      <button class="btn" id="co-budget-confirm-btn" style="flex:1;margin:0;background:#22c55e;border-color:#22c55e;" onclick="coConfirmBudget()">✓ Approve &amp; Create Budget</button>
+    </div>
+  </div>
+</div>
 
 <!-- Unlock Requests Modal (admin only) -->
 <div class="modal-overlay" id="di-unlock-requests-modal" onclick="if(event.target===this)diCloseUnlockRequestsModal()">
