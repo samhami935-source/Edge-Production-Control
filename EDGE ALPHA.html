@@ -993,6 +993,9 @@
     <button id="co-submit-btn" class="btn" style="margin:0;padding:7px 16px;font-size:.83rem;" onclick="coOpenSubmitModal()">+ Submit Change Order</button>
   </div>
 
+  <!-- CO Dashboard (visible when a specific job is selected) -->
+  <div id="co-dashboard" style="display:none;margin-bottom:20px;"></div>
+
   <!-- CO Log Table -->
   <div style="overflow-x:auto;">
     <table id="co-log-table">
@@ -4267,7 +4270,12 @@ function psGetAreas(jobName) {
   const f = getSavedCSVFiles().find(x => x.name === jobName);
   const csvAreas = f ? [...new Set(f.rows.map(r => r.area).filter(a => a && a !== '—'))] : [];
   const prAreas  = getPayrollEntries().filter(e => e.csvFile === jobName).map(e => e.area).filter(Boolean);
-  return [...new Set([...csvAreas, ...prAreas])].sort();
+  // Approved COR areas prepended so they appear at top of any area dropdown
+  const corAreas = (_cache.corbudgets || [])
+    .filter(b => b.jobId === jobName)
+    .map(b => `[COR] ${b.corNumber} \u2013 ${b.description}`);
+  const regular = [...new Set([...csvAreas, ...prAreas])].sort();
+  return [...new Set([...corAreas, ...regular])];
 }
 
 // Get budget/PTD/remaining for a job+area+costCode combo
@@ -4302,16 +4310,28 @@ function _psTableThead(isDaily) {
 }
 
 function _psRenderRow(row, i, jobName, areas, isDaily) {
+  // ── COR row: pull budget & PTD live from corbudget, not CSV ──
+  const isCOR = !!(row.area && row.area.startsWith('[COR]'));
+  const corb  = isCOR
+    ? ((_cache.corbudgets || []).find(b =>
+        `[COR] ${b.corNumber} \u2013 ${b.description}` === row.area && b.jobId === jobName))
+    : null;
+
   let budgetVal = 0;
-  if (jobName && row.area && row.costCode) {
+  if (isCOR && corb) {
+    budgetVal = corb.amount;
+  } else if (jobName && row.area && row.costCode) {
     budgetVal = psGetAreaCodeData(jobName, row.area, row.costCode).budget || 0;
   }
-  // For weekly summary: always compute PTD live from payroll entries so it stays
-  // in sync when payroll is added/edited/deleted after the paysheet was saved.
-  // For daily paysheets: read the manually-entered row.ptd value.
-  const ptdVal = (!isDaily && jobName && row.area && row.costCode)
-    ? (psGetAreaCodeData(jobName, row.area, row.costCode).ptd || 0)
-    : (parseFloat(row.ptd) || 0);
+
+  // For COR rows PTD is always project-to-date from the DI log (both daily & weekly).
+  // For regular weekly rows: live from payroll entries.
+  // For regular daily rows: manually-entered row.ptd value.
+  const ptdVal = isCOR && corb
+    ? computeCorPaid(corb)
+    : (!isDaily && jobName && row.area && row.costCode)
+      ? (psGetAreaCodeData(jobName, row.area, row.costCode).ptd || 0)
+      : (parseFloat(row.ptd) || 0);
   const weAmount   = parseFloat(row.weAmount) || 0;
   const remaining  = budgetVal - ptdVal;
   const budgetDisp = budgetVal > 0 ? _fmt$(budgetVal) : '';
@@ -4320,19 +4340,20 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
   const pctComplete = budgetVal > 0 ? ((ptdVal + weAmount) / budgetVal * 100) : 0;
   const pctDisp     = budgetVal > 0 ? pctComplete.toFixed(1) + '%' : '—';
   const pctColor    = pctComplete > 100 ? '#ef4444' : pctComplete >= 80 ? '#c9a84c' : '#333';
-  const codeLabel   = row.costCode
-    ? (() => {
-        // Look up description from CSV by area + exact cost code
-        const csvFile = jobName ? getSavedCSVFiles().find(x => x.name === jobName) : null;
-        if (csvFile && row.area) {
-          const csvRow = csvFile.rows.find(r => r.area === row.area && r.costCode === row.costCode);
-          if (csvRow) return row.costCode + ' – ' + csvRow.description;
-        }
-        // Fall back to PAYROLL_GROUPS lookup
-        const g = PAYROLL_GROUPS.find(x => x.code === row.costCode);
-        return g ? row.costCode + ' – ' + g.description : row.costCode;
-      })()
-    : '';
+  // COR rows use the COR's labor code + description; regular rows look up from CSV/PAYROLL_GROUPS
+  const codeLabel = isCOR && corb
+    ? `${corb.laborCode} \u2013 ${corb.description}`
+    : row.costCode
+      ? (() => {
+          const csvFile = jobName ? getSavedCSVFiles().find(x => x.name === jobName) : null;
+          if (csvFile && row.area) {
+            const csvRow = csvFile.rows.find(r => r.area === row.area && r.costCode === row.costCode);
+            if (csvRow) return row.costCode + ' – ' + csvRow.description;
+          }
+          const g = PAYROLL_GROUPS.find(x => x.code === row.costCode);
+          return g ? row.costCode + ' – ' + g.description : row.costCode;
+        })()
+      : '';
   const cell = 'border:1px solid #000;padding:4px 8px;font-size:12px;';
 
   if (isDaily && !_psEditMode) {
@@ -7259,7 +7280,82 @@ function coStatusBadge(status) {
   return `<span class="co-status-badge ${cls}">${label}</span>`;
 }
 
+function renderCODashboard() {
+  const container = document.getElementById('co-dashboard');
+  if (!container) return;
+  const jobName = (document.getElementById('co-filter-job') || {}).value || '';
+  if (!jobName) { container.style.display = 'none'; return; }
+  container.style.display = 'block';
+
+  const corbs = (_cache.corbudgets || []).filter(b => b.jobId === jobName);
+  const cos   = (_cache.changeorders || []).filter(c => c.jobId === jobName);
+
+  let totalBudget = 0, totalPtd = 0;
+  const rows = corbs.map(corb => {
+    const ptd = computeCorPaid(corb);
+    const rem = corb.amount - ptd;
+    totalBudget += corb.amount;
+    totalPtd    += ptd;
+    const co  = cos.find(c => c.id === corb.changeOrderId);
+    const pct = corb.amount > 0 ? Math.min(100, ptd / corb.amount * 100) : 0;
+    return { corb, ptd, rem, co, pct };
+  });
+  const totalRem   = totalBudget - totalPtd;
+  const remColor   = totalRem < 0 ? 'var(--red)' : totalRem === 0 ? 'var(--yellow)' : 'var(--green)';
+
+  const tableRows = rows.length > 0
+    ? rows.map(({ corb, ptd, rem, co }) => {
+        const remColor2 = rem < 0 ? '#ef4444' : rem === 0 ? '#c9a84c' : '#22c55e';
+        const statusBadge = co ? coStatusBadge(co.status) : '—';
+        return `<tr style="border-top:1px solid var(--border);">
+          <td style="padding:8px 10px;font-weight:700;font-size:.83rem;">${eh(corb.corNumber)}</td>
+          <td style="padding:8px 10px;font-size:.83rem;">${eh(corb.description)}</td>
+          <td style="padding:8px 10px;font-size:.83rem;font-family:monospace;">${eh(corb.laborCode)}</td>
+          <td style="padding:8px 10px;text-align:right;font-size:.83rem;">${fm(corb.amount)}</td>
+          <td style="padding:8px 10px;text-align:right;font-size:.83rem;color:#1a56db;font-weight:600;">${fm(ptd)}</td>
+          <td style="padding:8px 10px;text-align:right;font-size:.83rem;font-weight:700;color:${remColor2};">${rem < 0 ? '-' : ''}${fm(Math.abs(rem))}</td>
+          <td style="padding:8px 10px;text-align:center;">${statusBadge}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--muted);">No approved COR budgets for this job yet.</td></tr>`;
+
+  const thStyle = 'padding:8px 10px;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);background:var(--surface2);';
+  container.innerHTML = `
+    <div class="cards" style="margin-bottom:16px;">
+      <div class="card">
+        <div class="label">Total COR Budget</div>
+        <div class="value cg">${fm(totalBudget)}</div>
+        <div class="sub">${corbs.length} COR${corbs.length !== 1 ? 's' : ''} approved</div>
+      </div>
+      <div class="card">
+        <div class="label">Total Spent (PTD)</div>
+        <div class="value cr">${fm(totalPtd)}</div>
+        <div class="sub">of ${fm(totalBudget)} budgeted</div>
+      </div>
+      <div class="card">
+        <div class="label">Remaining</div>
+        <div class="value" style="color:${remColor};">${totalRem < 0 ? '-' : ''}${fm(Math.abs(totalRem))}</div>
+        <div class="sub">${totalRem < 0 ? 'over budget' : 'remaining'}</div>
+      </div>
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr>
+          <th style="${thStyle}text-align:left;">COR #</th>
+          <th style="${thStyle}text-align:left;">Description</th>
+          <th style="${thStyle}text-align:left;">Labor Code</th>
+          <th style="${thStyle}text-align:right;">Budget</th>
+          <th style="${thStyle}text-align:right;">Spent (PTD)</th>
+          <th style="${thStyle}text-align:right;">Remaining</th>
+          <th style="${thStyle}text-align:center;">Status</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>`;
+}
+
 function renderCOLog() {
+  renderCODashboard();
   const tbody = document.getElementById('co-log-tbody');
   if (!tbody) return;
   const filterStatus = (document.getElementById('co-filter-status') || {}).value || '';
@@ -7270,7 +7366,7 @@ function renderCOLog() {
   if (filterJob)    list = list.filter(c => c.jobId === filterJob);
 
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="10" style="padding:32px;text-align:center;color:var(--muted);">No change orders found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="padding:32px;text-align:center;color:var(--muted);">No change orders found.</td></tr>`;
     return;
   }
 
