@@ -4755,13 +4755,24 @@ async function psApproveSync(doc) {
       const groupEntry  = PAYROLL_GROUPS.find(g => g.code === groupCode);
       const description = groupEntry ? groupEntry.description : costCode;
 
-      // Look up budget — same logic as addPayrollEntry
-      const budget = _prLookupBudget(jobName, area, costCode, description);
+      // ── COR row: use corbudget amount + tag for exact PTD matching ──
+      const isCOR = area.startsWith('[COR]');
+      let budget = 0;
+      let corBudgetId = null;
+      if (isCOR) {
+        const corb = (_cache.corbudgets || []).find(b =>
+          `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
+        );
+        if (corb) { budget = corb.amount; corBudgetId = corb.id; }
+      } else {
+        // Look up budget — same logic as addPayrollEntry
+        budget = _prLookupBudget(jobName, area, costCode, description);
+      }
 
       // Deterministic ID: ps_<docId>_c<crew>_r<rowIndex>
       const entryId = ('ps_' + docId + '_c' + c + '_r' + i).replace(/[^\w-]/g, '_');
 
-      newEntries.push({
+      const entry = {
         id:          entryId,
         date:        weekEnding,   // week-ending date as the payroll date
         time:        timeStr,
@@ -4769,12 +4780,14 @@ async function psApproveSync(doc) {
         area,
         costCode,
         description,
-        amount:      budget,       // budgeted amount from CSV
+        amount:      budget,       // corb.amount for COR rows; CSV budget for standard rows
         price:       weAmount,     // W/E Earned → Amount Paid
         source:      'paysheet_sync',
         sourceDocId: docId,
         weekEnding,
-      });
+      };
+      if (isCOR && corBudgetId) { entry.isCOR = true; entry.corBudgetId = corBudgetId; }
+      newEntries.push(entry);
     });
   }
 
@@ -7326,7 +7339,16 @@ function renderCODashboard() {
     : `<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--muted);">No approved COR budgets for this job yet.</td></tr>`;
 
   const thStyle = 'padding:8px 10px;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);background:var(--surface2);';
+  // Admin tip: prompt to re-approve paysheets so PTD syncs (only shown when there are COR budgets)
+  const reApproveTip = (isAdmin() && corbs.length > 0)
+    ? `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);border-radius:8px;font-size:.8rem;color:var(--accent);">
+        <strong>Admin tip:</strong> PTD values include both Daily Input entries and approved Weekly Summary Paysheets.
+        If a COR row shows $0 PTD after you&rsquo;ve entered amounts on a paysheet, open that paysheet and click
+        <strong>✓ Approve for Accounting</strong> (or re-approve if already approved) to sync the W/E&nbsp;Earned amounts.
+       </div>`
+    : '';
   container.innerHTML = `
+    ${reApproveTip}
     <div class="cards" style="margin-bottom:16px;">
       <div class="card">
         <div class="label">Total COR Budget</div>
@@ -7705,6 +7727,7 @@ function computeCorPaid(corb) {
   if (!corb) return 0;
   const areaKey = `[COR] ${corb.corNumber} \u2013 ${corb.description}`;
   let paid = 0;
+  // Sum from daily input submissions (entries logged via the Daily Input tab)
   if (typeof _diLogDocs !== 'undefined') {
     _diLogDocs.forEach(doc => {
       if (doc.job !== corb.jobId) return;
@@ -7715,6 +7738,13 @@ function computeCorPaid(corb) {
       });
     });
   }
+  // Sum from approved weekly paysheet W/E Earned amounts (synced by psApproveSync,
+  // tagged isCOR + corBudgetId so we match the exact COR budget — not just labor code)
+  (_cache.payroll || []).forEach(e => {
+    if (e.isCOR && e.corBudgetId === corb.id && e.source === 'paysheet_sync') {
+      paid += Number(e.price || 0);
+    }
+  });
   return paid;
 }
 
