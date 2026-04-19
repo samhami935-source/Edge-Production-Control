@@ -1022,6 +1022,12 @@
 
 </div><!-- /container -->
 
+<!-- Photo Lightbox -->
+<div id="co-lightbox" onclick="coCloseLightbox()" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.92);align-items:center;justify-content:center;cursor:zoom-out;">
+  <img id="co-lightbox-img" src="" style="max-width:96vw;max-height:92vh;object-fit:contain;border-radius:6px;box-shadow:0 8px 40px #000;" onclick="event.stopPropagation()" />
+  <button onclick="coCloseLightbox()" style="position:absolute;top:16px;right:20px;background:none;border:none;color:#fff;font-size:2rem;cursor:pointer;line-height:1;opacity:.8;">×</button>
+</div>
+
 <!-- Signature Pad Modal -->
 <div class="modal-overlay" id="ps-sig-modal">
   <div class="modal" style="width:520px;max-width:96vw;">
@@ -7414,6 +7420,20 @@ function coCloseSubmitModal() {
   document.getElementById('co-submit-modal').classList.remove('open');
 }
 
+function coOpenLightbox(idx, coId) {
+  const co = (_cache.changeorders || []).find(c => c.id === coId);
+  if (!co || !co.photoUrls || !co.photoUrls[idx]) return;
+  const lb = document.getElementById('co-lightbox');
+  document.getElementById('co-lightbox-img').src = co.photoUrls[idx];
+  lb.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+function coCloseLightbox() {
+  document.getElementById('co-lightbox').style.display = 'none';
+  document.getElementById('co-lightbox-img').src = '';
+  document.body.style.overflow = '';
+}
+
 function coPreviewPhotos() {
   const files = document.getElementById('co-submit-photos').files;
   const preview = document.getElementById('co-photo-preview');
@@ -7508,8 +7528,8 @@ function coOpenDetail(coId) {
   const reviewedStr = co.reviewedAt ? new Date(co.reviewedAt).toLocaleString() : '—';
 
   const photos = (co.photoUrls || []).length > 0
-    ? `<div class="co-photo-grid">${co.photoUrls.map(u =>
-        `<img class="co-photo-thumb" src="${u}" onclick="window.open('${u}','_blank')" title="Click to open full size" />`
+    ? `<div class="co-photo-grid">${co.photoUrls.map((u, idx) =>
+        `<img class="co-photo-thumb" src="${u}" onclick="coOpenLightbox(${idx}, '${ea(co.id)}')" title="Tap to view full size" />`
       ).join('')}</div>`
     : '<span style="color:var(--muted);font-size:.83rem;">No photos attached.</span>';
 
