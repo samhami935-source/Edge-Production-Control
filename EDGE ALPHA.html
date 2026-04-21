@@ -4441,7 +4441,15 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
       ...areas.map(a => `<option value="${eh(a)}" ${row.area===a?'selected':''}>${eh(a)}</option>`)
     ].join('');
     let codeOpts = '<option value=""></option>';
-    if (row.area) {
+    if (row.area && row.area.startsWith('[COR]')) {
+      // COR rows: lock labor code to the corbudget's labor code
+      const corb2 = (_cache.corbudgets || []).find(b =>
+        `[COR] ${b.corNumber} \u2013 ${b.description}` === row.area && b.jobId === jobName
+      );
+      if (corb2) {
+        codeOpts = `<option value="${eh(corb2.laborCode)}" selected>${eh(corb2.laborCode)} – ${eh(corb2.description)}</option>`;
+      }
+    } else if (row.area) {
       const csvFile2 = jobName ? getSavedCSVFiles().find(x => x.name === jobName) : null;
       if (csvFile2) {
         csvFile2.rows.filter(r => r.area === row.area && isForemanAllowedCode(r.costCode)).forEach(r => {
@@ -4608,7 +4616,16 @@ function psAddRows(n) {
 
 function psAreaChanged(i, area) {
   _ps().rows[i].area = area;
-  _ps().rows[i].costCode = '';
+  // Auto-set labor code for COR areas (locked to the COR budget's labor code)
+  if (area && area.startsWith('[COR]')) {
+    const jobName = document.getElementById('ps-job-select').value || '';
+    const corb = (_cache.corbudgets || []).find(b =>
+      `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
+    );
+    _ps().rows[i].costCode = corb ? corb.laborCode : '';
+  } else {
+    _ps().rows[i].costCode = '';
+  }
   psRenderMainTable();
 }
 
@@ -4774,8 +4791,17 @@ async function psApproveSync(doc) {
 
     crew.rows.forEach((row, i) => {
       const area     = (row.area     || '').trim();
-      const costCode = (row.costCode || '').trim();
       const weAmount = parseFloat(row.weAmount) || 0;
+
+      // For COR rows, fall back to the corbudget's labor code if costCode is missing
+      // (handles paysheets saved before the auto-populate fix)
+      let costCode = (row.costCode || '').trim();
+      if (!costCode && area.startsWith('[COR]')) {
+        const corb0 = (_cache.corbudgets || []).find(b =>
+          `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
+        );
+        if (corb0) costCode = corb0.laborCode;
+      }
 
       // Skip blank or zero rows
       if (!area || !costCode || weAmount <= 0) return;
