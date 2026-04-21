@@ -3061,14 +3061,8 @@ function diRenderCrewTable() {
 // ── Area combobox helpers ──
 function _diAreaList() {
   const jobName = document.getElementById('ps-job-select').value;
-  const regularAreas = jobName ? psGetAreas(jobName) : [];
-  // Prepend approved COR budget areas for this job so they appear at the top
-  const corAreas = jobName
-    ? (_cache.corbudgets || [])
-        .filter(b => b.jobId === jobName)
-        .map(b => `[COR] ${b.corNumber} \u2013 ${b.description}`)
-    : [];
-  return [...corAreas, ...regularAreas];
+  // psGetAreas already prepends COR areas at the top — no need to add them again
+  return jobName ? psGetAreas(jobName) : [];
 }
 
 function _diGetPortal() {
