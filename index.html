@@ -3712,11 +3712,16 @@ function diLoadLog() {
       .onSnapshot(snap => {
         _diLogDocs = snap.docs.map(d => d.data());
         diRenderLogRows();
+        // Keep CO tab PTD + remaining live as daily input entries are submitted
+        try { renderCOLog(); } catch(_) {}
+        try { renderPSAreaBudgetTable(); } catch(_) {}
       }, err => {
         // Fallback without orderBy if index missing
         _diLogUnsub = db.collection('dailyinput').onSnapshot(snap => {
           _diLogDocs = snap.docs.map(d => d.data()).sort((a,b) => (b.submittedAt||'').localeCompare(a.submittedAt||''));
           diRenderLogRows();
+          try { renderCOLog(); } catch(_) {}
+          try { renderPSAreaBudgetTable(); } catch(_) {}
         });
       });
   } catch(e) { console.error('diLoadLog:', e); }
@@ -4230,9 +4235,40 @@ function renderPSAreaBudgetTable() {
   const area    = document.getElementById('ps-area-budget-select').value;
   const tbody   = document.getElementById('ps-area-budget-tbody');
   if (!area || !jobName) {
-    tbody.innerHTML='<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">Select a job and area above.</td></tr>';
+    tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted);">Select a job and area above.</td></tr>';
     return;
   }
+
+  // ── COR area: show COR budget + live PTD from daily inputs & approved paysheets ──
+  if (area.startsWith('[COR]')) {
+    const corb = (_cache.corbudgets || []).find(b =>
+      `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
+    );
+    if (!corb) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted);">COR budget not found.</td></tr>';
+      return;
+    }
+    const ptd = computeCorPaid(corb);
+    const rem = corb.amount - ptd;
+    const rc  = rem < 0 ? 'color:var(--red)' : rem === 0 ? 'color:var(--yellow)' : 'color:var(--green)';
+    const fmtP = ptd > 0 ? fm(ptd) : '—';
+    tbody.innerHTML = `
+      <tr>
+        <td style="font-size:.85rem;color:var(--muted);font-family:monospace;">${eh(corb.laborCode)}</td>
+        <td style="font-size:.85rem;">${eh(corb.description)}</td>
+        <td style="text-align:right;">${fm(corb.amount)}</td>
+        <td style="text-align:right;color:var(--yellow);">${fmtP}</td>
+        <td style="text-align:right;${rc}">${rem < 0 ? '-' : ''}${fm(Math.abs(rem))}</td>
+      </tr>
+      <tr style="border-top:2px solid var(--border);font-weight:700;">
+        <td colspan="2">Total</td>
+        <td style="text-align:right;">${fm(corb.amount)}</td>
+        <td style="text-align:right;color:var(--yellow);">${fmtP}</td>
+        <td style="text-align:right;${rc}">${rem < 0 ? '-' : ''}${fm(Math.abs(rem))}</td>
+      </tr>`;
+    return;
+  }
+
   const f = getSavedCSVFiles().find(x => x.name === jobName);
   if (!f) return;
   const allEntries = getPayrollEntries().filter(e => e.csvFile === jobName);
@@ -4240,7 +4276,7 @@ function renderPSAreaBudgetTable() {
   // Show individual CSV rows for this area (same breakdown as Budget tab)
   const areaRows = f.rows.filter(r => r.area === area && isForemanAllowedCode(r.costCode));
   if (!areaRows.length) {
-    tbody.innerHTML='<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted);">No budget data for this area.</td></tr>';
+    tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted);">No budget data for this area.</td></tr>';
     return;
   }
   const rows = areaRows.map(r => {
