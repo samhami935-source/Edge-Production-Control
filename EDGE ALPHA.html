@@ -1332,7 +1332,7 @@ async function loadAllData() {
 
 function isAdmin()   { return _currentUserRole === 'admin'; }
 function isPM()      { return ['project_manager','vp_operations','operations_manager','estimating_manager'].includes(_currentUserRole); }
-function isForeman() { return ['foreman','framing_foreman','hanging_foreman','taping_foreman','pickup_foreman'].includes(_currentUserRole); }
+function isForeman() { return ['foreman','pickup_foreman'].includes(_currentUserRole); }
 function isAccounting() { return _currentUserRole === 'accounting'; }
 function isVP()      { return _currentUserRole === 'vp_operations'; }
 function canEdit()   { return isAdmin() || isPM(); }
@@ -1396,19 +1396,6 @@ function _getActiveGrantsForFolder(we) {
 //   { exact: n }         — single exact code
 // Codes are parsed from the leading digit sequence of codeStr, so '808A' → 808.
 const _FOREMAN_ALLOWED = {
-  framing_foreman: [
-    { range: [100, 199] },
-    { exact: 808 }, { exact: 809 },
-  ],
-  hanging_foreman: [
-    { range: [200, 399] },
-    { exact: 808 }, { exact: 809 },
-  ],
-  taping_foreman: [
-    { range: [400, 499] },
-    { exact: 805 }, { exact: 808 }, { exact: 809 },
-    { exact: 903 }, { exact: 904 }, { exact: 906 },
-  ],
   pickup_foreman: [
     { range: [600, 699] },
     { exact: 808 }, { exact: 809 },
@@ -1521,7 +1508,14 @@ firebase.auth().onAuthStateChanged(async user => {
       await db.collection('users').doc(user.uid).set({ email: user.email, role: 'pending', createdAt: new Date().toISOString() });
       doc = await db.collection('users').doc(user.uid).get();
     }
-    _currentUserRole = doc.data().role || 'pending';
+    const _rawRole = doc.data().role || 'pending';
+    // Migrate legacy specialty-foreman roles → generic foreman
+    if (['framing_foreman','hanging_foreman','taping_foreman'].includes(_rawRole)) {
+      await db.collection('users').doc(user.uid).update({ role: 'foreman' });
+      _currentUserRole = 'foreman';
+    } else {
+      _currentUserRole = _rawRole;
+    }
   } catch(e) {
     console.error('Role fetch error:', e);
     _currentUserRole = 'pending';
@@ -1549,7 +1543,7 @@ function updateUserPill() {
   const pill = document.getElementById('user-info-pill');
   if (!pill) return;
   pill.style.display = 'flex';
-  const labels = { admin: 'Admin', project_manager: 'Project Manager', vp_operations: 'VP of Operations', operations_manager: 'Operations Manager', accounting: 'Accounting', estimating_manager: 'Estimating Manager', foreman: 'Foreman', framing_foreman: 'Framing Foreman', hanging_foreman: 'Hanging Foreman', taping_foreman: 'Taping Foreman', pickup_foreman: 'Pick-Up Foreman' };
+  const labels = { admin: 'Admin', project_manager: 'Project Manager', vp_operations: 'VP of Operations', operations_manager: 'Operations Manager', accounting: 'Accounting', estimating_manager: 'Estimating Manager', foreman: 'Foreman', pickup_foreman: 'Pick-Up Foreman' };
   document.getElementById('user-role-badge').textContent    = labels[_currentUserRole] || _currentUserRole;
   document.getElementById('user-email-display').textContent = _currentUser ? _currentUser.email : '';
   const usersBtn = document.getElementById('users-mgmt-btn');
@@ -1562,24 +1556,35 @@ async function openUsersModal() {
   const body = document.getElementById('users-modal-body');
   body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);">Loading users…</div>';
   try {
+    const _LEGACY_ROLES = ['framing_foreman','hanging_foreman','taping_foreman'];
     const snap = await db.collection('users').get();
-    const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }))
-      .sort((a, b) => { const ord = { admin:0, project_manager:1, foreman:2, pending:3 }; return (ord[a.role]??4)-(ord[b.role]??4); });
+    // Migrate any legacy roles → foreman in a single batch
+    const migrateBatch = db.batch();
+    let migrateCount = 0;
+    snap.docs.forEach(d => {
+      if (_LEGACY_ROLES.includes(d.data().role)) {
+        migrateBatch.update(db.collection('users').doc(d.id), { role: 'foreman' });
+        migrateCount++;
+      }
+    });
+    if (migrateCount > 0) await migrateBatch.commit();
+
+    const users = snap.docs.map(d => {
+      const data = d.data();
+      return { uid: d.id, ...data, role: _LEGACY_ROLES.includes(data.role) ? 'foreman' : data.role };
+    }).sort((a, b) => { const ord = { admin:0, project_manager:1, foreman:2, pending:3 }; return (ord[a.role]??4)-(ord[b.role]??4); });
     const rows = users.map(u => `
       <tr>
         <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${eh(u.email||u.uid)}</td>
         <td>
           <select onchange="updateUserRole('${u.uid}',this.value)" ${u.uid===_currentUser.uid?'disabled':''}>
             <option value="pending"            ${u.role==='pending'?'selected':''}>Pending</option>
-            <option value="foreman"          ${u.role==='foreman'?'selected':''}>Foreman</option>
-            <option value="framing_foreman"  ${u.role==='framing_foreman'?'selected':''}>Framing Foreman</option>
-            <option value="hanging_foreman"  ${u.role==='hanging_foreman'?'selected':''}>Hanging Foreman</option>
-            <option value="taping_foreman"   ${u.role==='taping_foreman'?'selected':''}>Taping Foreman</option>
-            <option value="pickup_foreman"   ${u.role==='pickup_foreman'?'selected':''}>Pick-Up Foreman</option>
+            <option value="foreman"            ${u.role==='foreman'?'selected':''}>Foreman</option>
+            <option value="pickup_foreman"     ${u.role==='pickup_foreman'?'selected':''}>Pick-Up Foreman</option>
             <option value="project_manager"    ${u.role==='project_manager'?'selected':''}>Project Manager</option>
             <option value="vp_operations"      ${u.role==='vp_operations'?'selected':''}>Vice President of Operations</option>
             <option value="operations_manager" ${u.role==='operations_manager'?'selected':''}>Operations Manager</option>
-            <option value="accounting"          ${u.role==='accounting'?'selected':''}>Accounting</option>
+            <option value="accounting"         ${u.role==='accounting'?'selected':''}>Accounting</option>
             <option value="estimating_manager" ${u.role==='estimating_manager'?'selected':''}>Estimating Manager</option>
             <option value="admin"              ${u.role==='admin'?'selected':''}>Admin</option>
           </select>
