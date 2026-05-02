@@ -1008,7 +1008,10 @@
           <th>Status</th>
           <th>Photos</th>
           <th>COR #</th>
-          <th>Budget Used</th>
+          <th class="co-mgmt-col">Internal Amount</th>
+          <th>Foreman Amount</th>
+          <th>PTD</th>
+          <th>Remaining</th>
           <th>Action</th>
         </tr>
       </thead>
@@ -7422,32 +7425,36 @@ function renderCODashboard() {
 
   let totalBudget = 0, totalPtd = 0;
   const rows = corbs.map(corb => {
-    const ptd = computeCorPaid(corb);
-    const rem = corb.amount - ptd;
-    totalBudget += corb.amount;
+    const ptd  = computeCorPaid(corb);
+    const fAmt = corbForemanAmount(corb);
+    const rem  = fAmt - ptd;
+    totalBudget += fAmt;
     totalPtd    += ptd;
     const co  = cos.find(c => c.id === corb.changeOrderId);
-    const pct = corb.amount > 0 ? Math.min(100, ptd / corb.amount * 100) : 0;
-    return { corb, ptd, rem, co, pct };
+    const pct = fAmt > 0 ? Math.min(100, ptd / fAmt * 100) : 0;
+    return { corb, ptd, rem, co, pct, fAmt };
   });
   const totalRem   = totalBudget - totalPtd;
   const remColor   = totalRem < 0 ? 'var(--red)' : totalRem === 0 ? 'var(--yellow)' : 'var(--green)';
 
+  const showInternal = !isForeman();
   const tableRows = rows.length > 0
-    ? rows.map(({ corb, ptd, rem, co }) => {
+    ? rows.map(({ corb, ptd, rem, co, fAmt }) => {
+        const iAmt2     = corbInternalAmount(corb);
         const remColor2 = rem < 0 ? '#ef4444' : rem === 0 ? '#c9a84c' : '#22c55e';
         const statusBadge = co ? coStatusBadge(co.status) : '—';
         return `<tr style="border-top:1px solid var(--border);">
           <td style="padding:8px 10px;font-weight:700;font-size:.83rem;">${eh(corb.corNumber)}</td>
           <td style="padding:8px 10px;font-size:.83rem;">${eh(corb.description)}</td>
           <td style="padding:8px 10px;font-size:.83rem;font-family:monospace;">${eh(corb.laborCode)}</td>
-          <td style="padding:8px 10px;text-align:right;font-size:.83rem;">${fm(corb.amount)}</td>
+          ${showInternal ? `<td style="padding:8px 10px;text-align:right;font-size:.83rem;color:var(--muted);">${fm(iAmt2)}</td>` : ''}
+          <td style="padding:8px 10px;text-align:right;font-size:.83rem;">${fm(fAmt)}</td>
           <td style="padding:8px 10px;text-align:right;font-size:.83rem;color:#1a56db;font-weight:600;">${fm(ptd)}</td>
           <td style="padding:8px 10px;text-align:right;font-size:.83rem;font-weight:700;color:${remColor2};">${rem < 0 ? '-' : ''}${fm(Math.abs(rem))}</td>
           <td style="padding:8px 10px;text-align:center;">${statusBadge}</td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--muted);">No approved COR budgets for this job yet.</td></tr>`;
+    : `<tr><td colspan="${showInternal ? 8 : 7}" style="padding:24px;text-align:center;color:var(--muted);">No approved COR budgets for this job yet.</td></tr>`;
 
   const thStyle = 'padding:8px 10px;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);background:var(--surface2);';
   // Admin tip: prompt to re-approve paysheets so PTD syncs (only shown when there are COR budgets)
@@ -7483,7 +7490,8 @@ function renderCODashboard() {
           <th style="${thStyle}text-align:left;">COR #</th>
           <th style="${thStyle}text-align:left;">Description</th>
           <th style="${thStyle}text-align:left;">Labor Code</th>
-          <th style="${thStyle}text-align:right;">Budget</th>
+          ${showInternal ? `<th style="${thStyle}text-align:right;">Internal Amt</th>` : ''}
+          <th style="${thStyle}text-align:right;">Foreman Budget</th>
           <th style="${thStyle}text-align:right;">Spent (PTD)</th>
           <th style="${thStyle}text-align:right;">Remaining</th>
           <th style="${thStyle}text-align:center;">Status</th>
@@ -7505,20 +7513,24 @@ function renderCOLog() {
   if (filterJob)    list = list.filter(c => c.jobId === filterJob);
 
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="padding:32px;text-align:center;color:var(--muted);">No change orders found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" style="padding:32px;text-align:center;color:var(--muted);">No change orders found.</td></tr>`;
     return;
   }
 
   tbody.innerHTML = list.map(co => {
-    const corb = (_cache.corbudgets || []).find(b => b.changeOrderId === co.id);
-    const paid = corb ? computeCorPaid(corb) : 0;
-    const budgetUsed = corb ? (() => {
-      const pct = corb.amount > 0 ? Math.min(100, Math.round(paid / corb.amount * 100)) : 0;
-      return `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
-        <div class="co-progress-bar-wrap"><div class="co-progress-bar" style="width:${pct}%"></div></div>
-        <span style="font-size:.78rem;">${fm(paid)} / ${fm(corb.amount)}</span>
-      </div>`;
-    })() : '—';
+    const corb     = (_cache.corbudgets || []).find(b => b.changeOrderId === co.id);
+    const paid     = corb ? computeCorPaid(corb) : 0;
+    const fAmt     = corb ? corbForemanAmount(corb) : 0;
+    const iAmt     = corb ? corbInternalAmount(corb) : 0;
+    const rem      = fAmt - paid;
+    const remColor = rem < 0 ? '#ef4444' : rem === 0 ? '#c9a84c' : '#22c55e';
+    const pct      = fAmt > 0 ? Math.min(100, Math.round(paid / fAmt * 100)) : 0;
+    const ptdCell  = corb
+      ? `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+          <div class="co-progress-bar-wrap"><div class="co-progress-bar" style="width:${pct}%"></div></div>
+          <span style="font-size:.78rem;">${fm(paid)}</span>
+        </div>`
+      : '—';
     const dateStr    = co.submittedAt ? new Date(co.submittedAt).toLocaleDateString() : '—';
     const photoCount = (co.photoUrls || []).length;
     return `<tr>
@@ -7529,10 +7541,15 @@ function renderCOLog() {
       <td>${coStatusBadge(co.status)}</td>
       <td style="text-align:center;">${photoCount > 0 ? `📷 ${photoCount}` : '—'}</td>
       <td>${co.corNumber ? `<strong>${eh(co.corNumber)}</strong>` : '—'}</td>
-      <td>${budgetUsed}</td>
+      <td class="co-mgmt-col" style="text-align:right;font-size:.82rem;">${corb ? fm(iAmt) : '—'}</td>
+      <td style="text-align:right;font-size:.82rem;">${corb ? fm(fAmt) : '—'}</td>
+      <td style="text-align:right;">${ptdCell}</td>
+      <td style="text-align:right;font-weight:700;font-size:.82rem;color:${remColor};">${corb ? (rem < 0 ? '-' : '') + fm(Math.abs(rem)) : '—'}</td>
       <td><button class="btn-sm" onclick="coOpenDetail('${ea(co.id)}')">View</button></td>
     </tr>`;
   }).join('');
+  // Show/hide internal amount column based on role (foreman cannot see management-only data)
+  document.querySelectorAll('.co-mgmt-col').forEach(el => { el.style.display = isForeman() ? 'none' : ''; });
 }
 
 function coOpenSubmitModal() {
@@ -7666,17 +7683,28 @@ function coOpenDetail(coId) {
       ).join('')}</div>`
     : '<span style="color:var(--muted);font-size:.83rem;">No photos attached.</span>';
 
-  const budgetSection = corb ? `
+  const budgetSection = corb ? (() => {
+    const fAmt = corbForemanAmount(corb);
+    const iAmt = corbInternalAmount(corb);
+    const ptd  = computeCorPaid(corb);
+    const rem  = fAmt - ptd;
+    const rc   = rem < 0 ? 'color:var(--red)' : rem === 0 ? 'color:var(--yellow)' : 'color:var(--green)';
+    const internalRow = !isForeman()
+      ? `<div><span style="color:var(--muted);">Internal COR Amount</span><br/><strong style="color:var(--accent);">${fm(iAmt)}</strong></div>`
+      : '';
+    return `
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;">
       <div style="font-size:.78rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">COR Budget</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:.83rem;">
         <div><span style="color:var(--muted);">Labor Code</span><br/><strong>${eh(corb.laborCode)}</strong></div>
-        <div><span style="color:var(--muted);">Budget</span><br/><strong>${fm(corb.amount)}</strong></div>
-        <div><span style="color:var(--muted);">Used</span><br/><strong>${fm(computeCorPaid(corb))}</strong></div>
-        <div><span style="color:var(--muted);">Remaining</span><br/><strong>${fm(corb.amount - computeCorPaid(corb))}</strong></div>
+        ${internalRow}
+        <div><span style="color:var(--muted);">Foreman Budget</span><br/><strong>${fm(fAmt)}</strong></div>
+        <div><span style="color:var(--muted);">Used (PTD)</span><br/><strong>${fm(ptd)}</strong></div>
+        <div><span style="color:var(--muted);">Remaining</span><br/><strong style="${rc}">${rem < 0 ? '-' : ''}${fm(Math.abs(rem))}</strong></div>
         <div style="grid-column:span 2"><span style="color:var(--muted);">Description</span><br/><strong>${eh(corb.description)}</strong></div>
       </div>
-    </div>` : '';
+    </div>`;
+  })() : '';
 
   let vpSection = '';
   if (canReviewCO() && co.status !== 'declined' && co.status !== 'approved') {
@@ -7802,7 +7830,8 @@ function coOpenBudgetModal(coId) {
     `<option value="${eh(lc.code)}">${lc.code} – ${eh(lc.description)}</option>`
   ).join('');
   document.getElementById('co-budget-desc').value = '';
-  document.getElementById('co-budget-amount').value = '';
+  document.getElementById('co-budget-internal-amount').value = '';
+  document.getElementById('co-budget-foreman-amount').value = '';
   document.getElementById('co-budget-progress').style.display = 'none';
   document.getElementById('co-budget-confirm-btn').disabled = false;
   document.getElementById('co-budget-modal').classList.add('open');
@@ -7815,12 +7844,14 @@ function coCloseBudgetModal() {
 async function coConfirmBudget() {
   if (!canReviewCO()) return;
   const coId = _coPendingCoId;
-  const lc   = document.getElementById('co-budget-lc').value;
-  const desc = document.getElementById('co-budget-desc').value.trim();
-  const amt  = parseFloat(document.getElementById('co-budget-amount').value);
-  if (!lc)              { alert('Please select a labor code.'); return; }
-  if (!desc)            { alert('Please enter a description.'); return; }
-  if (isNaN(amt)||amt<0){ alert('Please enter a valid budget amount.'); return; }
+  const lc          = document.getElementById('co-budget-lc').value;
+  const desc        = document.getElementById('co-budget-desc').value.trim();
+  const internalAmt = parseFloat(document.getElementById('co-budget-internal-amount').value);
+  const foremanAmt  = parseFloat(document.getElementById('co-budget-foreman-amount').value);
+  if (!lc)                               { alert('Please select a labor code.'); return; }
+  if (!desc)                             { alert('Please enter a description.'); return; }
+  if (isNaN(internalAmt) || internalAmt < 0) { alert('Please enter a valid Internal COR Amount.'); return; }
+  if (isNaN(foremanAmt)  || foremanAmt  < 0) { alert('Please enter a valid Foreman Tracking Amount.'); return; }
 
   const btn  = document.getElementById('co-budget-confirm-btn');
   const prog = document.getElementById('co-budget-progress');
@@ -7835,7 +7866,10 @@ async function coConfirmBudget() {
     const corbId = `corb_${Date.now()}`;
     const corb = {
       id: corbId, jobId: co.jobId, changeOrderId: coId,
-      corNumber: _coPendingCorNumber, laborCode: lc, description: desc, amount: amt,
+      corNumber: _coPendingCorNumber, laborCode: lc, description: desc,
+      amount: foremanAmt,                   // amount always equals foremanTrackingAmount for all tracking code
+      foremanTrackingAmount: foremanAmt,
+      internalCorAmount: internalAmt,
       createdAt: new Date().toISOString(), createdByEmail: _currentUser.email, createdByUid: _currentUser.uid,
     };
     await db.collection('corbudgets').doc(corbId).set(corb);
@@ -7856,6 +7890,18 @@ async function coConfirmBudget() {
     btn.disabled = false;
     prog.style.display = 'none';
   }
+}
+
+// ── COR dual-amount helpers ──────────────────────────────────────────────────
+// foremanTrackingAmount: drives field workflow (DI, paysheet, PTD, remaining)
+// internalCorAmount: management-only reference; legacy records fall back to amount
+function corbForemanAmount(corb) {
+  if (!corb) return 0;
+  return corb.foremanTrackingAmount != null ? Number(corb.foremanTrackingAmount) : Number(corb.amount || 0);
+}
+function corbInternalAmount(corb) {
+  if (!corb) return 0;
+  return corb.internalCorAmount != null ? Number(corb.internalCorAmount) : corbForemanAmount(corb);
 }
 
 function computeCorPaid(corb) {
@@ -7974,8 +8020,14 @@ function computeCorPaid(corb) {
         <input id="co-budget-desc" class="fi" style="width:100%;" placeholder="e.g. Change Order framing work" />
       </div>
       <div>
-        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Budget Amount ($) <span style="color:#ef4444;">*</span></label>
-        <input id="co-budget-amount" class="fi" type="number" min="0" step="0.01" style="width:100%;" placeholder="0.00" />
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Internal COR Amount ($) <span style="color:#ef4444;">*</span></label>
+        <input id="co-budget-internal-amount" class="fi" type="number" min="0" step="0.01" style="width:100%;" placeholder="0.00" />
+        <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Management-only amount. Not shown to Foreman.</div>
+      </div>
+      <div>
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Foreman Tracking Amount ($) <span style="color:#ef4444;">*</span></label>
+        <input id="co-budget-foreman-amount" class="fi" type="number" min="0" step="0.01" style="width:100%;" placeholder="0.00" />
+        <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Shown to Foreman and used for Daily Input / Weekly Summary tracking.</div>
       </div>
       <div id="co-budget-progress" style="display:none;padding:10px;background:var(--surface2);border-radius:8px;font-size:.83rem;color:var(--muted);text-align:center;">Creating budget…</div>
     </div>
