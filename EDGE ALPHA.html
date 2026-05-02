@@ -2905,7 +2905,7 @@ let _diLockCheckInterval = null;
 function _diEmptyCrewData() {
   const d = {};
   for (let c=1; c<=DI_CREWS; c++) {
-    d[c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:''}));
+    d[c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:''}));
   }
   return d;
 }
@@ -3155,6 +3155,27 @@ function diAreaBlur(input, crew, rowIdx) {
 
 function diAreaPick(area, crew, rowIdx) {
   _diData[crew][rowIdx].area = area;
+  // For COR areas: auto-populate costCode and store IDs so submissions are traceable
+  // by corBudgetId rather than fragile area-key string matching.
+  if (area && area.startsWith('[COR]')) {
+    const jobName = document.getElementById('ps-job-select').value || '';
+    const corb = (_cache.corbudgets || []).find(b =>
+      `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
+    );
+    if (corb) {
+      _diData[crew][rowIdx].costCode    = corb.laborCode;
+      _diData[crew][rowIdx].corBudgetId = corb.id;
+      _diData[crew][rowIdx].corNumber   = corb.corNumber;
+    } else {
+      _diData[crew][rowIdx].costCode    = '';
+      _diData[crew][rowIdx].corBudgetId = '';
+      _diData[crew][rowIdx].corNumber   = '';
+    }
+  } else {
+    // Non-COR area: clear any stale COR linkage
+    _diData[crew][rowIdx].corBudgetId = '';
+    _diData[crew][rowIdx].corNumber   = '';
+  }
   // Close all open area dropdowns
   document.querySelectorAll('.di-area-dropdown').forEach(d => d.style.display = 'none');
   diRenderCrewTable();
@@ -3664,9 +3685,12 @@ async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
       const key = (e.area||'') + '|||' + (e.costCode||'');
       if (!e.area || seenAC.has(key) || ri >= PS_MAIN_ROWS) return;
       seenAC.add(key);
-      state.rows[ri].area     = e.area        || '';
-      state.rows[ri].costCode = e.costCode    || '';
-      state.rows[ri].notes    = e.description || '';
+      state.rows[ri].area        = e.area        || '';
+      state.rows[ri].costCode    = e.costCode    || '';
+      state.rows[ri].notes       = e.description || '';
+      // Carry COR linkage IDs forward so psApproveSync can match by ID, not string
+      state.rows[ri].corBudgetId = e.corBudgetId || '';
+      state.rows[ri].corNumber   = e.corNumber   || '';
       ri++;
     });
   });
@@ -3991,8 +4015,9 @@ const PS_MAIN_ROWS  = PS_MAX_ROWS;
 
 // Per-crew paysheet state
 let _psActiveCrew = 1;
-// Main table row: area/labor-code tracking
-function _psEmptyRow()    { return { area:'', costCode:'', ptd:'', weAmount:'', pctComplete:'' }; }
+/// Main table row: area/labor-code tracking
+// corBudgetId + corNumber are set for COR rows so psApproveSync can use ID-based lookup
+function _psEmptyRow()    { return { area:'', costCode:'', ptd:'', weAmount:'', pctComplete:'', corBudgetId:'', corNumber:'' }; }
 // Crew splits row: employee distribution + signature
 function _psEmptySplit()  { return { empNum:'', employee:'', pctSplit:'', amount:'', signatureData:'' }; }
 // Initial state uses one page of empty rows
@@ -4353,9 +4378,13 @@ function _psTableThead(isDaily) {
 function _psRenderRow(row, i, jobName, areas, isDaily) {
   // ── COR row: pull budget & PTD live from corbudget, not CSV ──
   const isCOR = !!(row.area && row.area.startsWith('[COR]'));
-  const corb  = isCOR
-    ? ((_cache.corbudgets || []).find(b =>
-        `[COR] ${b.corNumber} \u2013 ${b.description}` === row.area && b.jobId === jobName))
+  // Prefer corBudgetId (strongest — immune to description drift across CORs sharing labor code)
+  const corb = isCOR
+    ? ((row.corBudgetId
+        ? (_cache.corbudgets || []).find(b => b.id === row.corBudgetId && b.jobId === jobName)
+        : null)
+       || (_cache.corbudgets || []).find(b =>
+           `[COR] ${b.corNumber} \u2013 ${b.description}` === row.area && b.jobId === jobName))
     : null;
 
   let budgetVal = 0;
@@ -4621,15 +4650,19 @@ function psAddRows(n) {
 
 function psAreaChanged(i, area) {
   _ps().rows[i].area = area;
-  // Auto-set labor code for COR areas (locked to the COR budget's labor code)
   if (area && area.startsWith('[COR]')) {
     const jobName = document.getElementById('ps-job-select').value || '';
     const corb = (_cache.corbudgets || []).find(b =>
       `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
     );
-    _ps().rows[i].costCode = corb ? corb.laborCode : '';
+    // Lock labor code and store IDs — this is the authoritative corBudgetId for the row
+    _ps().rows[i].costCode    = corb ? corb.laborCode : '';
+    _ps().rows[i].corBudgetId = corb ? corb.id        : '';
+    _ps().rows[i].corNumber   = corb ? corb.corNumber  : '';
   } else {
-    _ps().rows[i].costCode = '';
+    _ps().rows[i].costCode    = '';
+    _ps().rows[i].corBudgetId = '';
+    _ps().rows[i].corNumber   = '';
   }
   psRenderMainTable();
 }
@@ -4797,36 +4830,47 @@ async function psApproveSync(doc) {
     crew.rows.forEach((row, i) => {
       const area     = (row.area     || '').trim();
       const weAmount = parseFloat(row.weAmount) || 0;
+      const isCOR    = area.startsWith('[COR]');
 
-      // For COR rows, fall back to the corbudget's labor code if costCode is missing
-      // (handles paysheets saved before the auto-populate fix)
+      // ── Resolve labor code ────────────────────────────────────────────────
       let costCode = (row.costCode || '').trim();
-      if (!costCode && area.startsWith('[COR]')) {
-        const corb0 = (_cache.corbudgets || []).find(b =>
-          `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
-        );
+      if (!costCode && isCOR) {
+        // Fallback for paysheet rows saved before the auto-populate fix:
+        // try ID first, then area-key string match
+        const corb0 = (row.corBudgetId
+          ? (_cache.corbudgets || []).find(b => b.id === row.corBudgetId)
+          : null)
+          || (_cache.corbudgets || []).find(b =>
+              `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName);
         if (corb0) costCode = corb0.laborCode;
       }
 
       // Skip blank or zero rows
       if (!area || !costCode || weAmount <= 0) return;
 
-      // Resolve description from PAYROLL_GROUPS (same source as manual entry dropdown)
+      // Resolve description from PAYROLL_GROUPS
       const groupCode   = getCodeGroup(costCode);
       const groupEntry  = PAYROLL_GROUPS.find(g => g.code === groupCode);
       const description = groupEntry ? groupEntry.description : costCode;
 
-      // ── COR row: use corbudget amount + tag for exact PTD matching ──
-      const isCOR = area.startsWith('[COR]');
-      let budget = 0;
+      // ── COR row: prefer ID-based corb lookup; fall back to area-key string ──
+      let budget      = 0;
       let corBudgetId = null;
+      let corNumber   = null;
+      let changeOrderId = null;
       if (isCOR) {
-        const corb = (_cache.corbudgets || []).find(b =>
-          `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
-        );
-        if (corb) { budget = corb.amount; corBudgetId = corb.id; }
+        const corb = (row.corBudgetId
+          ? (_cache.corbudgets || []).find(b => b.id === row.corBudgetId && b.jobId === jobName)
+          : null)
+          || (_cache.corbudgets || []).find(b =>
+              `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName);
+        if (corb) {
+          budget        = corb.amount;
+          corBudgetId   = corb.id;
+          corNumber     = corb.corNumber     || null;
+          changeOrderId = corb.changeOrderId || null;
+        }
       } else {
-        // Look up budget — same logic as addPayrollEntry
         budget = _prLookupBudget(jobName, area, costCode, description);
       }
 
@@ -4835,19 +4879,24 @@ async function psApproveSync(doc) {
 
       const entry = {
         id:          entryId,
-        date:        weekEnding,   // week-ending date as the payroll date
+        date:        weekEnding,
         time:        timeStr,
         csvFile:     jobName,
         area,
         costCode,
         description,
-        amount:      budget,       // corb.amount for COR rows; CSV budget for standard rows
-        price:       weAmount,     // W/E Earned → Amount Paid
+        amount:      budget,   // corb.amount for COR rows; CSV budget for standard rows
+        price:       weAmount, // W/E Earned → Amount Paid
         source:      'paysheet_sync',
         sourceDocId: docId,
         weekEnding,
       };
-      if (isCOR && corBudgetId) { entry.isCOR = true; entry.corBudgetId = corBudgetId; }
+      if (isCOR && corBudgetId) {
+        entry.isCOR         = true;
+        entry.corBudgetId   = corBudgetId;
+        entry.corNumber     = corNumber;
+        entry.changeOrderId = changeOrderId;
+      }
       newEntries.push(entry);
     });
   }
@@ -7810,26 +7859,42 @@ async function coConfirmBudget() {
 
 function computeCorPaid(corb) {
   if (!corb) return 0;
+  // Area key is used as a fallback for DI entries that pre-date corBudgetId storage.
+  // The primary match for payroll entries is the unique corBudgetId — this is what
+  // prevents two CORs sharing the same labor code from cross-contaminating PTD.
   const areaKey = `[COR] ${corb.corNumber} \u2013 ${corb.description}`;
   let paid = 0;
-  // Sum from daily input submissions (entries logged via the Daily Input tab)
+
+  // ── Daily input submissions ──────────────────────────────────────────────
+  // DI entries don't carry a monetary price directly — their price field is 0 or absent.
+  // This loop is kept for future compatibility if DI prices are ever added, and to
+  // correctly sum any DI submissions that do have a price (e.g. from legacy data).
+  // Match by corBudgetId when present (strongest); fall back to area+laborCode string.
   if (typeof _diLogDocs !== 'undefined') {
     _diLogDocs.forEach(doc => {
       if (doc.job !== corb.jobId) return;
       (doc.crews || []).forEach(crew => {
         (crew.entries || []).forEach(e => {
-          if (e.area === areaKey && e.costCode === corb.laborCode) paid += Number(e.price || 0);
+          const price = Number(e.price || 0);
+          if (!price) return; // DI entries currently have no price — skip to avoid false 0-sums
+          const matched = e.corBudgetId
+            ? e.corBudgetId === corb.id
+            : (e.area === areaKey && e.costCode === corb.laborCode);
+          if (matched) paid += price;
         });
       });
     });
   }
-  // Sum from approved weekly paysheet W/E Earned amounts (synced by psApproveSync,
-  // tagged isCOR + corBudgetId so we match the exact COR budget — not just labor code)
+
+  // ── Approved weekly paysheet W/E Earned (synced by psApproveSync) ────────
+  // Match exclusively by corBudgetId — never by laborCode alone.
+  // This is the main PTD data source and must be isolated per-COR.
   (_cache.payroll || []).forEach(e => {
     if (e.isCOR && e.corBudgetId === corb.id && e.source === 'paysheet_sync') {
       paid += Number(e.price || 0);
     }
   });
+
   return paid;
 }
 
