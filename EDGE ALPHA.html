@@ -4336,9 +4336,10 @@ function psGetAreas(jobName) {
   const f = getSavedCSVFiles().find(x => x.name === jobName);
   const csvAreas = f ? [...new Set(f.rows.map(r => r.area).filter(a => a && a !== '—'))] : [];
   const prAreas  = getPayrollEntries().filter(e => e.csvFile === jobName).map(e => e.area).filter(Boolean);
-  // Approved COR areas prepended so they appear at top of any area dropdown
+  // Approved COR areas prepended so they appear at top of any area dropdown.
+  // Paid-out CORs (remainingBalance <= 0) are excluded from active selection.
   const corAreas = (_cache.corbudgets || [])
-    .filter(b => b.jobId === jobName)
+    .filter(b => b.jobId === jobName && (b.amount - computeCorPaid(b)) > 0)
     .map(b => `[COR] ${b.corNumber} \u2013 ${b.description}`);
   const regular = [...new Set([...csvAreas, ...prAreas])].sort();
   return [...new Set([...corAreas, ...regular])];
