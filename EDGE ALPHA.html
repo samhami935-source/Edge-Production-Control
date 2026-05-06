@@ -2884,7 +2884,7 @@ document.getElementById('admin-modal').addEventListener('click', e => { if(e.tar
 // ═══════════════════════════
 //  DAILY INPUT
 // ═══════════════════════════
-const DI_CREWS    = 10;
+let _diCrewCount  = 10;  // grows when user adds crews
 const DI_EMP_ROWS = 10;
 let _diActiveCrew = 1;
 // _diData[crew][row] = {employee, area, costCode, description} — always points to the current job's data
@@ -2907,7 +2907,7 @@ let _diLockCheckInterval = null;
 
 function _diEmptyCrewData() {
   const d = {};
-  for (let c=1; c<=DI_CREWS; c++) {
+  for (let c=1; c<=_diCrewCount; c++) {
     d[c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:''}));
   }
   return d;
@@ -2915,19 +2915,26 @@ function _diEmptyCrewData() {
 
 function diSwitchJobData(jobName) {
   if (!jobName) {
-    // No job selected — use blank data
+    _diCrewCount = 10;
     const blank = _diEmptyCrewData();
-    for (let c=1; c<=DI_CREWS; c++) _diData[c] = blank[c];
+    for (let c=1; c<=_diCrewCount; c++) _diData[c] = blank[c];
     return;
   }
   if (!_diAllData[jobName]) _diAllData[jobName] = _diEmptyCrewData();
-  for (let c=1; c<=DI_CREWS; c++) _diData[c] = _diAllData[jobName][c];
+  // Restore this job's crew count (may have been expanded previously)
+  _diCrewCount = _diAllData[jobName].__crewCount || 10;
+  for (let c=1; c<=_diCrewCount; c++) {
+    if (!_diAllData[jobName][c]) {
+      _diAllData[jobName][c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:''}));
+    }
+    _diData[c] = _diAllData[jobName][c];
+  }
 }
 
 // Initialize with empty data for no job selected
 (function() {
   const blank = _diEmptyCrewData();
-  for (let c=1; c<=DI_CREWS; c++) _diData[c] = blank[c];
+  for (let c=1; c<=_diCrewCount; c++) _diData[c] = blank[c];
 })();
 
 function diInit() {
@@ -2974,7 +2981,7 @@ function diJobChanged() {
 function diRenderCrewTabs() {
   const wrap = document.getElementById('di-crew-tabs');
   wrap.innerHTML = '';
-  for (let c=1; c<=DI_CREWS; c++) {
+  for (let c=1; c<=_diCrewCount; c++) {
     const btn = document.createElement('button');
     btn.className = 'btn-sm' + (c === _diActiveCrew ? '' : ' btn-outline');
     btn.style.cssText = c === _diActiveCrew
@@ -2984,6 +2991,28 @@ function diRenderCrewTabs() {
     btn.onclick = () => { _diActiveCrew = c; diRenderCrewTabs(); diRenderCrewTable(); };
     wrap.appendChild(btn);
   }
+  // + Add Crew button
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn-sm btn-outline';
+  addBtn.style.cssText = 'border-color:var(--accent);color:var(--accent);font-weight:700;';
+  addBtn.textContent = '+ Add Crew';
+  addBtn.onclick = diAddCrew;
+  wrap.appendChild(addBtn);
+}
+
+function diAddCrew() {
+  _diCrewCount++;
+  const jobName = document.getElementById('ps-job-select').value;
+  const newRows = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:''}));
+  _diData[_diCrewCount] = newRows;
+  if (jobName) {
+    if (!_diAllData[jobName]) _diAllData[jobName] = {};
+    _diAllData[jobName][_diCrewCount] = newRows;
+    _diAllData[jobName].__crewCount = _diCrewCount;
+  }
+  _diActiveCrew = _diCrewCount;
+  diRenderCrewTabs();
+  diRenderCrewTable();
 }
 
 function diRenderCrewTable() {
@@ -3220,7 +3249,7 @@ function diPrint() {
   table{width:100%;border-collapse:collapse;margin-bottom:20px;}
   th,td{border:1px solid #000;padding:5px 8px;text-align:left;}
   thead{background:#c9a84c;}h2{margin:0 0 4px;}p{margin:0 0 16px;font-size:12px;color:#555;}</style></head><body>`;
-  for (let c = 1; c <= DI_CREWS; c++) {
+  for (let c = 1; c <= _diCrewCount; c++) {
     const rows = (_diData[c] || []).filter(r => r.employee.trim() || r.area.trim());
     if (!rows.length) continue;
     html += `<h2>Crew ${c}</h2><p>Date: ${date} &nbsp;|&nbsp; Job: ${jobName}</p>
@@ -3242,7 +3271,7 @@ function diExportExcel() {
   const jobName = document.getElementById('ps-job-select').value || '—';
   const wb      = XLSX.utils.book_new();
   let   added   = 0;
-  for (let c = 1; c <= DI_CREWS; c++) {
+  for (let c = 1; c <= _diCrewCount; c++) {
     const rows = (_diData[c] || []).filter(r => r.employee.trim() || r.area.trim());
     if (!rows.length) continue;
     const data = [
@@ -3324,7 +3353,7 @@ async function diConfirmSaveDraft() {
 
   // Deep-copy crew data so Firestore gets a clean serializable snapshot
   const crewData = {};
-  for (let c = 1; c <= DI_CREWS; c++) {
+  for (let c = 1; c <= _diCrewCount; c++) {
     crewData[String(c)] = (_diData[c] || []).map(r => ({
       employee:    r.employee    || '',
       area:        r.area        || '',
@@ -3390,7 +3419,7 @@ function diAutoSaveDraft() {
     const jobName = document.getElementById('ps-job-select').value;
     if (!docId) return;
     const autoCrewData = {};
-    for (let c = 1; c <= DI_CREWS; c++) {
+    for (let c = 1; c <= _diCrewCount; c++) {
       autoCrewData[String(c)] = (_diData[c] || []).map(r => ({
         employee:    r.employee    || '',
         area:        r.area        || '',
@@ -3526,8 +3555,12 @@ async function diLoadDraftById(docId) {
     // Store draft data into the per-job store then switch to it (overwrites blank data onJobChanged just set)
     const jobName = d.job || '';
     if (jobName) {
-      _diAllData[jobName] = {};
-      for (let c = 1; c <= DI_CREWS; c++) {
+      // Detect how many crews were saved (may be more than 10)
+      const savedCrewNums = Object.keys(d.data || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
+      const savedMax = savedCrewNums.length ? Math.max(...savedCrewNums) : 10;
+      _diCrewCount = Math.max(10, savedMax);
+      _diAllData[jobName] = { __crewCount: _diCrewCount };
+      for (let c = 1; c <= _diCrewCount; c++) {
         const crewRows = d.data && (d.data[String(c)] || d.data[c]);
         _diAllData[jobName][c] = Array.isArray(crewRows) && crewRows.length
           ? crewRows.map(r => ({
@@ -3618,7 +3651,7 @@ async function submitDailyInput() {
 
   // Build payload — include rows with an employee name OR an area filled in
   const crews = [];
-  for (let c=1; c<=DI_CREWS; c++) {
+  for (let c=1; c<=_diCrewCount; c++) {
     const entries = _diData[c].filter(r => r.employee.trim() || r.area.trim());
     if (entries.length) crews.push({ crewNum: c, entries });
   }
@@ -3917,7 +3950,7 @@ function psAutoFillFromDaily() {
   const jobName = document.getElementById('ps-job-select').value;
   if (!jobName) { alert('Please select a job using the "Active Job" selector at the top.'); return; }
 
-  for (let c = 1; c <= DI_CREWS; c++) {
+  for (let c = 1; c <= _diCrewCount; c++) {
     const diRows = (_diData[c] || []).filter(r => r.employee.trim());
     if (!diRows.length) continue;
     const state = _psState[c];
