@@ -3010,6 +3010,8 @@ function diAddCrew() {
     _diAllData[jobName][_diCrewCount] = newRows;
     _diAllData[jobName].__crewCount = _diCrewCount;
   }
+  // Keep paysheet state in sync
+  _psEnsureCrew(_diCrewCount);
   _diActiveCrew = _diCrewCount;
   diRenderCrewTabs();
   diRenderCrewTable();
@@ -3687,6 +3689,8 @@ async function submitDailyInput() {
 
 // Fill paysheet from a just-submitted daily input and auto-save into the matching week-ending folder.
 async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
+  // Ensure all submitted crews have paysheet state
+  crews.forEach(c => { if (c.crewNum) _psEnsureCrew(c.crewNum); });
   crews.forEach(c => {
     const crewNum = c.crewNum;
     if (!_psState[crewNum]) return;
@@ -3734,6 +3738,7 @@ async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
   // Switch paysheet view to the active daily input crew
   _psSaveHeaderFields();
   _psActiveCrew = _diActiveCrew;
+  _psEnsureCrew(_psActiveCrew); // guarantee state exists for active crew
   psRenderCrewTabs();
   psLoadHeaderFields();
   psRenderMainTable();
@@ -3908,8 +3913,12 @@ function diViewSubmission(id) {
         _cache.paysheets.push(ps);
       } catch(e) { alert('Load failed: ' + e.message); return; }
     }
-    // Load the daily paysheet into the paysheet view
-    for (let c = 1; c <= PS_NUM_CREWS; c++) {
+    // Load the daily paysheet into the paysheet view — detect how many crews were saved
+    const savedCrewKeys = Object.keys(ps.crews || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
+    const savedMax = savedCrewKeys.length ? Math.max(...savedCrewKeys) : 10;
+    const loadMax = Math.max(_psCrewCount, savedMax);
+    for (let c = 1; c <= loadMax; c++) { _psEnsureCrew(c); }
+    for (let c = 1; c <= loadMax; c++) {
       const saved = ps.crews && ps.crews[String(c)];
       if (saved) {
         _psState[c].header = Object.assign(_psEmptyHeader(), saved.header || {});
@@ -3953,6 +3962,7 @@ function psAutoFillFromDaily() {
   for (let c = 1; c <= _diCrewCount; c++) {
     const diRows = (_diData[c] || []).filter(r => r.employee.trim());
     if (!diRows.length) continue;
+    _psEnsureCrew(c);
     const state = _psState[c];
     const hasData = state.rows.some(r => r.area || r.costCode) || state.splits.some(s => s.employee);
     if (hasData) continue;
@@ -3999,7 +4009,8 @@ function diAutoFillFromLog(id) {
     // Fill each crew's paysheet from the submission
     (r.crews || []).forEach(c => {
       const crewNum = c.crewNum;
-      if (!crewNum || !_psState[crewNum]) return;
+      if (!crewNum) return;
+      _psEnsureCrew(crewNum);
       const state = _psState[crewNum];
       const entries = (c.entries || []).filter(e => e.employee);
 
@@ -4045,7 +4056,7 @@ function diAutoFillFromLog(id) {
 const PS_PAGE_ROWS  = 15;   // rows displayed per page
 const PS_MAX_ROWS   = 60;   // max rows stored (4 pages)
 const PS_SPLIT_ROWS = 10;
-const PS_NUM_CREWS  = 10;
+let _psCrewCount  = 10;  // grows when DI adds crews
 // Alias kept so old references to PS_MAIN_ROWS still resolve
 const PS_MAIN_ROWS  = PS_MAX_ROWS;
 
@@ -4068,8 +4079,15 @@ function _psPadRows(rows) {
 }
 function _psEmptyHeader() { return {project:'', foreman:'', crewName:'', weekEnding:'', foremanSig:''}; }
 let _psState = {};
-for (let c=1; c<=PS_NUM_CREWS; c++) {
+for (let c=1; c<=_psCrewCount; c++) {
   _psState[c] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
+}
+// Lazily initialize any crew slot that doesn't exist yet
+function _psEnsureCrew(c) {
+  if (!_psState[c]) {
+    _psState[c] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
+  }
+  if (c > _psCrewCount) _psCrewCount = c;
 }
 
 // 'daily' = auto-generated from daily input (no % split/amount/sign)
@@ -4127,7 +4145,7 @@ function psRenderCrewTabs() {
   const wrap = document.getElementById('ps-crew-tab-bar');
   if (!wrap) return;
   wrap.innerHTML = '';
-  for (let c=1; c<=PS_NUM_CREWS; c++) {
+  for (let c=1; c<=_psCrewCount; c++) {
     const hasData = _psState[c].rows.some(r => r.area || r.costCode || r.weAmount) ||
                     _psState[c].splits.some(s => s.employee || s.empNum);
     const isActive = c === _psActiveCrew;
@@ -4860,7 +4878,7 @@ async function psApproveSync(doc) {
   // ── Build payroll entries — one per valid paysheet row ──
   const newEntries = [];
 
-  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+  for (let c = 1; c <= _psCrewCount; c++) {
     const crew = doc.crews && doc.crews[String(c)];
     if (!crew || !crew.rows) continue;
 
@@ -4999,7 +5017,7 @@ function psExportPDF() {
   }
 
   const crewSections = [];
-  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+  for (let c = 1; c <= _psCrewCount; c++) {
     const state = _psState[c];
     if (!state) continue;
     const rows   = state.rows.filter(r => r.area || r.costCode || r.weAmount || r.ptd);
@@ -5165,7 +5183,7 @@ async function psExportFolderZip(weekEnding) {
     const typeLabel = isDaily ? 'Daily Paysheet' : 'Weekly Summary Paysheet';
     const parts     = [];
 
-    for (let c = 1; c <= PS_NUM_CREWS; c++) {
+    for (let c = 1; c <= _psCrewCount; c++) {
       const crewData = doc.crews && (doc.crews[String(c)] || doc.crews[c]);
       if (!crewData) continue;
       const rows   = (crewData.rows   || []).filter(r => r.area || r.costCode || r.weAmount || r.ptd);
@@ -5495,7 +5513,7 @@ async function psSaveWeeklySummaryForeman() {
   // Build merged crews — carry over all management-compiled fields;
   // only replace the foreman-editable fields from current _psState.
   const mergedCrews = {};
-  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+  for (let c = 1; c <= _psCrewCount; c++) {
     const existing = existingDoc.crews && existingDoc.crews[String(c)];
     if (!existing) continue; // do not create new crew records
     const state = _psState[c];
@@ -5566,7 +5584,7 @@ async function savePaysheetToCloud(silent, opts = {}) {
   const isDailyType = type === 'daily';
 
   let weekEnd = '';
-  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+  for (let c = 1; c <= _psCrewCount; c++) {
     if (_psState[c].header.weekEnding) { weekEnd = _psState[c].header.weekEnding; break; }
   }
   if (!weekEnd && isDailyType) weekEnd = opts.dailyDate || '';
@@ -5580,7 +5598,7 @@ async function savePaysheetToCloud(silent, opts = {}) {
     : (jobName + '_' + weekEnd).replace(/[^\w-]/g, '_');
 
   const crews = {};
-  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+  for (let c = 1; c <= _psCrewCount; c++) {
     crews[String(c)] = {
       header: Object.assign({}, _psState[c].header),
       rows:   _psState[c].rows.map(r => Object.assign({}, r)),
@@ -5781,7 +5799,7 @@ async function psCompileWeeklyPaysheet(weekEnding) {
   for (const [job, sheets] of Object.entries(byJob)) {
     const crews = {};
 
-    for (let c = 1; c <= PS_NUM_CREWS; c++) {
+    for (let c = 1; c <= _psCrewCount; c++) {
       const areaMap = {};   // key: area|||code → aggregated row
       const empSet  = new Set();
       let   header  = _psEmptyHeader();
@@ -6397,7 +6415,7 @@ async function psSaveToFolder(weekEnding) {
     return;
   }
   // Always force the selected folder's week ending onto all crew headers
-  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+  for (let c = 1; c <= _psCrewCount; c++) {
     _psState[c].header.weekEnding = weekEnding;
   }
   document.getElementById('ps-save-dest-modal').classList.remove('open');
@@ -6484,7 +6502,7 @@ async function loadPaysheetFromCloud(docId) {
   }
 
   // Restore all crews
-  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+  for (let c = 1; c <= _psCrewCount; c++) {
     const saved = doc.crews && doc.crews[String(c)];
     if (saved) {
       _psState[c].header = Object.assign(_psEmptyHeader(), saved.header || {});
@@ -6584,7 +6602,7 @@ function exportPaysheetExcel() {
   const wb      = XLSX.utils.book_new();
   let   sheetsAdded = 0;
 
-  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+  for (let c = 1; c <= _psCrewCount; c++) {
     const state = _psState[c];
     const hasData = state.rows.some(r => r.area || r.costCode || r.weAmount) ||
                     state.splits.some(s => s.employee || s.empNum);
@@ -6895,7 +6913,7 @@ async function diSaveJobMeta(jobName, meta) {
 function diAutoFillPaysheetHeader(jobName) {
   const meta = diGetJobMeta(jobName);
   // Fill all crew state headers from job meta (don't overwrite if meta is empty)
-  for (let c = 1; c <= PS_NUM_CREWS; c++) {
+  for (let c = 1; c <= _psCrewCount; c++) {
     const h = _psState[c].header;
     if (meta.project)  h.project  = meta.project;
     if (meta.foreman)  h.foreman  = meta.foreman;
@@ -7148,7 +7166,7 @@ function acctGetData(weekEnding, jobFilter) {
     // Aggregate employees within this single job
     const empMap = new Map(); // lowercase name → { displayName, amount }
     docs.forEach(doc => {
-      for (let c = 1; c <= PS_NUM_CREWS; c++) {
+      for (let c = 1; c <= _psCrewCount; c++) {
         const crew = doc.crews && doc.crews[String(c)];
         if (!crew) continue;
         (crew.splits || []).forEach(s => {
