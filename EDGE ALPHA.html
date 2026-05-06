@@ -3697,7 +3697,8 @@ async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
     const state = _psState[crewNum];
 
     // Reset rows and splits fresh for this day's snapshot
-    state.rows              = _psEmptyRows();
+    // Use PS_MAX_ROWS (60) so ri can reach up to PS_MAIN_ROWS-1 without going out of bounds
+    state.rows              = Array.from({length: PS_MAX_ROWS}, () => _psEmptyRow());
     state.splits            = _psEmptySplits();
     state.header.foremanSig = ''; // never carry a sig from a previous paysheet
 
@@ -4080,12 +4081,12 @@ function _psPadRows(rows) {
 function _psEmptyHeader() { return {project:'', foreman:'', crewName:'', weekEnding:'', foremanSig:''}; }
 let _psState = {};
 for (let c=1; c<=_psCrewCount; c++) {
-  _psState[c] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
+  _psState[c] = { rows: Array.from({length: PS_MAX_ROWS}, () => _psEmptyRow()), splits: _psEmptySplits(), header: _psEmptyHeader() };
 }
 // Lazily initialize any crew slot that doesn't exist yet
 function _psEnsureCrew(c) {
   if (!_psState[c]) {
-    _psState[c] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
+    _psState[c] = { rows: Array.from({length: PS_MAX_ROWS}, () => _psEmptyRow()), splits: _psEmptySplits(), header: _psEmptyHeader() };
   }
   if (c > _psCrewCount) _psCrewCount = c;
 }
