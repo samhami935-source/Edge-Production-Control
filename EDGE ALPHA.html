@@ -852,7 +852,10 @@
 
         <!-- Daily Log -->
         <div style="margin-top:24px;">
-          <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Submission Log</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Submission Log</div>
+            <button class="btn btn-outline" style="font-size:.78rem;padding:4px 12px;white-space:nowrap;" onclick="diExportAllAsPDF()">⬇ Export All as ZIP</button>
+          </div>
           <div id="di-log-wrap" style="overflow-x:auto;position:relative;">
             <table style="min-width:700px;width:100%;border-collapse:collapse;font-size:.82rem;">
               <thead>
@@ -3859,6 +3862,7 @@ function diRenderLogRows() {
       <td style="padding:8px 10px;white-space:nowrap;">
         <button class="btn-sm" onclick="diViewSubmission('${r.id}')">View</button>
         <button class="btn-sm" style="margin-left:4px;border-color:var(--accent);color:var(--accent);" onclick="diAutoFillFromLog('${r.id}')">→ Paysheet</button>
+        <button class="btn-sm" style="margin-left:4px;" onclick="diExportOnePDF('${r.id}')" title="Export this paysheet as PDF">⬇ PDF</button>
         ${isAdmin()?`<button class="btn-sm btn-danger" style="margin-left:4px;" onclick="diDeleteSubmission('${r.id}')">Delete</button>`:''}
       </td>
     </tr>`;
@@ -5154,23 +5158,16 @@ function psExportPDF() {
   setTimeout(() => { win.focus(); win.print(); }, 600);
 }
 
-async function psExportFolderZip(weekEnding) {
-  // Enforce folder lock — foremen without an active grant cannot export locked folders
-  if (!_canViewFolder(weekEnding)) {
-    alert('This folder is locked. Request access from your manager to export it.');
-    return;
-  }
+// ─── Shared paysheet PDF export engine ───────────────────────────────────────
+// Takes an array of paysheet docs and a filename label, renders each to a PDF
+// page and bundles them all into a downloaded ZIP.
+async function _psExportSheetsAsZip(sheets, zipLabel) {
   if (typeof JSZip === 'undefined') { alert('ZIP library not loaded — please wait a moment and try again.'); return; }
   if (typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined') {
     alert('PDF library not loaded — please wait a moment and try again.'); return;
   }
+  if (!sheets.length) { alert('No paysheets found to export.'); return; }
 
-  const activeJob  = (document.getElementById('ps-job-select') || {}).value || '';
-  const sheets     = (_cache.paysheets || []).filter(p => p.weekEnding === weekEnding && (!activeJob || p.job === activeJob));
-  if (!sheets.length) { alert('No paysheets found for this folder.'); return; }
-
-  const zip        = new JSZip();
-  const label      = _fmtWeekDate(weekEnding);
   const savedFiles = getSavedCSVFiles();
   const { jsPDF }  = window.jspdf;
 
@@ -5188,13 +5185,11 @@ async function psExportFolderZip(weekEnding) {
     return g ? costCode + ' \u2013 ' + g.description : costCode;
   }
 
-  // Build the inner HTML content (no <html>/<body> wrapper — rendered into a hidden div)
   function buildCrewHTML(doc) {
     const jobName   = doc.job || '';
     const isDaily   = doc.type === 'daily';
     const typeLabel = isDaily ? 'Daily Paysheet' : 'Weekly Summary Paysheet';
     const parts     = [];
-
     const docCrewKeys = Object.keys(doc.crews || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
     const docMaxCrew  = docCrewKeys.length ? Math.max(...docCrewKeys) : _psCrewCount;
     for (let c = 1; c <= docMaxCrew; c++) {
@@ -5203,16 +5198,14 @@ async function psExportFolderZip(weekEnding) {
       const rows   = (crewData.rows   || []).filter(r => r.area || r.costCode || r.weAmount || r.ptd);
       const splits = (crewData.splits || []).filter(s => s.employee);
       if (!rows.length && !splits.length) continue;
-
       const h = crewData.header || {};
+      const weekEndingLabel = h.weekEnding || doc.weekEnding || '';
       const foremanSigHtml = (!isDaily && h.foremanSig)
         ? `<img src="${h.foremanSig}" style="height:36px;max-width:180px;vertical-align:middle;" />`
         : (!isDaily ? '<div style="border-bottom:1px solid #000;width:180px;height:32px;display:inline-block;"></div>' : '');
-
       const theadCols = isDaily
         ? `<th>Area Worked</th><th>Labor Code</th><th>Notes</th><th style="width:88px;">Budget</th><th style="width:88px;">PTD</th><th style="width:105px;">Remaining</th>`
         : `<th>Area Worked</th><th>Labor Code</th><th>Notes</th><th style="width:88px;">Budget</th><th style="width:88px;">PTD</th><th style="width:105px;">Remaining</th><th style="width:100px;">W/E Amount</th><th style="width:72px;">% Complete</th>`;
-
       const trows = rows.map(row => {
         let budgetVal = 0;
         if (jobName && row.area && row.costCode) budgetVal = psGetAreaCodeData(jobName, row.area, row.costCode).budget || 0;
@@ -5229,7 +5222,6 @@ async function psExportFolderZip(weekEnding) {
         const extra = `<td style="text-align:right;font-weight:700;">${fmtMoney(weAmt)}</td><td style="text-align:center;font-weight:700;color:${pctColor};">${pctDisp}</td>`;
         return `<tr>${base}${isDaily ? '' : extra}</tr>`;
       }).join('');
-
       let splitsHtml = '';
       if (splits.length) {
         const colCount = isDaily ? 2 : 5;
@@ -5248,14 +5240,12 @@ async function psExportFolderZip(weekEnding) {
           </tr>`).join('')}</tbody>
         </table>`;
       }
-
       const totalHtml = !isDaily
         ? `<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:12px;"><strong style="text-decoration:underline;">Total Amount:</strong><div style="border:1px solid #000;padding:5px 16px;min-width:120px;text-align:right;font-weight:700;">${fmtMoney(rows.reduce((s,r)=>s+(parseFloat(r.weAmount)||0),0))}</div></div>` : '';
-
       parts.push(`
         <div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:10px;border-bottom:2px solid #000;padding-bottom:6px;">D9 Edge \u2014 ${typeLabel}${jobName ? ' \u2014 ' + jobName : ''}</div>
         <table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:12px;">
-          <tr><td style="padding:2px 4px;"><strong>Project:</strong> ${h.project||''}</td><td style="padding:2px 4px;"><strong>Week Ending:</strong> ${h.weekEnding||weekEnding}</td>${!isDaily ? `<td style="padding:2px 4px;text-align:right;"><strong>Foreman Signature:</strong> ${foremanSigHtml}</td>` : '<td></td>'}</tr>
+          <tr><td style="padding:2px 4px;"><strong>Project:</strong> ${h.project||''}</td><td style="padding:2px 4px;"><strong>Week Ending:</strong> ${weekEndingLabel}</td>${!isDaily ? `<td style="padding:2px 4px;text-align:right;"><strong>Foreman Signature:</strong> ${foremanSigHtml}</td>` : '<td></td>'}</tr>
           <tr><td style="padding:2px 4px;"><strong>Foreman:</strong> ${h.foreman||''}</td><td style="padding:2px 4px;"><strong>Crew:</strong> ${h.crewName||('Crew '+c)}</td><td></td></tr>
         </table>
         <table style="width:100%;border-collapse:collapse;border:1px solid #000;">
@@ -5267,55 +5257,44 @@ async function psExportFolderZip(weekEnding) {
     return parts;
   }
 
-  // Hidden off-screen render container (fixed width = landscape A4-ish at 96dpi)
-  const renderDiv = document.createElement('div');
+  const zip        = new JSZip();
+  const renderDiv  = document.createElement('div');
   renderDiv.style.cssText = 'position:fixed;left:-9999px;top:0;width:1100px;padding:24px;background:#fff;color:#000;font-family:Arial,sans-serif;font-size:12px;box-sizing:border-box;';
   document.body.appendChild(renderDiv);
 
   let fileCount = 0;
   let skipCount = 0;
-  const _usedNames = {}; // track duplicate basenames → append counter for uniqueness
+  const _usedNames = {};
   try {
     for (const doc of sheets) {
       const parts = buildCrewHTML(doc);
       if (!parts.length) continue;
-
-      const isDaily   = doc.type === 'daily';
-      const dateStr   = (isDaily ? doc.date : doc.weekEnding || weekEnding);
-      const jobSlug   = (doc.job || 'NoJob').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
-      // Include save time (HH-MM) so same-date daily paysheets produce distinct filenames
-      const saveTime  = doc.savedAt
+      const isDaily  = doc.type === 'daily';
+      const dateStr  = isDaily ? doc.date : doc.weekEnding || '';
+      const jobSlug  = (doc.job || 'NoJob').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
+      const saveTime = doc.savedAt
         ? new Date(doc.savedAt).toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:false}).replace(':', '-')
         : '';
-      const rawBase   = isDaily
+      const rawBase  = isDaily
         ? `Daily_${jobSlug}_${dateStr}${saveTime ? '_' + saveTime : ''}`
         : `Weekly_Summary_${jobSlug}_${dateStr}`;
-      // If two paysheets still share a name (same minute), append a counter
       _usedNames[rawBase] = (_usedNames[rawBase] || 0) + 1;
-      const baseName  = _usedNames[rawBase] > 1 ? rawBase + '_' + _usedNames[rawBase] : rawBase;
-
-      // Wrap each individual paysheet so one failure doesn't abort the rest
+      const baseName = _usedNames[rawBase] > 1 ? rawBase + '_' + _usedNames[rawBase] : rawBase;
       try {
-        // Each crew section → one PDF page; all crew sections → one PDF file per paysheet doc
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
         let firstPage = true;
-
         for (const part of parts) {
           renderDiv.innerHTML = `<div style="width:1052px;">${part}</div>`;
-          // Let images render
           await new Promise(r => setTimeout(r, 150));
-          const canvas = await html2canvas(renderDiv, { scale: 1.5, useCORS: true, allowTaint: true, logging: false });
+          const canvas  = await html2canvas(renderDiv, { scale: 1.5, useCORS: true, allowTaint: true, logging: false });
           const imgData = canvas.toDataURL('image/jpeg', 0.92);
           const pdfW = pdf.internal.pageSize.getWidth();
           const pdfH = pdf.internal.pageSize.getHeight();
           const ratio = Math.min(pdfW / (canvas.width / 1.5), pdfH / (canvas.height / 1.5));
-          const drawW = (canvas.width / 1.5) * ratio;
-          const drawH = (canvas.height / 1.5) * ratio;
           if (!firstPage) pdf.addPage();
-          pdf.addImage(imgData, 'JPEG', 0, 0, drawW, drawH);
+          pdf.addImage(imgData, 'JPEG', 0, 0, (canvas.width / 1.5) * ratio, (canvas.height / 1.5) * ratio);
           firstPage = false;
         }
-
         zip.file(baseName + '.pdf', pdf.output('arraybuffer'));
         fileCount++;
       } catch (docErr) {
@@ -5330,16 +5309,67 @@ async function psExportFolderZip(weekEnding) {
   if (!fileCount) { alert('No exportable paysheet data found.'); return; }
   if (skipCount) console.warn(`Export: ${skipCount} paysheet(s) skipped due to errors.`);
 
-  const zipLabel = label.replace(/[^a-zA-Z0-9 _,]/g, '').trim().replace(/\s+/g, '_');
-  const content  = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+  const safeLabel = zipLabel.replace(/[^a-zA-Z0-9 _,]/g, '').trim().replace(/\s+/g, '_');
+  const content   = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
   const url = URL.createObjectURL(content);
   const a   = document.createElement('a');
   a.href    = url;
-  a.download = zipLabel + '.zip';
+  a.download = safeLabel + '.zip';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+async function psExportFolderZip(weekEnding) {
+  if (!_canViewFolder(weekEnding)) {
+    alert('This folder is locked. Request access from your manager to export it.');
+    return;
+  }
+  const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
+  const sheets    = (_cache.paysheets || []).filter(p => p.weekEnding === weekEnding && (!activeJob || p.job === activeJob));
+  if (!sheets.length) { alert('No paysheets found for this folder.'); return; }
+  await _psExportSheetsAsZip(sheets, _fmtWeekDate(weekEnding));
+}
+
+// ─── Submission Log PDF export ─────────────────────────────────────────────
+function _diPaysheetForSub(sub) {
+  // Find the saved paysheet for a submission: exact submissionId match first, then job+date fallback
+  return (_cache.paysheets || []).find(p => p.submissionId === sub.id)
+      || (_cache.paysheets || []).find(p => p.job === sub.job && p.date === sub.date);
+}
+
+async function diExportAllAsPDF() {
+  // Export paysheets for all currently-visible submission log rows
+  const jobName  = document.getElementById('ps-job-select').value;
+  let docs = _diLogDocs;
+  if (jobName) docs = docs.filter(r => r.job === jobName);
+  if (isForeman() && _currentUser) docs = docs.filter(r => r.submittedBy === _currentUser.email);
+  if (_diLogFilters.date)     docs = docs.filter(r => r.date === _diLogFilters.date);
+  if (_diLogFilters.job)      docs = docs.filter(r => r.job === _diLogFilters.job);
+  if (_diLogFilters.crew)     docs = docs.filter(r => (r.crews||[]).some(c => `Crew ${c.crewNum}` === _diLogFilters.crew));
+  if (_diLogFilters.foreman)  docs = docs.filter(r => r.submittedBy === _diLogFilters.foreman);
+  if (_diLogFilters.empCount) { const countEmps = r => new Set((r.crews||[]).flatMap(c=>(c.entries||[]).map(e=>(e.employee||'').trim()).filter(Boolean))).size; docs = docs.filter(r => String(countEmps(r)) === _diLogFilters.empCount); }
+
+  // Collect unique paysheets (dedup by paysheet id)
+  const seen = new Set();
+  const sheets = [];
+  for (const sub of docs) {
+    const ps = _diPaysheetForSub(sub);
+    if (ps && !seen.has(ps.id)) { seen.add(ps.id); sheets.push(ps); }
+  }
+  if (!sheets.length) { alert('No saved paysheets found for the visible submissions.\n\nUse → Paysheet on each row to create paysheets first.'); return; }
+  const label = jobName ? jobName.replace(/\.[^.]+$/, '') : 'Submission_Log';
+  await _psExportSheetsAsZip(sheets, label);
+}
+
+async function diExportOnePDF(subId) {
+  const sub = _diLogDocs.find(r => r.id === subId);
+  if (!sub) { alert('Submission not found.'); return; }
+  const ps = _diPaysheetForSub(sub);
+  if (!ps) { alert('No saved paysheet found for this submission.\n\nUse → Paysheet to create one first.'); return; }
+  const label = `Daily_${(sub.job||'NoJob').replace(/[^a-zA-Z0-9 _-]/g,'').trim().replace(/\s+/g,'_')}_${sub.date||''}`;
+  await _psExportSheetsAsZip([ps], label);
 }
 
 function psCancelEdit() {
