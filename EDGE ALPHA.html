@@ -5184,7 +5184,9 @@ async function psExportFolderZip(weekEnding) {
     const typeLabel = isDaily ? 'Daily Paysheet' : 'Weekly Summary Paysheet';
     const parts     = [];
 
-    for (let c = 1; c <= _psCrewCount; c++) {
+    const docCrewKeys = Object.keys(doc.crews || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
+    const docMaxCrew  = docCrewKeys.length ? Math.max(...docCrewKeys) : _psCrewCount;
+    for (let c = 1; c <= docMaxCrew; c++) {
       const crewData = doc.crews && (doc.crews[String(c)] || doc.crews[c]);
       if (!crewData) continue;
       const rows   = (crewData.rows   || []).filter(r => r.area || r.costCode || r.weAmount || r.ptd);
