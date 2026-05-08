@@ -5165,15 +5165,27 @@ function psExportPDF() {
 // ─── Shared paysheet PDF export engine ───────────────────────────────────────
 // Takes an array of paysheet docs and a filename label, renders each to a PDF
 // page and bundles them all into a downloaded ZIP.
+// Uses jsPDF native drawing — no html2canvas, no per-page delays.
 async function _psExportSheetsAsZip(sheets, zipLabel) {
   if (typeof JSZip === 'undefined') { alert('ZIP library not loaded — please wait a moment and try again.'); return; }
-  if (typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined') {
-    alert('PDF library not loaded — please wait a moment and try again.'); return;
-  }
+  if (typeof window.jspdf === 'undefined') { alert('PDF library not loaded — please wait a moment and try again.'); return; }
   if (!sheets.length) { alert('No paysheets found to export.'); return; }
+
+  _diShowToast('Generating ZIP…');
+  await new Promise(r => setTimeout(r, 30)); // let toast render
 
   const savedFiles = getSavedCSVFiles();
   const { jsPDF }  = window.jspdf;
+
+  // Page geometry (landscape letter, points)
+  const PW = 792, PH = 612, M = 28, CW = PW - M * 2;
+  const GOLD  = [201, 168, 76];
+  const LGREY = [217, 217, 217];
+  const TC_BLK   = [0, 0, 0];
+  const TC_BLUE  = [26, 86, 219];
+  const TC_RED   = [185, 28, 28];
+  const TC_GREY  = [110, 110, 110];
+  const TC_AMBER = [140, 90, 0];
 
   function fmtMoney(n) {
     return '$' + (n||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -5189,140 +5201,251 @@ async function _psExportSheetsAsZip(sheets, zipLabel) {
     return g ? costCode + ' \u2013 ' + g.description : costCode;
   }
 
-  function buildCrewHTML(doc) {
+  // Draw one table row. cols:[{w,align?}] cells:string[] opts:{bg?,bold?,textColors?}
+  // Returns new Y after the row.
+  function drawRow(pdf, y, cols, cells, opts) {
+    opts = opts || {};
+    const FS = 8, PAD = 3, LH = FS * 1.38;
+    pdf.setFontSize(FS);
+    // Calculate row height from wrapped line counts
+    let maxLines = 1;
+    cells.forEach((txt, i) => {
+      const lines = pdf.splitTextToSize(String(txt ?? ''), cols[i].w - PAD * 2);
+      maxLines = Math.max(maxLines, lines.length);
+    });
+    const rowH = Math.max(13, maxLines * LH + PAD * 2);
+    // Background
+    if (opts.bg) { pdf.setFillColor(...opts.bg); pdf.rect(M, y, CW, rowH, 'F'); }
+    // Outer border
+    pdf.setDrawColor(0); pdf.setLineWidth(0.4); pdf.rect(M, y, CW, rowH, 'S');
+    // Cells
+    let x = M;
+    cells.forEach((txt, i) => {
+      if (i > 0) { pdf.setLineWidth(0.25); pdf.line(x, y, x, y + rowH); }
+      const tc = (opts.textColors && opts.textColors[i]) ? opts.textColors[i] : TC_BLK;
+      pdf.setTextColor(...tc);
+      pdf.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+      pdf.setFontSize(FS);
+      const colW = cols[i].w;
+      const align = cols[i].align || 'left';
+      const lines = pdf.splitTextToSize(String(txt ?? ''), colW - PAD * 2);
+      lines.forEach((line, li) => {
+        const tx = align === 'right' ? x + colW - PAD : x + PAD;
+        pdf.text(line, tx, y + PAD + FS + li * LH, { align });
+      });
+      x += colW;
+    });
+    return y + rowH;
+  }
+
+  // Render one paysheet document onto the given jsPDF instance.
+  function buildDocPDF(doc, pdf) {
     const jobName   = doc.job || '';
     const isDaily   = doc.type === 'daily';
     const typeLabel = isDaily ? 'Daily Paysheet' : 'Weekly Summary Paysheet';
-    const parts     = [];
     const docCrewKeys = Object.keys(doc.crews || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
-    const docMaxCrew  = docCrewKeys.length ? Math.max(...docCrewKeys) : _psCrewCount;
+    const docMaxCrew  = docCrewKeys.length ? Math.max(...docCrewKeys) : 1;
+
+    // Column definitions
+    const mainCols = isDaily
+      ? [ {w:CW*.28,align:'left'}, {w:CW*.28,align:'left'}, {w:CW*.16,align:'left'},
+          {w:CW*.09,align:'right'}, {w:CW*.09,align:'right'}, {w:CW*.10,align:'right'} ]
+      : [ {w:CW*.20,align:'left'}, {w:CW*.20,align:'left'}, {w:CW*.12,align:'left'},
+          {w:CW*.09,align:'right'}, {w:CW*.09,align:'right'}, {w:CW*.09,align:'right'},
+          {w:CW*.12,align:'right'}, {w:CW*.09,align:'right'} ];
+    // Absorb any rounding error into last col
+    const colSum = mainCols.reduce((s,c) => s + c.w, 0);
+    mainCols[mainCols.length - 1].w += (CW - colSum);
+
+    const mainHdrs = isDaily
+      ? ['AREA WORKED','LABOR CODE','NOTES','BUDGET ($)','PTD ($)','REMAINING BUDGET']
+      : ['AREA WORKED','LABOR CODE','NOTES','BUDGET ($)','PTD ($)','REMAINING','W/E EARNED','% COMPLETE'];
+
+    let firstPage = true;
+
     for (let c = 1; c <= docMaxCrew; c++) {
       const crewData = doc.crews && (doc.crews[String(c)] || doc.crews[c]);
       if (!crewData) continue;
       const rows   = (crewData.rows   || []).filter(r => r.area || r.costCode || r.weAmount || r.ptd);
       const splits = (crewData.splits || []).filter(s => s.employee);
       if (!rows.length && !splits.length) continue;
+
+      if (!firstPage) pdf.addPage();
+      firstPage = false;
+
       const h = crewData.header || {};
-      const weekEndingLabel = h.weekEnding || doc.weekEnding || '';
-      const foremanSigHtml = (!isDaily && h.foremanSig)
-        ? `<img src="${h.foremanSig}" style="height:36px;max-width:180px;vertical-align:middle;" />`
-        : (!isDaily ? '<div style="border-bottom:1px solid #000;width:180px;height:32px;display:inline-block;"></div>' : '');
-      const theadCols = isDaily
-        ? `<th style="width:28%;word-break:break-word;">Area Worked</th><th style="width:28%;word-break:break-word;">Labor Code</th><th style="width:16%;">Notes</th><th style="width:9%;">Budget</th><th style="width:9%;">PTD</th><th style="width:10%;">Remaining</th>`
-        : `<th style="width:20%;word-break:break-word;">Area Worked</th><th style="width:20%;word-break:break-word;">Labor Code</th><th style="width:12%;">Notes</th><th style="width:9%;">Budget</th><th style="width:9%;">PTD</th><th style="width:9%;">Remaining</th><th style="width:12%;">W/E Amount</th><th style="width:9%;">% Complete</th>`;
-      const trows = rows.map(row => {
-        let budgetVal = 0;
-        if (jobName && row.area && row.costCode) budgetVal = psGetAreaCodeData(jobName, row.area, row.costCode).budget || 0;
-        const ptdVal   = parseFloat(row.ptd) || 0;
-        const weAmt    = parseFloat(row.weAmount) || 0;
-        const rem      = budgetVal - ptdVal;
-        const pct      = budgetVal > 0 ? ((ptdVal + weAmt) / budgetVal * 100) : 0;
-        const remColor = rem < 0 ? '#ef4444' : '#333';
-        const pctColor = pct > 100 ? '#ef4444' : pct >= 80 ? '#c9a84c' : '#333';
-        const budDisp  = budgetVal > 0 ? fmtMoney(budgetVal) : '';
-        const remDisp  = (budgetVal > 0 || ptdVal > 0) ? (rem < 0 ? '-' : '') + fmtMoney(Math.abs(rem)) : '';
-        const pctDisp  = budgetVal > 0 ? pct.toFixed(1) + '%' : '\u2014';
-        const base = `<td style="word-break:break-word;overflow-wrap:break-word;white-space:normal;">${row.area||''}</td><td style="word-break:break-word;overflow-wrap:break-word;white-space:normal;">${buildCodeLabel(row.area, row.costCode, jobName)}</td><td style="color:#555;font-style:italic;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;">${row.notes||''}</td><td style="text-align:right;">${budDisp}</td><td style="text-align:right;color:#1a56db;">${fmtMoney(ptdVal)}</td><td style="text-align:right;color:${remColor};">${remDisp}</td>`;
-        const extra = `<td style="text-align:right;font-weight:700;">${fmtMoney(weAmt)}</td><td style="text-align:center;font-weight:700;color:${pctColor};">${pctDisp}</td>`;
-        return `<tr>${base}${isDaily ? '' : extra}</tr>`;
-      }).join('');
-      let splitsHtml = '';
-      if (splits.length) {
-        const colCount = isDaily ? 2 : 5;
-        const splitCols = isDaily
-          ? `<th style="width:80px;">Employee #</th><th>Employee Name</th>`
-          : `<th style="width:80px;">Employee #</th><th>Employee Name</th><th style="width:80px;">% Split</th><th style="width:110px;">Amount</th><th style="width:150px;">Employee Initials</th>`;
-        splitsHtml = `<table style="width:100%;border-collapse:collapse;border:1px solid #000;margin-top:14px;">
-          <thead>
-            <tr style="background:#c9a84c;"><th colspan="${colCount}" style="padding:6px;text-align:center;font-size:11px;">${isDaily ? 'CREW \u2014 DAILY LOG' : 'CREW SPLITS'}</th></tr>
-            <tr style="background:#d9d9d9;font-size:11px;">${splitCols}</tr>
-          </thead>
-          <tbody>${splits.map(s => `<tr>
-            <td style="padding:5px 8px;text-align:center;">${s.empNum||'\u2014'}</td>
-            <td style="padding:5px 8px;">${s.employee||''}</td>
-            ${!isDaily ? `<td style="padding:5px 8px;text-align:center;">${s.pctSplit||''}</td><td style="padding:5px 8px;text-align:right;">${fmtMoney(parseFloat(s.amount||0))}</td><td style="padding:5px 8px;text-align:center;">${s.signatureData ? `<img src="${s.signatureData}" style="height:30px;max-width:130px;" />` : ''}</td>` : ''}
-          </tr>`).join('')}</tbody>
-        </table>`;
+      const weekEndLabel = h.weekEnding || doc.weekEnding || '';
+      let y = M;
+
+      // ── Title ──
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(12); pdf.setTextColor(...TC_BLK);
+      pdf.text(`D9 Edge \u2014 ${typeLabel}${jobName ? ' \u2014 ' + jobName : ''}`, PW/2, y+9, {align:'center'});
+      y += 16;
+      pdf.setLineWidth(1.5); pdf.setDrawColor(0); pdf.line(M, y, PW-M, y);
+      y += 8;
+
+      // ── Header fields ──
+      pdf.setFontSize(9);
+      const hy1 = y + 8, hy2 = y + 22;
+      pdf.setFont('helvetica','bold');   pdf.text('Project:',    M,       hy1);
+      pdf.setFont('helvetica','normal'); pdf.text(h.project||'', M+46,    hy1);
+      pdf.setFont('helvetica','bold');   pdf.text('Foreman:',    M,       hy2);
+      pdf.setFont('helvetica','normal'); pdf.text(h.foreman||'', M+46,    hy2);
+      pdf.setFont('helvetica','bold');   pdf.text('Week Ending:',M+240,   hy1);
+      pdf.setFont('helvetica','normal'); pdf.text(weekEndLabel,  M+306,   hy1);
+      pdf.setFont('helvetica','bold');   pdf.text('Crew:',       M+240,   hy2);
+      pdf.setFont('helvetica','normal'); pdf.text(h.crewName||(  'Crew '+c), M+265, hy2);
+      if (!isDaily) {
+        pdf.setFont('helvetica','bold'); pdf.text('Foreman Signature:', M+490, hy1);
+        if (h.foremanSig) {
+          try {
+            const fmt = h.foremanSig.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG';
+            pdf.addImage(h.foremanSig, fmt, M+490, hy2-10, 120, 20);
+          } catch(e) {
+            pdf.setLineWidth(0.5); pdf.line(M+490, hy2+4, M+640, hy2+4);
+          }
+        } else {
+          pdf.setLineWidth(0.5); pdf.line(M+490, hy2+4, M+640, hy2+4);
+        }
       }
-      const totalHtml = !isDaily
-        ? `<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:12px;"><strong style="text-decoration:underline;">Total Amount:</strong><div style="border:1px solid #000;padding:5px 16px;min-width:120px;text-align:right;font-weight:700;">${fmtMoney(rows.reduce((s,r)=>s+(parseFloat(r.weAmount)||0),0))}</div></div>` : '';
-      parts.push(`
-        <div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:10px;border-bottom:2px solid #000;padding-bottom:6px;">D9 Edge \u2014 ${typeLabel}${jobName ? ' \u2014 ' + jobName : ''}</div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:12px;">
-          <tr><td style="padding:2px 4px;"><strong>Project:</strong> ${h.project||''}</td><td style="padding:2px 4px;"><strong>Week Ending:</strong> ${weekEndingLabel}</td>${!isDaily ? `<td style="padding:2px 4px;text-align:right;"><strong>Foreman Signature:</strong> ${foremanSigHtml}</td>` : '<td></td>'}</tr>
-          <tr><td style="padding:2px 4px;"><strong>Foreman:</strong> ${h.foreman||''}</td><td style="padding:2px 4px;"><strong>Crew:</strong> ${h.crewName||('Crew '+c)}</td><td></td></tr>
-        </table>
-        <table style="width:100%;border-collapse:collapse;border:1px solid #000;table-layout:fixed;">
-          <thead><tr style="background:#c9a84c;font-size:11px;">${theadCols}</tr></thead>
-          <tbody>${trows}</tbody>
-        </table>
-        ${totalHtml}${splitsHtml}`);
+      y += 34;
+
+      // ── Main data table ──
+      y = drawRow(pdf, y, mainCols, mainHdrs, {bg:GOLD, bold:true});
+
+      for (const row of rows) {
+        if (y > PH - M - 36) {
+          pdf.addPage();
+          y = M;
+          y = drawRow(pdf, y, mainCols, mainHdrs, {bg:GOLD, bold:true});
+        }
+        // COR row: look up live budget & PTD
+        const isCOR = !!(row.area && row.area.startsWith('[COR]'));
+        const corb  = isCOR
+          ? ((row.corBudgetId
+               ? (_cache.corbudgets||[]).find(b => b.id===row.corBudgetId && b.jobId===jobName)
+               : null)
+             || (_cache.corbudgets||[]).find(b =>
+                  `[COR] ${b.corNumber} \u2013 ${b.description}` === row.area && b.jobId===jobName))
+          : null;
+
+        let budgetVal = 0;
+        if (isCOR && corb)               budgetVal = corb.amount;
+        else if (jobName && row.area && row.costCode)
+          budgetVal = psGetAreaCodeData(jobName, row.area, row.costCode).budget || 0;
+
+        const ptdVal  = (isCOR && corb) ? computeCorPaid(corb) : (parseFloat(row.ptd) || 0);
+        const weAmt   = parseFloat(row.weAmount) || 0;
+        const rem     = budgetVal - ptdVal;
+        const pct     = budgetVal > 0 ? ((ptdVal + weAmt) / budgetVal * 100) : 0;
+        const budDisp = budgetVal > 0 ? fmtMoney(budgetVal) : '';
+        const remDisp = (budgetVal > 0 || ptdVal > 0) ? fmtMoney(rem) : '';
+        const pctDisp = budgetVal > 0 ? pct.toFixed(1)+'%' : '\u2014';
+        const codeLabel = (isCOR && corb)
+          ? `${corb.laborCode} \u2013 ${corb.description}`
+          : buildCodeLabel(row.area, row.costCode, jobName);
+
+        const cells = isDaily
+          ? [row.area||'', codeLabel, row.notes||'', budDisp, fmtMoney(ptdVal), remDisp]
+          : [row.area||'', codeLabel, row.notes||'', budDisp, fmtMoney(ptdVal), remDisp, fmtMoney(weAmt), pctDisp];
+        const tcs = isDaily
+          ? [TC_BLK, TC_BLK, TC_GREY, TC_BLK, TC_BLUE, rem<0?TC_RED:TC_BLK]
+          : [TC_BLK, TC_BLK, TC_GREY, TC_BLK, TC_BLUE, rem<0?TC_RED:TC_BLK,
+             TC_BLK, pct>100?TC_RED:pct>=80?TC_AMBER:TC_BLK];
+
+        y = drawRow(pdf, y, mainCols, cells, {textColors:tcs});
+      }
+
+      // ── Total amount (weekly) ──
+      if (!isDaily) {
+        const total = rows.reduce((s,r) => s+(parseFloat(r.weAmount)||0), 0);
+        y += 8;
+        const boxW=130, boxH=14, boxX=PW-M-boxW;
+        pdf.setFont('helvetica','bold'); pdf.setFontSize(9); pdf.setTextColor(...TC_BLK);
+        pdf.text('Total Amount:', boxX-5, y+9, {align:'right'});
+        pdf.setLineWidth(0.5); pdf.rect(boxX, y, boxW, boxH, 'S');
+        pdf.text(fmtMoney(total), boxX+boxW-4, y+9, {align:'right'});
+        y += boxH + 10;
+      }
+
+      // ── Crew splits / Daily log ──
+      if (splits.length) {
+        y += 6;
+        if (y > PH - M - 56) { pdf.addPage(); y = M; }
+        const splitLabel = isDaily ? 'CREW \u2014 DAILY LOG' : 'CREW SPLITS';
+        const spCols = isDaily
+          ? [{w:65,align:'center'}, {w:CW-65,align:'left'}]
+          : [ {w:65,align:'center'}, {w:CW*.38,align:'left'},
+              {w:65,align:'center'}, {w:88,align:'right'},
+              {w:CW-65-CW*.38-65-88,align:'center'} ];
+        const spColSum = spCols.reduce((s,col)=>s+col.w,0);
+        spCols[spCols.length-1].w += (CW - spColSum);
+        const spHdrs = isDaily
+          ? ['EMPLOYEE #','EMPLOYEE NAME']
+          : ['EMPLOYEE #','EMPLOYEE NAME','% SPLIT','AMOUNT','INITIALS'];
+        // Title spanning full width
+        y = drawRow(pdf, y, [{w:CW,align:'center'}], [splitLabel], {bg:GOLD,bold:true});
+        y = drawRow(pdf, y, spCols, spHdrs, {bg:LGREY,bold:true});
+        for (const s of splits) {
+          if (y > PH-M-18) { pdf.addPage(); y=M; }
+          const sc = isDaily
+            ? [s.empNum||'\u2014', s.employee||'']
+            : [s.empNum||'\u2014', s.employee||'', s.pctSplit||'', fmtMoney(parseFloat(s.amount||0)), ''];
+          y = drawRow(pdf, y, spCols, sc, {});
+          // Overlay signature image in last cell for weekly
+          if (!isDaily && s.signatureData) {
+            const lastColX = M + spCols.slice(0,-1).reduce((s,col)=>s+col.w,0);
+            const lastColW = spCols[spCols.length-1].w;
+            try {
+              const fmt = s.signatureData.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG';
+              pdf.addImage(s.signatureData, fmt, lastColX+2, y-14, Math.min(lastColW-4,80), 12);
+            } catch(e) { /* skip */ }
+          }
+        }
+      }
     }
-    return parts;
   }
 
-  const zip        = new JSZip();
-  const renderDiv  = document.createElement('div');
-  renderDiv.style.cssText = 'position:fixed;left:-9999px;top:0;width:1100px;padding:24px;background:#fff;color:#000;font-family:Arial,sans-serif;font-size:12px;box-sizing:border-box;';
-  document.body.appendChild(renderDiv);
-
-  let fileCount = 0;
-  let skipCount = 0;
+  const zip = new JSZip();
   const _usedNames = {};
-  try {
-    for (const doc of sheets) {
-      const parts = buildCrewHTML(doc);
-      if (!parts.length) continue;
-      const isDaily  = doc.type === 'daily';
-      const dateStr  = isDaily ? doc.date : doc.weekEnding || '';
-      const jobSlug  = (doc.job || 'NoJob').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
-      const saveTime = doc.savedAt
-        ? new Date(doc.savedAt).toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:false}).replace(':', '-')
-        : '';
-      const rawBase  = isDaily
-        ? `Daily_${jobSlug}_${dateStr}${saveTime ? '_' + saveTime : ''}`
-        : `Weekly_Summary_${jobSlug}_${dateStr}`;
-      _usedNames[rawBase] = (_usedNames[rawBase] || 0) + 1;
-      const baseName = _usedNames[rawBase] > 1 ? rawBase + '_' + _usedNames[rawBase] : rawBase;
-      try {
-        const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
-        let firstPage = true;
-        for (const part of parts) {
-          renderDiv.innerHTML = `<div style="width:1052px;">${part}</div>`;
-          await new Promise(r => setTimeout(r, 150));
-          const canvas  = await html2canvas(renderDiv, { scale: 1.5, useCORS: true, allowTaint: true, logging: false });
-          const imgData = canvas.toDataURL('image/jpeg', 0.92);
-          const pdfW = pdf.internal.pageSize.getWidth();
-          const pdfH = pdf.internal.pageSize.getHeight();
-          const ratio = Math.min(pdfW / (canvas.width / 1.5), pdfH / (canvas.height / 1.5));
-          if (!firstPage) pdf.addPage();
-          pdf.addImage(imgData, 'JPEG', 0, 0, (canvas.width / 1.5) * ratio, (canvas.height / 1.5) * ratio);
-          firstPage = false;
-        }
-        zip.file(baseName + '.pdf', pdf.output('arraybuffer'));
-        fileCount++;
-      } catch (docErr) {
-        console.warn('Export skipped paysheet:', baseName, docErr);
-        skipCount++;
-      }
+  let fileCount = 0, skipCount = 0;
+
+  for (const doc of sheets) {
+    const docCrewKeys = Object.keys(doc.crews||{}).map(k=>parseInt(k)).filter(n=>!isNaN(n)&&n>=1);
+    if (!docCrewKeys.length) continue;
+    const isDaily  = doc.type === 'daily';
+    const dateStr  = isDaily ? doc.date : doc.weekEnding || '';
+    const jobSlug  = (doc.job||'NoJob').replace(/[^a-zA-Z0-9 _-]/g,'').trim().replace(/\s+/g,'_');
+    const saveTime = doc.savedAt
+      ? new Date(doc.savedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}).replace(':','-')
+      : '';
+    const rawBase  = isDaily
+      ? `Daily_${jobSlug}_${dateStr}${saveTime?'_'+saveTime:''}`
+      : `Weekly_Summary_${jobSlug}_${dateStr}`;
+    _usedNames[rawBase] = (_usedNames[rawBase]||0) + 1;
+    const baseName = _usedNames[rawBase] > 1 ? rawBase+'_'+_usedNames[rawBase] : rawBase;
+    try {
+      const pdf = new jsPDF({orientation:'landscape',unit:'pt',format:'letter'});
+      buildDocPDF(doc, pdf);
+      zip.file(baseName+'.pdf', pdf.output('arraybuffer'));
+      fileCount++;
+    } catch(docErr) {
+      console.warn('Export skipped paysheet:', baseName, docErr);
+      skipCount++;
     }
-  } finally {
-    document.body.removeChild(renderDiv);
   }
 
   if (!fileCount) { alert('No exportable paysheet data found.'); return; }
   if (skipCount) console.warn(`Export: ${skipCount} paysheet(s) skipped due to errors.`);
 
-  const safeLabel = zipLabel.replace(/[^a-zA-Z0-9 _,]/g, '').trim().replace(/\s+/g, '_');
-  const content   = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+  const safeLabel = zipLabel.replace(/[^a-zA-Z0-9 _,]/g,'').trim().replace(/\s+/g,'_');
+  const content   = await zip.generateAsync({type:'blob',compression:'DEFLATE'});
   const url = URL.createObjectURL(content);
   const a   = document.createElement('a');
-  a.href    = url;
-  a.download = safeLabel + '.zip';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  a.href = url; a.download = safeLabel+'.zip';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+  _diShowToast(`Exported ${fileCount} paysheet${fileCount!==1?'s':''}`);
 }
 
 async function psExportFolderZip(weekEnding) {
