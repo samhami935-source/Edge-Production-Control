@@ -4195,9 +4195,19 @@ function psRenderCrewTabs() {
         <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>`;
     }
   } else {
-    // Daily paysheet — Export PDF only
-    actWrap.innerHTML = `
-      <button class="btn btn-outline" style="white-space:nowrap;" onclick="psExportPDF()">⬇ Export PDF</button>`;
+    // Daily paysheet
+    if (_psEditMode) {
+      actWrap.innerHTML = `
+        <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="psFinishEdit()">💾 Save Edits</button>
+        <button class="btn btn-outline" style="white-space:nowrap;" onclick="psCancelEdit()">✕ Cancel</button>`;
+    } else {
+      const editBtn = canEdit()
+        ? `<button class="btn btn-outline" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);" onclick="psEnterEditMode()">✏️ Edit</button>`
+        : '';
+      actWrap.innerHTML = `
+        ${editBtn}
+        <button class="btn btn-outline" style="white-space:nowrap;" onclick="psExportPDF()">⬇ Export PDF</button>`;
+    }
   }
 }
 
@@ -4750,7 +4760,8 @@ async function psFinishEdit() {
   const savedDoc = await savePaysheetToCloud(false, {
     type: isDaily ? 'daily' : 'weekly',
     dailyDate: _ps().header.weekEnding || document.getElementById('di-date').value,
-    submissionId: _psSavePendingData?.submissionId || null
+    submissionId: _psSavePendingData?.submissionId || null,
+    docId: _psCurrentDocId || null   // preserve original doc ID when editing a loaded paysheet
   });
 
   // If this weekly paysheet was already approved, re-sync payroll entries
@@ -5613,11 +5624,14 @@ async function savePaysheetToCloud(silent, opts = {}) {
   if (!weekEnd) { if (!silent) alert('Please enter a Week Ending date in the paysheet header before saving.'); return; }
 
   // Daily: unique doc per submission (via submissionId); Weekly: one doc per job per weekEnding
-  const docId = isDailyType
-    ? (opts.submissionId
-        ? 'daily_' + opts.submissionId.replace(/[^\w-]/g, '_')
-        : `daily_${(jobName + '_' + (opts.dailyDate || weekEnd) + '_' + Date.now()).replace(/[^\w-]/g, '_')}`)
-    : (jobName + '_' + weekEnd).replace(/[^\w-]/g, '_');
+  // opts.docId overrides all derivation — used when editing an existing loaded paysheet
+  const docId = opts.docId
+    ? opts.docId
+    : isDailyType
+      ? (opts.submissionId
+          ? 'daily_' + opts.submissionId.replace(/[^\w-]/g, '_')
+          : `daily_${(jobName + '_' + (opts.dailyDate || weekEnd) + '_' + Date.now()).replace(/[^\w-]/g, '_')}`)
+      : (jobName + '_' + weekEnd).replace(/[^\w-]/g, '_');
 
   const crews = {};
   for (let c = 1; c <= _psCrewCount; c++) {
@@ -6523,8 +6537,13 @@ async function loadPaysheetFromCloud(docId) {
     return;
   }
 
-  // Restore all crews
-  for (let c = 1; c <= _psCrewCount; c++) {
+  // Restore all crews — derive max from the document itself so crews beyond
+  // the current _psCrewCount are always restored correctly
+  const _loadCrewKeys = Object.keys(doc.crews || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
+  const _loadMaxCrew  = _loadCrewKeys.length ? Math.max(..._loadCrewKeys) : _psCrewCount;
+  if (_loadMaxCrew > _psCrewCount) _psCrewCount = _loadMaxCrew;
+  for (let c = 1; c <= _loadMaxCrew; c++) {
+    _psEnsureCrew(c);
     const saved = doc.crews && doc.crews[String(c)];
     if (saved) {
       _psState[c].header = Object.assign(_psEmptyHeader(), saved.header || {});
