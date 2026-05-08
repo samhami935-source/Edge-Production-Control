@@ -5262,6 +5262,7 @@ async function psExportFolderZip(weekEnding) {
   document.body.appendChild(renderDiv);
 
   let fileCount = 0;
+  let skipCount = 0;
   try {
     for (const doc of sheets) {
       const parts = buildCrewHTML(doc);
@@ -5272,34 +5273,41 @@ async function psExportFolderZip(weekEnding) {
       const jobSlug  = (doc.job || 'NoJob').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
       const baseName = isDaily ? `Daily_${jobSlug}_${dateStr}` : `Weekly_Summary_${jobSlug}_${dateStr}`;
 
-      // Each crew section → one PDF page; all crew sections → one PDF file per paysheet doc
-      const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
-      let firstPage = true;
+      // Wrap each individual paysheet so one failure doesn't abort the rest
+      try {
+        // Each crew section → one PDF page; all crew sections → one PDF file per paysheet doc
+        const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+        let firstPage = true;
 
-      for (const part of parts) {
-        renderDiv.innerHTML = `<div style="width:1052px;">${part}</div>`;
-        // Let images render
-        await new Promise(r => setTimeout(r, 150));
-        const canvas = await html2canvas(renderDiv, { scale: 1.5, useCORS: true, allowTaint: true, logging: false });
-        const imgData = canvas.toDataURL('image/jpeg', 0.92);
-        const pdfW = pdf.internal.pageSize.getWidth();
-        const pdfH = pdf.internal.pageSize.getHeight();
-        const ratio = Math.min(pdfW / (canvas.width / 1.5), pdfH / (canvas.height / 1.5));
-        const drawW = (canvas.width / 1.5) * ratio;
-        const drawH = (canvas.height / 1.5) * ratio;
-        if (!firstPage) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, 0, drawW, drawH);
-        firstPage = false;
+        for (const part of parts) {
+          renderDiv.innerHTML = `<div style="width:1052px;">${part}</div>`;
+          // Let images render
+          await new Promise(r => setTimeout(r, 150));
+          const canvas = await html2canvas(renderDiv, { scale: 1.5, useCORS: true, allowTaint: true, logging: false });
+          const imgData = canvas.toDataURL('image/jpeg', 0.92);
+          const pdfW = pdf.internal.pageSize.getWidth();
+          const pdfH = pdf.internal.pageSize.getHeight();
+          const ratio = Math.min(pdfW / (canvas.width / 1.5), pdfH / (canvas.height / 1.5));
+          const drawW = (canvas.width / 1.5) * ratio;
+          const drawH = (canvas.height / 1.5) * ratio;
+          if (!firstPage) pdf.addPage();
+          pdf.addImage(imgData, 'JPEG', 0, 0, drawW, drawH);
+          firstPage = false;
+        }
+
+        zip.file(baseName + '.pdf', pdf.output('arraybuffer'));
+        fileCount++;
+      } catch (docErr) {
+        console.warn('Export skipped paysheet:', baseName, docErr);
+        skipCount++;
       }
-
-      zip.file(baseName + '.pdf', pdf.output('arraybuffer'));
-      fileCount++;
     }
   } finally {
     document.body.removeChild(renderDiv);
   }
 
   if (!fileCount) { alert('No exportable paysheet data found.'); return; }
+  if (skipCount) console.warn(`Export: ${skipCount} paysheet(s) skipped due to errors.`);
 
   const zipLabel = label.replace(/[^a-zA-Z0-9 _,]/g, '').trim().replace(/\s+/g, '_');
   const content  = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
