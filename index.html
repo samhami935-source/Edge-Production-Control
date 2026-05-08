@@ -5274,15 +5274,25 @@ async function psExportFolderZip(weekEnding) {
 
   let fileCount = 0;
   let skipCount = 0;
+  const _usedNames = {}; // track duplicate basenames → append counter for uniqueness
   try {
     for (const doc of sheets) {
       const parts = buildCrewHTML(doc);
       if (!parts.length) continue;
 
-      const isDaily  = doc.type === 'daily';
-      const dateStr  = (isDaily ? doc.date : doc.weekEnding || weekEnding);
-      const jobSlug  = (doc.job || 'NoJob').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
-      const baseName = isDaily ? `Daily_${jobSlug}_${dateStr}` : `Weekly_Summary_${jobSlug}_${dateStr}`;
+      const isDaily   = doc.type === 'daily';
+      const dateStr   = (isDaily ? doc.date : doc.weekEnding || weekEnding);
+      const jobSlug   = (doc.job || 'NoJob').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
+      // Include save time (HH-MM) so same-date daily paysheets produce distinct filenames
+      const saveTime  = doc.savedAt
+        ? new Date(doc.savedAt).toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:false}).replace(':', '-')
+        : '';
+      const rawBase   = isDaily
+        ? `Daily_${jobSlug}_${dateStr}${saveTime ? '_' + saveTime : ''}`
+        : `Weekly_Summary_${jobSlug}_${dateStr}`;
+      // If two paysheets still share a name (same minute), append a counter
+      _usedNames[rawBase] = (_usedNames[rawBase] || 0) + 1;
+      const baseName  = _usedNames[rawBase] > 1 ? rawBase + '_' + _usedNames[rawBase] : rawBase;
 
       // Wrap each individual paysheet so one failure doesn't abort the rest
       try {
