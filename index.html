@@ -5463,10 +5463,21 @@ function psRenderCrewTable() {
     </tr>`;
   }).join('');
 
-  section.innerHTML = `<table style="width:100%;border-collapse:collapse;">
+  const addSplitBtn = !isDaily
+    ? `<div style="display:flex;justify-content:flex-end;margin-bottom:6px;">
+        <button class="btn btn-outline" style="font-size:.8rem;padding:5px 14px;color:#000;" onclick="psAddSplitRows(5)">+ Add 5 Rows</button>
+       </div>`
+    : '';
+
+  section.innerHTML = addSplitBtn + `<table style="width:100%;border-collapse:collapse;">
     <thead>${thead}</thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+function psAddSplitRows(n) {
+  for (let i = 0; i < n; i++) _ps().splits.push(_psEmptySplit());
+  psRenderCrewTable();
 }
 
 function psSplitAmtChanged(i, val) {
