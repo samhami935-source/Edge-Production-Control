@@ -7526,73 +7526,113 @@ async function acctRefreshFromFirestore() {
   }
 }
 
-/** Export per-job accounting paysheets as PDF via browser print dialog. */
+/** Export per-job accounting paysheets as a downloaded PDF file. */
 function acctExportPDF() {
+  if (typeof window.jspdf === 'undefined') { alert('PDF library not loaded — please wait a moment and try again.'); return; }
   const weekEnding = (document.getElementById('acct-week-select') || {}).value || '';
   const jobFilter  = (document.getElementById('acct-job-select')  || {}).value || '';
-
   if (!weekEnding) { alert('Please select a week ending before exporting.'); return; }
-
   const jobsData = acctGetData(weekEnding, jobFilter);
   if (!jobsData.length) { alert('No data to export for the selected week.'); return; }
 
-  function buildPdfPage(jobData, isFirst) {
-    const { jobName, rows, totalAmount, employeeCount, approvedDocs } = jobData;
-    const approvedBy = [...new Set(approvedDocs.map(d => d.approvedBy || '').filter(Boolean))].join(', ') || '—';
+  const { jsPDF } = window.jspdf;
+  // Portrait letter (points)
+  const PW=612, PH=792, M=40, CW=PW-M*2;
+  const C_BLUE  = [26,86,219];
+  const C_LBLUE = [240,244,255];
+  const C_BLK   = [0,0,0];
+  const C_GREY  = [85,85,85];
+  const C_LGREY = [220,220,220];
 
-    const rowsHtml = rows.map((r, i) => `
-      <tr style="${i % 2 === 1 ? 'background:#f9f9f9;' : ''}">
-        <td style="padding:8px 12px;border-bottom:1px solid #ddd;text-align:center;color:#888;font-size:.78rem;">${i + 1}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #ddd;font-weight:600;">${eh(r.displayName)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #ddd;text-align:right;font-weight:700;color:#1a56db;font-variant-numeric:tabular-nums;">$${r.amount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-      </tr>`).join('');
-
-    return `<div style="${isFirst ? '' : 'page-break-before:always;'}padding-top:${isFirst ? '0' : '32px'};">
-      <div style="text-align:center;margin-bottom:24px;border-bottom:3px solid #1a56db;padding-bottom:16px;">
-        <div style="font-size:1.4rem;font-weight:900;color:#1a56db;letter-spacing:.04em;">D9 EDGE</div>
-        <div style="font-size:.9rem;font-weight:700;color:#333;margin-top:4px;text-transform:uppercase;letter-spacing:.08em;">Accounting Weekly Paysheet</div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;margin-bottom:20px;font-size:.85rem;">
-        <div><strong style="color:#555;">Week Ending:</strong>&nbsp;&nbsp;<strong style="color:#1a56db;">${_fmtWeekDate(weekEnding)}</strong></div>
-        <div><strong style="color:#555;">Job:</strong>&nbsp;&nbsp;<strong>${eh(jobName)}</strong></div>
-        <div><strong style="color:#555;">Generated:</strong>&nbsp;&nbsp;${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
-        <div><strong style="color:#555;">Approved by:</strong>&nbsp;&nbsp;${eh(approvedBy)}</div>
-      </div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-        <thead>
-          <tr style="background:#f0f4ff;">
-            <th style="padding:8px 12px;border-bottom:2px solid #000;text-align:center;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;width:40px;">#</th>
-            <th style="padding:8px 12px;border-bottom:2px solid #000;text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;">Employee Name</th>
-            <th style="padding:8px 12px;border-bottom:2px solid #000;text-align:right;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;">Amount</th>
-          </tr>
-        </thead>
-        <tbody>${rowsHtml}</tbody>
-        <tfoot>
-          <tr style="background:#f0f4ff;border-top:2px solid #1a56db;">
-            <td colspan="2" style="padding:8px 12px;font-weight:700;text-align:right;">
-              Total — <span style="font-size:.78rem;font-weight:600;color:#555;">${employeeCount} employee${employeeCount !== 1 ? 's' : ''}</span>
-            </td>
-            <td style="padding:8px 12px;text-align:right;font-weight:900;font-size:1.05rem;color:#1a56db;font-variant-numeric:tabular-nums;">$${totalAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>`;
+  function fmtAmt(n) {
+    return '$' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   }
 
-  const titleSuffix = jobFilter ? ` \u2014 ${jobFilter}` : '';
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <title>Accounting Paysheet${titleSuffix} \u2014 ${_fmtWeekDate(weekEnding)}</title>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:Arial,sans-serif;font-size:13px;color:#000;padding:32px;}
-    @media print{@page{size:letter portrait;margin:24px;} body{padding:0;}}
-  </style>
-  </head><body>${jobsData.map((d, i) => buildPdfPage(d, i === 0)).join('')}</body></html>`;
+  const pdf = new jsPDF({orientation:'portrait',unit:'pt',format:'letter'});
+  let firstPage = true;
 
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
-  setTimeout(() => { win.focus(); win.print(); }, 500);
+  for (const {jobName, rows, totalAmount, employeeCount, approvedDocs} of jobsData) {
+    if (!firstPage) pdf.addPage();
+    firstPage = false;
+
+    const approvedBy = [...new Set(approvedDocs.map(d => d.approvedBy||'').filter(Boolean))].join(', ') || '—';
+    let y = M;
+
+    // ── D9 EDGE header ──
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(20); pdf.setTextColor(...C_BLUE);
+    pdf.text('D9 EDGE', PW/2, y+15, {align:'center'});
+    y += 22;
+    pdf.setFontSize(9); pdf.setTextColor(...C_BLK);
+    pdf.text('ACCOUNTING WEEKLY PAYSHEET', PW/2, y+8, {align:'center'});
+    y += 14;
+    pdf.setLineWidth(2.5); pdf.setDrawColor(...C_BLUE); pdf.line(M, y, PW-M, y);
+    y += 16;
+
+    // ── Metadata ──
+    pdf.setFontSize(9);
+    const mid = M + CW/2 + 10;
+    pdf.setFont('helvetica','bold'); pdf.setTextColor(...C_GREY);
+    pdf.text('Week Ending:', M, y);
+    pdf.setFont('helvetica','bold'); pdf.setTextColor(...C_BLUE);
+    pdf.text(_fmtWeekDate(weekEnding), M+72, y);
+    pdf.setFont('helvetica','bold'); pdf.setTextColor(...C_GREY);
+    pdf.text('Job:', mid, y);
+    pdf.setFont('helvetica','normal'); pdf.setTextColor(...C_BLK);
+    pdf.text(jobName||'All Jobs', mid+26, y);
+    y += 13;
+    pdf.setFont('helvetica','bold'); pdf.setTextColor(...C_GREY);
+    pdf.text('Generated:', M, y);
+    pdf.setFont('helvetica','normal'); pdf.setTextColor(...C_BLK);
+    pdf.text(new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}), M+60, y);
+    pdf.setFont('helvetica','bold'); pdf.setTextColor(...C_GREY);
+    pdf.text('Approved by:', mid, y);
+    pdf.setFont('helvetica','normal'); pdf.setTextColor(...C_BLK);
+    pdf.text(approvedBy, mid+66, y);
+    y += 20;
+
+    // ── Table ──
+    const numW=32, amtW=132, nameW=CW-numW-amtW;
+
+    // Column header row
+    pdf.setFillColor(...C_LBLUE); pdf.rect(M, y, CW, 20, 'F');
+    pdf.setDrawColor(...C_BLK); pdf.setLineWidth(1.5); pdf.line(M, y+20, M+CW, y+20);
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(8); pdf.setTextColor(...C_BLK);
+    pdf.text('#',              M + numW/2,              y+13, {align:'center'});
+    pdf.text('EMPLOYEE NAME', M + numW + 4,             y+13);
+    pdf.text('AMOUNT',        M + numW + nameW + amtW - 4, y+13, {align:'right'});
+    y += 20;
+
+    // Data rows
+    for (let i=0; i<rows.length; i++) {
+      const r = rows[i];
+      if (y > PH - M - 44) { pdf.addPage(); y = M; }
+      const rowH = 20;
+      if (i%2===1) { pdf.setFillColor(249,249,249); pdf.rect(M, y, CW, rowH, 'F'); }
+      pdf.setDrawColor(...C_LGREY); pdf.setLineWidth(0.3); pdf.line(M, y+rowH, M+CW, y+rowH);
+      // Row #
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(8); pdf.setTextColor(136,136,136);
+      pdf.text(String(i+1), M + numW/2, y+13, {align:'center'});
+      // Name
+      pdf.setFontSize(9); pdf.setFont('helvetica','bold'); pdf.setTextColor(...C_BLK);
+      pdf.text(r.displayName, M + numW + 4, y+13);
+      // Amount
+      pdf.setTextColor(...C_BLUE);
+      pdf.text(fmtAmt(r.amount), M + numW + nameW + amtW - 4, y+13, {align:'right'});
+      y += rowH;
+    }
+
+    // Total row
+    pdf.setLineWidth(1.5); pdf.setDrawColor(...C_BLUE); pdf.line(M, y, M+CW, y);
+    pdf.setFillColor(...C_LBLUE); pdf.rect(M, y, CW, 24, 'F');
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(9); pdf.setTextColor(...C_BLK);
+    pdf.text(`Total \u2014 ${employeeCount} employee${employeeCount!==1?'s':''}`, M + numW + 4, y+15);
+    pdf.setFontSize(11); pdf.setTextColor(...C_BLUE);
+    pdf.text(fmtAmt(totalAmount), M + numW + nameW + amtW - 4, y+15, {align:'right'});
+  }
+
+  const safeWeek = weekEnding.replace(/[^a-zA-Z0-9_-]/g,'_');
+  const safeJob  = jobFilter ? '_' + jobFilter.replace(/[^a-zA-Z0-9 _-]/g,'').trim().replace(/\s+/g,'_') : '';
+  pdf.save(`Accounting_Paysheet${safeJob}_${safeWeek}.pdf`);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
