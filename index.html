@@ -5808,6 +5808,9 @@ async function savePaysheetToCloud(silent, opts = {}) {
       splits: _psState[c].splits.map(s => Object.assign({}, s)),
     };
   }
+  // Preserve approval fields — .set() is a full overwrite and would strip approvedAt/approvedBy,
+  // causing the paysheet to vanish from the Accounting tab.
+  const _existingCached = (_cache.paysheets || []).find(p => p.id === docId);
   const doc = {
     id: docId,
     job: jobName,
@@ -5818,6 +5821,9 @@ async function savePaysheetToCloud(silent, opts = {}) {
     savedBy:      _currentUser ? _currentUser.email : 'unknown',
     savedByRole:  _currentUserRole || 'unknown',
     crews,
+    ...(_existingCached && _existingCached.approvedAt
+      ? { approvedAt: _existingCached.approvedAt, approvedBy: _existingCached.approvedBy || null }
+      : {}),
   };
   try {
     await db.collection('paysheets').doc(docId).set(doc);
