@@ -7179,20 +7179,23 @@ async function diSaveJobMeta(jobName, meta) {
 
 function diAutoFillPaysheetHeader(jobName) {
   const meta = diGetJobMeta(jobName);
-  // Only fill empty fields — saved paysheet values take priority over job meta defaults
+  // Defaults: job name for project, logged-in user for foreman, meta for crew
+  const defProject = meta.project  || jobName;
+  const defForeman = meta.foreman  || (_currentUser ? _currentUser.email : '');
+  const defCrew    = meta.crewName || '';
+  // Only fill empty fields — saved paysheet values take priority
   for (let c = 1; c <= _psCrewCount; c++) {
     const h = _psState[c].header;
-    if (meta.project  && !h.project)  h.project  = meta.project;
-    if (meta.foreman  && !h.foreman)  h.foreman  = meta.foreman;
-    if (meta.crewName && !h.crewName) h.crewName = meta.crewName;
+    if (!h.project)             h.project  = defProject;
+    if (!h.foreman)             h.foreman  = defForeman;
+    if (!h.crewName && defCrew) h.crewName = defCrew;
   }
-  // Update visible fields (only if currently blank)
   const pEl = document.getElementById('ps-project');
   const fEl = document.getElementById('ps-foreman');
   const cEl = document.getElementById('ps-crew');
-  if (pEl && meta.project  && !pEl.value)  pEl.value = meta.project;
-  if (fEl && meta.foreman  && !fEl.value)  fEl.value = meta.foreman;
-  if (cEl && meta.crewName && !cEl.value)  cEl.value = meta.crewName;
+  if (pEl && !pEl.value)             pEl.value = defProject;
+  if (fEl && !fEl.value)             fEl.value = defForeman;
+  if (cEl && !cEl.value && defCrew)  cEl.value = defCrew;
 }
 
 // Call after user edits header fields to persist back to job meta (works for both daily and weekly)
