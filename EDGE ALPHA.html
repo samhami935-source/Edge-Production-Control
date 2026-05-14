@@ -893,36 +893,48 @@
     <!-- Printable paysheet -->
     <div id="paysheet-print-area" style="background:#fff;color:#000;border-radius:8px;padding:32px;max-width:980px;font-family:Arial,sans-serif;font-size:13px;overflow-x:auto;">
 
-      <!-- Header fields -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-bottom:20px;">
+      <!-- Title bar -->
+      <div id="ps-title-bar" style="text-align:center;font-size:15px;font-weight:700;margin-bottom:16px;padding-bottom:10px;border-bottom:2.5px solid #000;letter-spacing:.01em;">
+        D9 Edge &mdash; Weekly Summary Paysheet
+      </div>
+
+      <!-- Header fields — 3-column: [Project+Foreman] [Week Ending+Crew] [Signature] -->
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px 28px;margin-bottom:20px;align-items:start;">
+
+        <!-- Left: Project + Foreman -->
         <div style="display:flex;flex-direction:column;gap:9px;">
           <div style="display:flex;align-items:center;gap:8px;">
-            <label style="min-width:120px;font-weight:700;">Project Name:</label>
+            <label style="min-width:80px;font-weight:700;white-space:nowrap;">Project:</label>
             <input id="ps-project" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" oninput="diPersistHeaderToJobMeta()" />
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
-            <label style="min-width:120px;font-weight:700;">Foreman Name:</label>
+            <label style="min-width:80px;font-weight:700;white-space:nowrap;">Foreman:</label>
             <input id="ps-foreman" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" oninput="diPersistHeaderToJobMeta()" />
           </div>
+        </div>
+
+        <!-- Middle: Week Ending + Crew -->
+        <div style="display:flex;flex-direction:column;gap:9px;">
           <div style="display:flex;align-items:center;gap:8px;">
-            <label style="min-width:120px;font-weight:700;">Crew Name:</label>
-            <input id="ps-crew" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" oninput="diPersistHeaderToJobMeta()" />
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <label style="min-width:120px;font-weight:700;">Week Ending:</label>
+            <label style="min-width:100px;font-weight:700;white-space:nowrap;">Week Ending:</label>
             <input id="ps-weekending" type="date" class="ps-field" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" />
           </div>
-        </div>
-        <div id="ps-foreman-sig-wrap" style="display:none;align-items:flex-end;justify-content:flex-end;">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <label style="font-weight:700;">Foreman Signature:</label>
-            <div id="ps-foreman-sig-area" style="width:220px;border-bottom:2px solid #000;height:38px;display:flex;align-items:center;cursor:pointer;padding:0 4px;" onclick="psOpenForemanSig()">
-              <span id="ps-foreman-sig-placeholder" style="color:#999;font-size:12px;">Click to sign</span>
-              <img id="ps-foreman-sig-img" style="display:none;height:34px;max-width:210px;object-fit:contain;" />
-            </div>
-            <button id="ps-foreman-sig-clear" onclick="psClearForemanSig()" style="display:none;padding:2px 7px;font-size:11px;color:#ef4444;border:1px solid #ef4444;border-radius:4px;background:transparent;cursor:pointer;line-height:1.4;">✕</button>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <label style="min-width:100px;font-weight:700;white-space:nowrap;">Crew:</label>
+            <input id="ps-crew" class="ps-field" placeholder="________________" style="flex:1;border:none;border-bottom:2px solid #000;outline:none;padding:2px 4px;background:transparent;font-size:13px;" oninput="diPersistHeaderToJobMeta()" />
           </div>
         </div>
+
+        <!-- Right: Foreman Signature -->
+        <div id="ps-foreman-sig-wrap" style="display:none;flex-direction:column;align-items:flex-end;gap:4px;">
+          <label style="font-weight:700;white-space:nowrap;">Foreman Signature:</label>
+          <div id="ps-foreman-sig-area" style="width:220px;border-bottom:2px solid #000;height:38px;display:flex;align-items:center;cursor:pointer;padding:0 4px;" onclick="psOpenForemanSig()">
+            <span id="ps-foreman-sig-placeholder" style="color:#999;font-size:12px;">Click to sign</span>
+            <img id="ps-foreman-sig-img" style="display:none;height:34px;max-width:210px;object-fit:contain;" />
+          </div>
+          <button id="ps-foreman-sig-clear" onclick="psClearForemanSig()" style="display:none;padding:2px 7px;font-size:11px;color:#ef4444;border:1px solid #ef4444;border-radius:4px;background:transparent;cursor:pointer;line-height:1.4;">✕</button>
+        </div>
+
       </div>
 
       <!-- Pages container — rendered dynamically by psRenderMainTable() -->
@@ -4144,6 +4156,18 @@ function psLoadHeaderFields() {
   const sigWrap = document.getElementById('ps-foreman-sig-wrap');
   if (sigWrap) sigWrap.style.display = (_psCurrentType === 'weekly') ? 'flex' : 'none';
   if (_psCurrentType === 'weekly') _psUpdateForemanSigArea();
+  psUpdateTitle();
+}
+
+function psUpdateTitle() {
+  const titleEl = document.getElementById('ps-title-bar');
+  if (!titleEl) return;
+  const jobName = document.getElementById('ps-job-select')?.value || '';
+  const isDaily = _psCurrentType === 'daily';
+  const type    = isDaily ? 'Daily Input' : 'Weekly Summary Paysheet';
+  titleEl.textContent = jobName
+    ? `D9 Edge \u2014 ${type} \u2014 ${jobName}`
+    : `D9 Edge \u2014 ${type}`;
 }
 
 function psRenderCrewTabs() {
@@ -4298,6 +4322,7 @@ function onJobChanged() {
   // Update paysheet
   psPopulateAreaBudgetSelect();
   psRenderMainTable();
+  psUpdateTitle();
   // Switch daily input data to the selected job
   diSwitchJobData(jobName);
   // Update daily input
@@ -4508,7 +4533,7 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
       <td style="${cell}color:#444;font-style:italic;max-width:180px;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;">${eh(row.notes||'')}</td>
       <td style="${cell}text-align:right;">${budgetDisp}</td>
       <td style="${cell}text-align:right;color:#1a56db;font-weight:600;">$${ptdVal.toFixed(2)}</td>
-      <td style="${cell}text-align:right;font-weight:700;color:#b91c1c;">${remainDisp}</td>
+      <td style="${cell}text-align:right;font-weight:700;color:${rColor};">${remainDisp}</td>
     </tr>`;
   }
 
@@ -4539,7 +4564,7 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
         <input type="number" style="${n2}color:#1a56db;font-weight:600;" value="${row.ptd||''}" placeholder="0.00" min="0" step="0.01"
           oninput="_ps().rows[${i}].ptd=this.value" />
       </td>
-      <td style="${cell}text-align:right;font-weight:700;color:#b91c1c;">${remainDisp}</td>
+      <td style="${cell}text-align:right;font-weight:700;color:${rColor};">${remainDisp}</td>
     </tr>`;
   }
 
@@ -4584,7 +4609,7 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
       </td>
       <td style="${cell}text-align:right;">${budgetDisp}</td>
       <td style="${cell}text-align:right;color:#1a56db;font-weight:600;">$${ptdVal.toFixed(2)}</td>
-      <td style="${cell}border-right:3px solid #000;text-align:right;font-weight:700;color:#b91c1c;">${remainDisp}</td>
+      <td style="${cell}border-right:3px solid #000;text-align:right;font-weight:700;color:${rColor};">${remainDisp}</td>
       <td style="border:1px solid #000;padding:2px 5px;">
         <div style="display:flex;align-items:center;gap:2px;">
           <span style="font-weight:700;">$</span>
@@ -4611,7 +4636,7 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
     <td style="${cell}color:#444;font-style:italic;max-width:180px;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;">${eh(row.notes||'')}</td>
     <td style="${cell}text-align:right;">${budgetDisp}</td>
     <td style="${cell}text-align:right;color:#1a56db;font-weight:600;">$${ptdVal.toFixed(2)}</td>
-    <td style="${cell}border-right:3px solid #000;text-align:right;font-weight:700;color:#b91c1c;">${remainDisp}</td>
+    <td style="${cell}border-right:3px solid #000;text-align:right;font-weight:700;color:${rColor};">${remainDisp}</td>
     <td style="border:1px solid #000;padding:2px 5px;">
       <div style="display:flex;align-items:center;gap:2px;">
         <span style="font-weight:700;">$</span>
