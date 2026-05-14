@@ -1355,6 +1355,19 @@ async function loadAllData() {
     const metaSnap = await db.collection('jobmeta').get();
     metaSnap.docs.forEach(d => { _jobMeta[d.id] = d.data(); });
   } catch(e) { /* jobmeta collection may not exist yet */ }
+  // Backfill _jobMeta from saved paysheets for any job that has no explicit meta entry.
+  // Sort most-recent-first so the latest saved header wins when multiple paysheets exist.
+  (_cache.paysheets || [])
+    .slice().sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''))
+    .forEach(p => {
+      if (!p.job || !p.crews) return;
+      // Skip if meta already exists (Firestore data takes priority)
+      if (_jobMeta[p.job] || _jobMeta[p.job.replace(/[^\w-]/g, '_')]) return;
+      const h = (p.crews['1'] || {}).header || {};
+      if (h.project || h.foreman || h.crewName) {
+        _jobMeta[p.job] = { project: h.project || '', foreman: h.foreman || '', crewName: h.crewName || '' };
+      }
+    });
 }
 
 function isAdmin()   { return _currentUserRole === 'admin'; }
@@ -7152,7 +7165,8 @@ async function diRevokeUnlock(reqId, grantDocId) {
 // ═══════════════════════════
 
 function diGetJobMeta(jobName) {
-  return _jobMeta[jobName] || { project: '', foreman: '', crewName: '' };
+  // Try raw name first (in-memory key), then sanitized ID (Firestore doc key)
+  return _jobMeta[jobName] || _jobMeta[jobName.replace(/[^\w-]/g, '_')] || { project: '', foreman: '', crewName: '' };
 }
 
 async function diSaveJobMeta(jobName, meta) {
