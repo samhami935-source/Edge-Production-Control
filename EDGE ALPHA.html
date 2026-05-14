@@ -5813,6 +5813,11 @@ async function savePaysheetToCloud(silent, opts = {}) {
   _psSaveHeaderFields();
   const jobName = document.getElementById('ps-job-select').value;
   if (!jobName) { if (!silent) alert('Please select a job before saving.'); return; }
+  // Persist header to job meta so future paysheets for this job auto-fill correctly
+  const _hSnap = _ps().header;
+  if (_hSnap.project || _hSnap.foreman || _hSnap.crewName) {
+    diSaveJobMeta(jobName, { project: _hSnap.project || '', foreman: _hSnap.foreman || '', crewName: _hSnap.crewName || '' });
+  }
 
   const type = _saveType;
   const isDailyType = type === 'daily';
@@ -7160,26 +7165,26 @@ async function diSaveJobMeta(jobName, meta) {
 
 function diAutoFillPaysheetHeader(jobName) {
   const meta = diGetJobMeta(jobName);
-  // Fill all crew state headers from job meta (don't overwrite if meta is empty)
+  // Only fill empty fields — saved paysheet values take priority over job meta defaults
   for (let c = 1; c <= _psCrewCount; c++) {
     const h = _psState[c].header;
-    if (meta.project)  h.project  = meta.project;
-    if (meta.foreman)  h.foreman  = meta.foreman;
-    if (meta.crewName) h.crewName = meta.crewName;
+    if (meta.project  && !h.project)  h.project  = meta.project;
+    if (meta.foreman  && !h.foreman)  h.foreman  = meta.foreman;
+    if (meta.crewName && !h.crewName) h.crewName = meta.crewName;
   }
-  // Update visible fields
+  // Update visible fields (only if currently blank)
   const pEl = document.getElementById('ps-project');
   const fEl = document.getElementById('ps-foreman');
   const cEl = document.getElementById('ps-crew');
-  if (pEl && meta.project)  pEl.value = meta.project;
-  if (fEl && meta.foreman)  fEl.value = meta.foreman;
-  if (cEl && meta.crewName) cEl.value = meta.crewName;
+  if (pEl && meta.project  && !pEl.value)  pEl.value = meta.project;
+  if (fEl && meta.foreman  && !fEl.value)  fEl.value = meta.foreman;
+  if (cEl && meta.crewName && !cEl.value)  cEl.value = meta.crewName;
 }
 
-// Call after user edits header fields on weekly paysheet to persist back to job meta
+// Call after user edits header fields to persist back to job meta (works for both daily and weekly)
 function diPersistHeaderToJobMeta() {
   const jobName = document.getElementById('ps-job-select').value;
-  if (!jobName || _psCurrentType !== 'weekly') return;
+  if (!jobName) return;
   _psSaveHeaderFields();
   const h = _ps().header;
   diSaveJobMeta(jobName, { project: h.project, foreman: h.foreman, crewName: h.crewName });
