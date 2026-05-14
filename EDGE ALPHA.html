@@ -890,14 +890,6 @@
       <div id="ps-action-btns" style="display:flex;gap:6px;flex-shrink:0;"></div>
     </div>
 
-    <!-- Summary paysheet filters (weekly only) -->
-    <div id="ps-filter-bar" style="display:none;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
-      <label style="font-size:.8rem;color:var(--muted);white-space:nowrap;">Filter by Labor Code:</label>
-      <select id="ps-filter-code" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;padding:5px 10px;min-width:200px;" onchange="_psFilterCode=this.value;_psCurrentPage=0;psRenderMainTable()">
-        <option value="">All Labor Codes</option>
-      </select>
-      <button class="btn btn-outline" style="font-size:.78rem;padding:4px 12px;white-space:nowrap;" onclick="_psFilterCode='';_psCurrentPage=0;document.getElementById('ps-filter-code').value='';psRenderMainTable()">✕ Clear Filter</button>
-    </div>
 
     <!-- Printable paysheet -->
     <div id="paysheet-print-area" style="background:#fff;color:#000;border-radius:8px;padding:32px;font-family:Arial,sans-serif;font-size:13px;overflow-x:auto;">
@@ -4681,27 +4673,7 @@ function psRenderMainTable() {
   const isDaily   = _psCurrentType === 'daily';
   const container = document.getElementById('ps-pages-container');
 
-  // Filter bar: show only for weekly, populate labor code options
-  const filterBar = document.getElementById('ps-filter-bar');
-  if (filterBar) {
-    filterBar.style.display = isDaily ? 'none' : 'flex';
-    if (!isDaily) {
-      const codeSel = document.getElementById('ps-filter-code');
-      const usedCodes = [...new Set(allRows.map(r => r.costCode).filter(Boolean))].sort();
-      const curVal = _psFilterCode;
-      codeSel.innerHTML = '<option value="">All Labor Codes</option>' +
-        usedCodes.map(c => {
-          const g = PAYROLL_GROUPS.find(x => x.code === c);
-          const label = g ? c + ' – ' + g.description : c;
-          return `<option value="${eh(c)}" ${curVal===c?'selected':''}>${eh(label)}</option>`;
-        }).join('');
-    }
-  }
-
-  // Apply labor code filter (weekly only)
-  const rows = (!isDaily && _psFilterCode)
-    ? allRows.filter(r => r.costCode === _psFilterCode)
-    : allRows;
+  const rows = allRows;
 
   const totalFiltered = rows.length;
   const numPages = Math.max(1, Math.ceil(totalFiltered / PS_PAGE_ROWS));
