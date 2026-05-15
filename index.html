@@ -898,7 +898,7 @@
 
       <!-- Title bar -->
       <div id="ps-title-bar" style="text-align:center;font-size:15px;font-weight:700;margin-bottom:16px;padding-bottom:10px;border-bottom:2.5px solid #000;letter-spacing:.01em;">
-        D9 Edge &mdash; Weekly Summary Paysheet
+        Weekly Summary Paysheet
       </div>
 
       <!-- Header fields — 3-column: [Project+Foreman] [Week Ending+Crew] [Signature] -->
@@ -4429,8 +4429,8 @@ function psUpdateTitle() {
   const isDaily = _psCurrentType === 'daily';
   const type    = isDaily ? 'Daily Input' : 'Weekly Summary Paysheet';
   titleEl.textContent = jobName
-    ? `D9 Edge \u2014 ${type} \u2014 ${jobName}`
-    : `D9 Edge \u2014 ${type}`;
+    ? `${type} \u2014 ${jobName}`
+    : `${type}`;
 }
 
 function psRenderCrewTabs() {
@@ -5547,7 +5547,7 @@ async function _psExportSheetsAsZip(sheets, zipLabel) {
 
       // ── Title ──
       pdf.setFont('helvetica', 'bold'); pdf.setFontSize(12); pdf.setTextColor(...TC_BLK);
-      pdf.text(`D9 Edge \u2014 ${typeLabel}${jobName ? ' \u2014 ' + jobName : ''}`, PW/2, y+9, {align:'center'});
+      pdf.text(`${typeLabel}${jobName ? ' \u2014 ' + jobName : ''}`, PW/2, y+9, {align:'center'});
       y += 16;
       pdf.setLineWidth(1.5); pdf.setDrawColor(0); pdf.line(M, y, PW-M, y);
       y += 8;
