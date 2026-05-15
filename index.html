@@ -3981,7 +3981,10 @@ async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
 
     // Set header fields
     state.header.weekEnding = date;
-    if (!state.header.crewName) state.header.crewName = `Crew ${crewNum}`;
+    if (!state.header.crewName) {
+      const _leadForCrew = (_diCrewLeadNames && _diCrewLeadNames[crewNum] && _diCrewLeadNames[crewNum].trim()) || '';
+      state.header.crewName = _leadForCrew || `Crew ${crewNum}`;
+    }
     if (!state.header.foreman && _currentUser) state.header.foreman = _currentUser.email;
 
     const entries = c.entries || [];
@@ -4410,7 +4413,13 @@ function psLoadHeaderFields() {
   Object.entries(map).forEach(([k, id]) => {
     const el = document.getElementById(id);
     if (!el) return;
-    el.value    = h[k] || '';
+    // For the crew field, prefer the live crew lead name over stored header value
+    let val = h[k] || '';
+    if (k === 'crewName') {
+      const leadName = (_diCrewLeadNames && _diCrewLeadNames[_psActiveCrew] && _diCrewLeadNames[_psActiveCrew].trim()) || '';
+      if (leadName) { val = leadName; h.crewName = leadName; }
+    }
+    el.value    = val;
     el.readOnly = locked;
     el.style.pointerEvents = locked ? 'none' : '';
     el.style.color         = locked ? '#555'  : '';
@@ -4446,7 +4455,10 @@ function psRenderCrewTabs() {
     btn.style.cssText = isActive
       ? 'background:var(--accent);color:#000;border-color:var(--accent);font-weight:700;position:relative;'
       : 'position:relative;' + (hasData ? 'border-color:var(--green);color:var(--green);' : '');
-    btn.innerHTML = `Crew ${c}` + (hasData && !isActive
+    const tabLabel = (_diCrewLeadNames && _diCrewLeadNames[c] && _diCrewLeadNames[c].trim())
+      ? _diCrewLeadNames[c].trim()
+      : ((_psState[c].header.crewName && _psState[c].header.crewName.trim()) || `Crew ${c}`);
+    btn.innerHTML = tabLabel + (hasData && !isActive
       ? '<span style="position:absolute;top:3px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--green);"></span>'
       : '');
     btn.onclick = () => psSwitchCrew(c);
