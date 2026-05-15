@@ -1091,6 +1091,19 @@
   </div>
 </div>
 
+<!-- Crew Sets Modal (save + load) -->
+<div class="modal-overlay" id="di-crewsets-modal" onclick="if(event.target===this)diCloseCrewSetsModal()">
+  <div class="modal" style="width:500px;max-width:96vw;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <h2 style="margin:0;font-size:1.1rem;">👥 Saved Crew Sets</h2>
+      <button class="btn btn-outline" style="margin:0;padding:4px 12px;font-size:.82rem;" onclick="diCloseCrewSetsModal()">✕ Close</button>
+    </div>
+    <div id="di-crewsets-list" style="overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;display:flex;flex-direction:column;gap:8px;">
+      <p style="color:var(--muted);text-align:center;padding:20px;">No crew sets saved yet.</p>
+    </div>
+  </div>
+</div>
+
 <!-- Save Draft Name Modal -->
 <div class="modal-overlay" id="di-save-draft-modal" onclick="if(event.target===this)diCancelSaveDraft()">
   <div class="modal" style="width:420px;max-width:96vw;">
@@ -3113,6 +3126,109 @@ function diDeleteCrew(crewNum) {
   diAutoSaveDraft();
 }
 
+// ═══════════════════════════════
+//  CREW SETS — save / load
+// ═══════════════════════════════
+
+async function diSaveCrewSet() {
+  const lead = (_diCrewLeadNames[_diActiveCrew] || '').trim();
+  if (!lead) { alert('Enter a Crew Lead name before saving.'); return; }
+  const employees = (_diData[_diActiveCrew] || [])
+    .map(r => (r.employee || '').trim()).filter(Boolean);
+  const id  = ('crewset_' + ((_currentUser ? _currentUser.uid : 'anon') + '_' + Date.now())).replace(/[^\w-]/g, '_');
+  const doc = {
+    id,
+    name:         lead,
+    employees,
+    createdBy:    _currentUser ? _currentUser.email : 'unknown',
+    createdByUid: _currentUser ? _currentUser.uid   : 'anon',
+    createdAt:    new Date().toISOString(),
+    updatedAt:    new Date().toISOString(),
+  };
+  try {
+    await db.collection('crewsets').doc(id).set(doc);
+    _diShowToast(`Crew "${lead}" saved ✓`);
+  } catch(e) { alert('Could not save crew set: ' + e.message); }
+}
+
+async function diOpenCrewSetsModal() {
+  document.getElementById('di-crewsets-modal').classList.add('open');
+  const list = document.getElementById('di-crewsets-list');
+  list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Loading…</p>';
+  try {
+    const snap = await db.collection('crewsets').orderBy('createdAt','desc').get();
+    const sets  = snap.docs.map(d => d.data());
+    if (!sets.length) {
+      list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">No crew sets saved yet.</p>';
+      return;
+    }
+    list.innerHTML = sets.map(s => `
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;gap:10px;">
+        <div>
+          <div style="font-weight:700;font-size:.9rem;color:var(--accent);">${eh(s.name)}</div>
+          <div style="font-size:.78rem;color:var(--muted);margin-top:2px;">${(s.employees||[]).length} employees · ${s.employees && s.employees.length ? eh(s.employees.slice(0,4).join(', ')) + (s.employees.length>4?' …':'') : '—'}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="btn-sm" style="border-color:var(--accent);color:var(--accent);font-weight:700;" onclick="diLoadCrewSet('${eh(s.id)}')">Load</button>
+          ${(isAdmin()||isPM())?`<button class="btn-sm btn-danger" onclick="diDeleteCrewSet('${eh(s.id)}','${eh(s.name)}')">Delete</button>`:''}
+        </div>
+      </div>`).join('');
+  } catch(e) { list.innerHTML = `<p style="color:#ef4444;text-align:center;padding:20px;">Error: ${e.message}</p>`; }
+}
+
+function diCloseCrewSetsModal() {
+  document.getElementById('di-crewsets-modal').classList.remove('open');
+}
+
+async function diLoadCrewSet(id) {
+  try {
+    const snap = await db.collection('crewsets').doc(id).get();
+    if (!snap.exists) { alert('Crew set not found.'); return; }
+    const s = snap.data();
+    // Set crew lead name
+    const prevLead = (_diCrewLeadNames[_diActiveCrew] || '').trim();
+    _diCrewLeadNames[_diActiveCrew] = s.name;
+    const jn = document.getElementById('ps-job-select').value;
+    if (jn) {
+      if (!_diAllData[jn]) _diAllData[jn] = {};
+      if (!_diAllData[jn].__crewLeadNames) _diAllData[jn].__crewLeadNames = {};
+      _diAllData[jn].__crewLeadNames[_diActiveCrew] = s.name;
+    }
+    // Fill employee rows from saved crew set
+    const emps = (s.employees || []);
+    const existingRows = _diData[_diActiveCrew] || [];
+    // Extend rows if needed
+    while (existingRows.length < emps.length) {
+      existingRows.push({employee:'', area:'', costCode:'', description:''});
+    }
+    emps.forEach((emp, i) => { existingRows[i].employee = emp; });
+    _diData[_diActiveCrew] = existingRows;
+    if (jn && _diAllData[jn]) _diAllData[jn][_diActiveCrew] = existingRows;
+    // Sync paysheet crew name
+    if (_psState && _psState[_diActiveCrew]) {
+      _psState[_diActiveCrew].header.crewName = s.name;
+      if (_psActiveCrew === _diActiveCrew) {
+        const psCrewEl = document.getElementById('ps-crew');
+        if (psCrewEl) psCrewEl.value = s.name;
+      }
+    }
+    diCloseCrewSetsModal();
+    diRenderCrewTabs();
+    diRenderCrewTable();
+    diAutoSaveDraft();
+    _diShowToast(`Crew "${s.name}" loaded ✓`);
+  } catch(e) { alert('Could not load crew set: ' + e.message); }
+}
+
+async function diDeleteCrewSet(id, name) {
+  if (!confirm(`Delete crew set "${name}"?`)) return;
+  try {
+    await db.collection('crewsets').doc(id).delete();
+    _diShowToast(`Crew "${name}" deleted`);
+    diOpenCrewSetsModal(); // refresh list
+  } catch(e) { alert('Could not delete crew set: ' + e.message); }
+}
+
 function diRenderCrewTable() {
   const jobName = document.getElementById('ps-job-select').value;
   const areas   = jobName ? psGetAreas(jobName) : [];
@@ -3125,8 +3241,12 @@ function diRenderCrewTable() {
     const curLead = (_diCrewLeadNames[_diActiveCrew] || '');
     leadWrap.innerHTML =
       `<label style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px;">Crew Lead</label>` +
-      `<input id="di-crew-lead-input" class="fi" value="${eh(curLead)}" placeholder="Enter crew lead name…" ` +
-      `style="width:280px;max-width:100%;padding:6px 10px;font-size:.88rem;" />`;
+      `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">` +
+        `<input id="di-crew-lead-input" class="fi" value="${eh(curLead)}" placeholder="Enter crew lead name…" ` +
+        `style="width:240px;max-width:100%;padding:6px 10px;font-size:.88rem;" />` +
+        `<button class="btn-sm" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);font-weight:700;" onclick="diSaveCrewSet()">💾 Save Crew</button>` +
+        `<button class="btn-sm btn-outline" style="white-space:nowrap;" onclick="diOpenCrewSetsModal()">📋 Load Crew</button>` +
+      `</div>`;
     const leadInput = document.getElementById('di-crew-lead-input');
     leadInput.addEventListener('input', function() {
       const val      = this.value;
