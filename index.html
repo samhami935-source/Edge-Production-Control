@@ -3129,7 +3129,10 @@ function diRenderCrewTable() {
       `style="width:280px;max-width:100%;padding:6px 10px;font-size:.88rem;" />`;
     const leadInput = document.getElementById('di-crew-lead-input');
     leadInput.addEventListener('input', function() {
-      const val = this.value;
+      const val      = this.value;
+      const prevLead = (_diCrewLeadNames[_diActiveCrew] || '').trim();
+
+      // Update lead name in state
       _diCrewLeadNames[_diActiveCrew] = val;
       const jn = document.getElementById('ps-job-select').value;
       if (jn) {
@@ -3137,6 +3140,28 @@ function diRenderCrewTable() {
         if (!_diAllData[jn].__crewLeadNames) _diAllData[jn].__crewLeadNames = {};
         _diAllData[jn].__crewLeadNames[_diActiveCrew] = val;
       }
+
+      // Auto-fill row 0 employee with crew lead name if that slot is blank or was the old lead
+      const rows = _diData[_diActiveCrew];
+      if (rows && rows.length > 0) {
+        const firstEmp = (rows[0].employee || '').trim();
+        if (!firstEmp || firstEmp === prevLead) {
+          rows[0].employee = val.trim();
+          // Update DOM directly — avoids full table re-render which would reset this input
+          const firstEmpInput = document.querySelector('#di-crew-tbody tr:first-child td:first-child input');
+          if (firstEmpInput) firstEmpInput.value = val.trim();
+        }
+      }
+
+      // Sync crew lead name → paysheet Crew header field for this crew
+      if (_psState && _psState[_diActiveCrew]) {
+        _psState[_diActiveCrew].header.crewName = val.trim();
+        if (_psActiveCrew === _diActiveCrew) {
+          const psCrewEl = document.getElementById('ps-crew');
+          if (psCrewEl) psCrewEl.value = val.trim();
+        }
+      }
+
       diRenderCrewTabs();
       diAutoSaveDraft();
     });
