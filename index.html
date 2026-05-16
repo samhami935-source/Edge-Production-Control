@@ -1126,6 +1126,22 @@
   </div>
 </div>
 
+<!-- Save Daily Input — folder picker modal -->
+<div class="modal-overlay" id="di-save-input-modal" onclick="if(event.target===this)diCancelSaveInput()">
+  <div class="modal" style="width:420px;max-width:96vw;">
+    <h2 style="margin:0 0 14px;">💾 Save Daily Input</h2>
+    <div id="di-save-input-summary" style="margin-bottom:14px;font-size:.85rem;color:var(--muted);"></div>
+    <div style="margin-bottom:18px;">
+      <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Save to Week-Ending Folder</label>
+      <select id="di-save-input-folder-select" class="fi" style="width:100%;"></select>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-outline" style="flex:1;margin:0;" onclick="diCancelSaveInput()">Cancel</button>
+      <button class="btn" style="flex:1;margin:0;" onclick="diConfirmSaveInput()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Admin login modal -->
 <div class="modal-overlay" id="admin-modal">
   <div class="modal">
@@ -3944,25 +3960,69 @@ async function submitDailyInput() {
   }
   if (!crews.length) { alert('Please enter at least one employee name or area.'); return; }
 
-  const now = new Date();
+  // Open folder picker — actual save happens in diConfirmSaveInput()
+  diOpenSaveInputModal(date, jobName, crews);
+}
+
+// Holds validated Daily Input data while the folder picker modal is open
+let _diPendingSaveData = null;
+
+function diOpenSaveInputModal(date, jobName, crews) {
+  _diPendingSaveData = { date, jobName, crews };
+
+  const autoWE = _calcWeekEnding(date);
+
+  // Collect all known week endings so the user can pick any existing folder
+  const allPsWE = (_cache.paysheets||[]).map(p => p.weekEnding).filter(Boolean);
+  const allDiWE = (_cache.dailyInputs||[]).map(d => d.weekEnding).filter(Boolean);
+  const weSet   = new Set([...(_cache.psFolders||[]), ...allPsWE, ...allDiWE, autoWE]);
+  const weekEndings = [...weSet].sort((a,b) => b.localeCompare(a));
+
+  const sel = document.getElementById('di-save-input-folder-select');
+  sel.innerHTML = weekEndings.map(we => {
+    const auto  = we === autoWE;
+    const label = _fmtWeekDate(we) + (auto ? ' (suggested)' : '');
+    return `<option value="${eh(we)}"${auto ? ' selected' : ''}>${label}</option>`;
+  }).join('');
+
+  const empCount = crews.reduce((s, c) => s + c.entries.filter(e => (e.employee||'').trim()).length, 0);
+  document.getElementById('di-save-input-summary').textContent =
+    `${jobName} · ${date} · ${empCount} employee${empCount !== 1 ? 's' : ''}`;
+
+  document.getElementById('di-save-input-modal').classList.add('open');
+}
+
+function diCancelSaveInput() {
+  _diPendingSaveData = null;
+  document.getElementById('di-save-input-modal').classList.remove('open');
+}
+
+async function diConfirmSaveInput() {
+  if (!_diPendingSaveData) return;
+  const { date, jobName, crews } = _diPendingSaveData;
+  const weekEnding = document.getElementById('di-save-input-folder-select').value;
+  if (!weekEnding) { alert('Please select a folder.'); return; }
+
+  _diPendingSaveData = null;
+  document.getElementById('di-save-input-modal').classList.remove('open');
+
+  const now     = new Date();
   const timeStr = now.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:true});
-  const weekEnding = _calcWeekEnding(date);
-  const id  = `${date}_${jobName.replace(/[^\w-]/g,'_')}_${Date.now()}`;
+  const id      = `${date}_${jobName.replace(/[^\w-]/g,'_')}_${Date.now()}`;
   const doc = {
     id, date, weekEnding,
     job: jobName,
     sourceType: 'dailyInput',
     crews,
-    submittedBy: _currentUser ? _currentUser.email : 'unknown',
+    submittedBy:     _currentUser ? _currentUser.email : 'unknown',
     submittedByRole: _currentUserRole || 'unknown',
-    submittedAt: now.toISOString(),
-    submittedTime: timeStr
+    submittedAt:     now.toISOString(),
+    submittedTime:   timeStr
   };
 
   try {
     await db.collection('dailyinput').doc(id).set(doc);
-    // Daily Inputs are now saved as raw records — no Daily Paysheet is created.
-    // They are compiled into a Weekly Summary Paysheet via the Compile button.
+    // Daily Inputs are saved as raw records — compiled into a Weekly Summary via the Compile button.
 
     await diClearDraft(); // draft promoted to real submission — remove it
     const badge = document.getElementById('di-saved-badge');
