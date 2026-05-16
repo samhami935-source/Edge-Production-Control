@@ -848,10 +848,10 @@
           <table style="min-width:700px;width:100%;border-collapse:collapse;">
             <thead>
               <tr style="background:var(--surface2);">
-                <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);width:200px;">Employee Name</th>
                 <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Area Worked</th>
                 <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Labor Code</th>
                 <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Notes</th>
+                <th style="padding:8px 10px;border-bottom:1px solid var(--border);width:32px;"></th>
               </tr>
             </thead>
             <tbody id="di-crew-tbody"></tbody>
@@ -3366,12 +3366,18 @@ function diRenderCrewTable() {
     }
 
     const isCorRow = row.area && row.area.startsWith('[COR]');
-    return `<tr style="border-top:1px solid var(--border);${isCorRow ? 'background:rgba(201,168,76,.07);' : ''}">
-      <td style="padding:6px 8px;">
+    const rowBg = isCorRow ? 'background:rgba(201,168,76,.07);' : '';
+    return `<tr style="border-top:1px solid var(--border);${rowBg}">
+      <td colspan="3" style="padding:6px 8px 3px 8px;">
         <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
           oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft()" />
       </td>
-      <td style="padding:6px 8px;">
+      <td style="padding:6px 4px 3px 4px;width:32px;text-align:center;vertical-align:top;">
+        <button onclick="diDeleteRow(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;" title="Delete row">✕</button>
+      </td>
+    </tr>
+    <tr style="${rowBg}">
+      <td style="padding:3px 8px 6px 8px;">
         <div class="di-area-wrap">
           <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.area)}" placeholder="Search area…"
             oninput="diAreaInput(this,${_diActiveCrew},${i})"
@@ -3381,18 +3387,16 @@ function diRenderCrewTable() {
           <div class="di-area-dropdown"></div>
         </div>
       </td>
-      <td style="padding:6px 8px;">
+      <td style="padding:3px 8px 6px 8px;">
         <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value;diAutoSaveDraft()">
           ${codeOpts}
         </select>
       </td>
-      <td style="padding:6px 8px;">
+      <td style="padding:3px 8px 6px 8px;">
         <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.description)}" placeholder="Notes"
           oninput="_diData[${_diActiveCrew}][${i}].description=this.value;diAutoSaveDraft()" />
       </td>
-      <td style="padding:6px 4px;width:32px;text-align:center;">
-        <button onclick="diDeleteRow(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;" title="Delete row">✕</button>
-      </td>
+      <td></td>
     </tr>`;
   }).join('');
 }
