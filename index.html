@@ -877,7 +877,7 @@
                   <!-- inline filter inputs, injected by diRenderLogRows() -->
                 </tr>
               </thead>
-              <tbody id="di-log-tbody"><tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);">No submissions yet.</td></tr></tbody>
+              <tbody id="di-log-tbody"><tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted);">No submissions yet.</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -4182,6 +4182,7 @@ function diRenderLogRows() {
     </td>`;
   };
   if (filterRow) filterRow.innerHTML =
+    `<td style="width:28px;"></td>` +
     mkSel('date',    allDates,    'date',     'All Dates') +
     `<td></td>` +
     mkSel('job',     allJobs,     'job',      'All Jobs') +
@@ -4198,13 +4199,20 @@ function diRenderLogRows() {
   if (_diLogFilters.empCount) docs = docs.filter(r => String(countEmps(r)) === _diLogFilters.empCount);
 
   if (!docs.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);">${jobName ? 'No submissions match filters.' : 'Select a job above to view the submission log.'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted);">${jobName ? 'No submissions match filters.' : 'Select a job above to view the submission log.'}</td></tr>`;
     return;
   }
   tbody.innerHTML = docs.map(r => {
     const crewNums = (r.crews||[]).map(crewLabel).join(', ');
     const empCount = new Set((r.crews||[]).flatMap(c=>(c.entries||[]).map(e=>(e.employee||'').trim()).filter(Boolean))).size;
+    const isOpen   = _diLogExpanded.has(r.id);
+    const safeId   = r.id.replace(/[^\w-]/g, '_');
     return `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:4px 6px;width:28px;text-align:center;">
+        <button onclick="diToggleLogDetail('${safeId}')" id="ditog_${safeId}"
+          style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.78rem;padding:2px 5px;border-radius:3px;transition:transform .15s;transform:${isOpen?'rotate(90deg)':''}"
+          title="Show details">▶</button>
+      </td>
       <td style="padding:8px 10px;">${fmtDate(r.date)}</td>
       <td style="padding:8px 10px;color:var(--muted);">${r.submittedTime||'—'}</td>
       <td style="padding:8px 10px;color:var(--accent);">${eh(r.job)}</td>
@@ -4217,6 +4225,9 @@ function diRenderLogRows() {
         <button class="btn-sm" style="margin-left:4px;" onclick="diExportOnePDF('${r.id}')" title="Export this paysheet as PDF">⬇ PDF</button>
         ${isAdmin()?`<button class="btn-sm btn-danger" style="margin-left:4px;" onclick="diDeleteSubmission('${r.id}')">Delete</button>`:''}
       </td>
+    </tr>
+    <tr id="didetail_${safeId}" style="display:${isOpen?'':'none'};">
+      <td colspan="8" style="padding:0;">${_diLogDetailHTML(r)}</td>
     </tr>`;
   }).join('');
 }
@@ -4224,6 +4235,58 @@ function diRenderLogRows() {
 function diClearLogFilters() {
   _diLogFilters = { date:'', job:'', crew:'', foreman:'', empCount:'' };
   diRenderLogRows();
+}
+
+// Tracks which submission log rows are expanded (persists across re-renders)
+const _diLogExpanded = new Set();
+
+function diToggleLogDetail(safeId) {
+  const detailRow = document.getElementById('didetail_' + safeId);
+  const togBtn    = document.getElementById('ditog_' + safeId);
+  if (!detailRow) return;
+  const isOpen = detailRow.style.display !== 'none';
+  // Sync with _diLogExpanded using the original id — look up by safeId prefix match
+  if (isOpen) {
+    _diLogExpanded.forEach(id => { if (id.replace(/[^\w-]/g,'_') === safeId) _diLogExpanded.delete(id); });
+    detailRow.style.display = 'none';
+    if (togBtn) togBtn.style.transform = '';
+  } else {
+    // Find the original id from the doc list and add it
+    const doc = (_diLogDocs||[]).find(r => r.id.replace(/[^\w-]/g,'_') === safeId);
+    if (doc) _diLogExpanded.add(doc.id);
+    detailRow.style.display = '';
+    if (togBtn) togBtn.style.transform = 'rotate(90deg)';
+  }
+}
+
+function _diLogDetailHTML(r) {
+  const crews = (r.crews||[]).filter(crew => (crew.entries||[]).some(e => e.employee||e.area||e.costCode||e.description));
+  if (!crews.length) return `<div style="padding:8px 16px 10px;color:var(--muted);font-size:.8rem;font-style:italic;">No entries recorded.</div>`;
+  const thStyle = 'text-align:left;padding:3px 10px 3px 0;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;';
+  const tdStyle = 'padding:4px 10px 4px 0;font-size:.8rem;';
+  return `<div style="padding:6px 14px 12px 42px;background:rgba(255,255,255,.025);border-top:1px solid rgba(255,255,255,.06);">
+    ${crews.map(crew => {
+      const label   = (crew.crewLeadName||'').trim() || `Crew ${crew.crewNum}`;
+      const entries = (crew.entries||[]).filter(e => e.employee||e.area||e.costCode||e.description);
+      return `<div style="margin-top:8px;">
+        <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">${eh(label)}</div>
+        <table style="border-collapse:collapse;width:100%;">
+          <tr>
+            <th style="${thStyle}">Employee</th>
+            <th style="${thStyle}">Area</th>
+            <th style="${thStyle}">Labor Code</th>
+            <th style="${thStyle}">Notes</th>
+          </tr>
+          ${entries.map(e => `<tr style="border-top:1px solid rgba(255,255,255,.04);">
+            <td style="${tdStyle}">${eh(e.employee||'—')}</td>
+            <td style="${tdStyle}color:var(--muted);">${eh(e.area||'—')}</td>
+            <td style="${tdStyle}color:var(--muted);">${eh(e.costCode||'—')}</td>
+            <td style="${tdStyle}color:var(--muted);font-style:${e.description?'normal':'italic'};">${eh(e.description||'')}</td>
+          </tr>`).join('')}
+        </table>
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 function diAddRow() {
