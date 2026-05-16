@@ -4261,15 +4261,20 @@ function diToggleLogDetail(safeId) {
 function _diLogDetailHTML(r) {
   const crews = (r.crews||[]).filter(crew => (crew.entries||[]).some(e => e.employee||e.area||e.costCode||e.description));
   if (!crews.length) return `<div style="padding:8px 16px 10px;color:var(--muted);font-size:.8rem;font-style:italic;">No entries recorded.</div>`;
-  const thStyle = 'text-align:left;padding:3px 10px 3px 0;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;';
-  const tdStyle = 'padding:4px 10px 4px 0;font-size:.8rem;';
+  const thStyle = 'text-align:left;padding:3px 8px 3px 0;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  const tdStyle = 'padding:4px 8px 4px 0;font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  // Shared column widths — applied to every crew's table so all grids align uniformly
+  const colGroup = `<colgroup>
+    <col style="width:22%"><col style="width:38%"><col style="width:14%"><col style="width:26%">
+  </colgroup>`;
   return `<div style="padding:6px 14px 12px 42px;background:rgba(255,255,255,.025);border-top:1px solid rgba(255,255,255,.06);">
     ${crews.map(crew => {
       const label   = (crew.crewLeadName||'').trim() || `Crew ${crew.crewNum}`;
       const entries = (crew.entries||[]).filter(e => e.employee||e.area||e.costCode||e.description);
       return `<div style="margin-top:8px;">
         <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">${eh(label)}</div>
-        <table style="border-collapse:collapse;width:100%;">
+        <table style="border-collapse:collapse;width:100%;table-layout:fixed;">
+          ${colGroup}
           <tr>
             <th style="${thStyle}">Employee</th>
             <th style="${thStyle}">Area</th>
@@ -4279,7 +4284,7 @@ function _diLogDetailHTML(r) {
           ${entries.map(e => `<tr style="border-top:1px solid rgba(255,255,255,.04);">
             <td style="${tdStyle}">${eh(e.employee||'—')}</td>
             <td style="${tdStyle}color:var(--muted);">${eh(e.area||'—')}</td>
-            <td style="${tdStyle}color:var(--muted);">${eh(e.costCode||'—')}</td>
+            <td style="${tdStyle}color:var(--muted);text-align:center;">${eh(e.costCode||'—')}</td>
             <td style="${tdStyle}color:var(--muted);font-style:${e.description?'normal':'italic'};">${eh(e.description||'')}</td>
           </tr>`).join('')}
         </table>
