@@ -4222,10 +4222,7 @@ function diRenderLogRows() {
       <td style="padding:8px 10px;color:var(--muted);">${eh(r.submittedBy)}</td>
       <td style="padding:8px 10px;">${empCount} employee${empCount!==1?'s':''}</td>
       <td style="padding:8px 10px;white-space:nowrap;">
-        <button class="btn-sm" onclick="diViewSubmission('${r.id}')">View</button>
-        <button class="btn-sm" style="margin-left:4px;border-color:var(--accent);color:var(--accent);" onclick="diAutoFillFromLog('${r.id}')">→ Paysheet</button>
-        <button class="btn-sm" style="margin-left:4px;" onclick="diExportOnePDF('${r.id}')" title="Export this paysheet as PDF">⬇ PDF</button>
-        ${isAdmin()?`<button class="btn-sm btn-danger" style="margin-left:4px;" onclick="diDeleteSubmission('${r.id}')">Delete</button>`:''}
+        ${isAdmin()?`<button class="btn-sm btn-danger" onclick="diDeleteSubmission('${r.id}')">Delete</button>`:''}
       </td>
     </tr>
     <tr id="didetail_${safeId}" style="display:${isOpen?'':'none'};">
