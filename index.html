@@ -4644,9 +4644,7 @@ function psRenderCrewTabs() {
       const editBtn = canEdit()
         ? `<button class="btn btn-outline" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);" onclick="psEnterEditMode()">✏️ Edit</button>`
         : '';
-      actWrap.innerHTML = `
-        ${editBtn}
-        <button class="btn btn-outline" style="white-space:nowrap;" onclick="psExportPDF()">⬇ Export PDF</button>`;
+      actWrap.innerHTML = `${editBtn}`;
     }
   }
 }
