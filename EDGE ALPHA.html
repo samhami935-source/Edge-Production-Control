@@ -5647,7 +5647,9 @@ async function _psExportSheetsAsZip(sheets, zipLabel) {
       const align = cols[i].align || 'left';
       const lines = pdf.splitTextToSize(String(txt ?? ''), colW - PAD * 2);
       lines.forEach((line, li) => {
-        const tx = align === 'right' ? x + colW - PAD : x + PAD;
+        const tx = align === 'right'  ? x + colW - PAD
+                 : align === 'center' ? x + colW / 2
+                 : x + PAD;
         pdf.text(line, tx, y + PAD + FS + li * LH, { align });
       });
       x += colW;
