@@ -4596,9 +4596,12 @@ function psRenderCrewTabs() {
     btn.style.cssText = isActive
       ? 'background:var(--accent);color:#000;border-color:var(--accent);font-weight:700;position:relative;'
       : 'position:relative;' + (hasData ? 'border-color:var(--green);color:var(--green);' : '');
-    const tabLabel = (_diCrewLeadNames && _diCrewLeadNames[c] && _diCrewLeadNames[c].trim())
+    // For loaded weekly paysheets use the doc's header.crewName — daily input
+    // crew names (_diCrewLeadNames) should only label tabs in daily-input mode.
+    const _savedCrewName = _psState[c].header.crewName && _psState[c].header.crewName.trim();
+    const tabLabel = (_psCurrentType !== 'weekly' && _diCrewLeadNames && _diCrewLeadNames[c] && _diCrewLeadNames[c].trim())
       ? _diCrewLeadNames[c].trim()
-      : ((_psState[c].header.crewName && _psState[c].header.crewName.trim()) || `Crew ${c}`);
+      : (_savedCrewName || `Crew ${c}`);
     btn.innerHTML = tabLabel + (hasData && !isActive
       ? '<span style="position:absolute;top:3px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--green);"></span>'
       : '');
@@ -7192,11 +7195,17 @@ async function loadPaysheetFromCloud(docId) {
     return;
   }
 
-  // Restore all crews — derive max from the document itself so crews beyond
-  // the current _psCrewCount are always restored correctly
+  // Restore all crews — derive max from the document itself so tabs always
+  // reflect exactly what is in the loaded doc (no stale crews from prior state).
   const _loadCrewKeys = Object.keys(doc.crews || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
-  const _loadMaxCrew  = _loadCrewKeys.length ? Math.max(..._loadCrewKeys) : _psCrewCount;
-  if (_loadMaxCrew > _psCrewCount) _psCrewCount = _loadMaxCrew;
+  const _loadMaxCrew  = _loadCrewKeys.length ? Math.max(..._loadCrewKeys) : 1;
+  // Always set _psCrewCount to the doc's actual crew count so stale tabs
+  // from a previously-loaded larger paysheet don't bleed through.
+  _psCrewCount = _loadMaxCrew;
+  // Clear any state for crews beyond the loaded doc so they don't show as tabs.
+  for (let c = _loadMaxCrew + 1; c <= 20; c++) {
+    if (_psState[c]) _psState[c] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
+  }
   for (let c = 1; c <= _loadMaxCrew; c++) {
     _psEnsureCrew(c);
     const saved = doc.crews && doc.crews[String(c)];
@@ -7205,6 +7214,9 @@ async function loadPaysheetFromCloud(docId) {
       _psState[c].rows   = _psPadRows((saved.rows || []).map(r => Object.assign(_psEmptyRow(), r)));
       _psState[c].splits = (saved.splits || []).map(s => Object.assign(_psEmptySplit(), s));
       while (_psState[c].splits.length < PS_SPLIT_ROWS) _psState[c].splits.push(_psEmptySplit());
+    } else {
+      // Crew slot exists in range but has no data in doc — reset it
+      _psState[c] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
     }
   }
 
