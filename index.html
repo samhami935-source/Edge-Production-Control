@@ -6447,11 +6447,17 @@ async function psCompileWeeklyPaysheet(weekEnding) {
     diInputs.forEach(p => {
       (p.crews || []).forEach(crew => {
         if (crew.crewNum !== c) return;
-        // Take crew lead name for header
+        // Take crew lead name for header; fall back to first employee name
+        // so that old daily inputs without crewLeadName still get a useful tab label.
         if (!header.crewName && crew.crewLeadName) {
           header.crewName = crew.crewLeadName.trim();
         }
         if (!header.foreman && p.submittedBy) header.foreman = p.submittedBy;
+        // If crewLeadName was blank, use the first named employee as the crew identifier
+        if (!header.crewName) {
+          const firstEmp = (crew.entries || []).find(e => (e.employee || '').trim());
+          if (firstEmp) header.crewName = firstEmp.employee.trim();
+        }
         (crew.entries || []).forEach(e => {
           if (e.employee) empSet.add(e.employee.trim());
           if (!e.area && !e.costCode) return;
@@ -7214,6 +7220,11 @@ async function loadPaysheetFromCloud(docId) {
       _psState[c].rows   = _psPadRows((saved.rows || []).map(r => Object.assign(_psEmptyRow(), r)));
       _psState[c].splits = (saved.splits || []).map(s => Object.assign(_psEmptySplit(), s));
       while (_psState[c].splits.length < PS_SPLIT_ROWS) _psState[c].splits.push(_psEmptySplit());
+      // Sync _diCrewLeadNames from the saved header so crew tab labels always
+      // reflect the paysheet's crew name rather than stale daily-input names.
+      if (_psState[c].header.crewName) {
+        _diCrewLeadNames[c] = _psState[c].header.crewName;
+      }
     } else {
       // Crew slot exists in range but has no data in doc — reset it
       _psState[c] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
