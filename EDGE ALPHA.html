@@ -970,6 +970,7 @@
         <option value="">All Jobs</option>
       </select>
       <button class="btn btn-outline" style="padding:7px 14px;font-size:.8rem;" onclick="acctRefreshFromFirestore()">⟳ Refresh</button>
+      <button id="acct-cleanup-btn" class="btn btn-outline" style="display:none;padding:7px 14px;font-size:.8rem;border-color:#ef4444;color:#ef4444;" onclick="acctCleanupOrphanedPaysheets()" title="Delete paysheets and daily inputs for jobs that no longer exist">🗑 Clean Up</button>
       <button class="btn" style="padding:7px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="acctExportPDF()">⬇ Export PDF</button>
     </div>
   </div>
@@ -7839,6 +7840,8 @@ function acctInit() {
   // Show admin tip if the user is an admin and there are no approved paysheets yet
   const adminNotice = document.getElementById('acct-admin-notice');
   if (adminNotice) adminNotice.style.display = isAdmin() ? 'block' : 'none';
+  const cleanupBtn = document.getElementById('acct-cleanup-btn');
+  if (cleanupBtn) cleanupBtn.style.display = isAdmin() ? '' : 'none';
   acctRender();
 }
 
@@ -8068,6 +8071,45 @@ async function acctRefreshFromFirestore() {
   } catch(e) {
     console.error('acctRefreshFromFirestore:', e);
     if (printArea) printArea.innerHTML = `<div style="padding:24px;text-align:center;color:#e53e3e;">Refresh failed: ${eh(e.message)}</div>`;
+  }
+}
+
+/**
+ * Delete all paysheets and daily inputs whose job no longer exists in the
+ * uploaded budgets (_cache.jobs).  Admin-only.  Called by the 🗑 Clean Up button.
+ */
+async function acctCleanupOrphanedPaysheets() {
+  if (!isAdmin()) { alert('Admin only.'); return; }
+  const knownJobs = new Set((_cache.jobs || []).map(j => j.name));
+  const orphanedPS = (_cache.paysheets   || []).filter(p => p.job && !knownJobs.has(p.job));
+  const orphanedDI = (_cache.dailyInputs || []).filter(d => d.job && !knownJobs.has(d.job));
+  const total = orphanedPS.length + orphanedDI.length;
+  if (!total) { alert('Nothing to clean up — all paysheets match an existing job.'); return; }
+
+  const jobList = [...new Set([...orphanedPS, ...orphanedDI].map(r => r.job))].join('\n  • ');
+  if (!confirm(
+    `Delete ${orphanedPS.length} paysheet${orphanedPS.length !== 1 ? 's' : ''} and ` +
+    `${orphanedDI.length} daily input${orphanedDI.length !== 1 ? 's' : ''} for deleted jobs?\n\n  • ${jobList}\n\nThis cannot be undone.`
+  )) return;
+
+  try {
+    // Firestore batches are limited to 500 ops — chunk if necessary
+    const ops = [
+      ...orphanedPS.map(p => db.collection('paysheets').doc(p.id)),
+      ...orphanedDI.map(d => db.collection('dailyinput').doc(d.id)),
+    ];
+    for (let i = 0; i < ops.length; i += 490) {
+      const batch = db.batch();
+      ops.slice(i, i + 490).forEach(ref => batch.delete(ref));
+      await batch.commit();
+    }
+    // Update cache
+    _cache.paysheets   = (_cache.paysheets   || []).filter(p => knownJobs.has(p.job));
+    _cache.dailyInputs = (_cache.dailyInputs || []).filter(d => knownJobs.has(d.job));
+    alert(`Cleaned up ${total} record${total !== 1 ? 's' : ''} for deleted jobs.`);
+    acctInit();
+  } catch(e) {
+    alert('Cleanup failed: ' + e.message);
   }
 }
 
