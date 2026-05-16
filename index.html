@@ -819,7 +819,6 @@
             <button id="di-save-btn" class="btn" onclick="submitDailyInput()" style="margin-top:0;padding:7px 16px;font-size:.83rem;white-space:nowrap;">💾 Save Daily Input</button>
             <button id="di-draft-btn" class="btn btn-outline" onclick="diSaveDraft()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="Save progress as a draft — does not create a paysheet">📌 Save Draft</button>
             <button class="btn btn-outline" onclick="diOpenDraftsModal()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="View and load saved drafts" id="di-drafts-btn">📋 Drafts</button>
-            <button class="btn btn-outline" onclick="openLoadPaysheetModal()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;" title="Load saved daily or weekly paysheets">📂 Saved Paysheets</button>
             <div style="width:1px;background:var(--border);margin:0 4px;height:24px;"></div>
             <button class="btn btn-outline" onclick="diClearDropdowns()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;color:var(--muted);" title="Clear areas, labor codes and notes">Clear</button>
 
@@ -4624,6 +4623,7 @@ function psRenderCrewTabs() {
     } else if (isForeman()) {
       // Foreman view: Save My Entries (restricted merge-save only)
       actWrap.innerHTML = `
+        <button class="btn btn-outline" style="white-space:nowrap;color:var(--muted);border-color:var(--border);" onclick="openLoadPaysheetModal()" title="Load saved daily or weekly paysheets">📂 Saved Paysheets</button>
         <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="psSaveWeeklySummaryForeman()">💾 Save My Entries</button>`;
     } else {
       // Management view: Edit + Export PDF + Approve + Save Paysheet
@@ -4635,6 +4635,7 @@ function psRenderCrewTabs() {
             : `<button class="btn" style="background:#1a56db;color:#fff;white-space:nowrap;border:none;" onclick="psApprovePaysheet()">✓ Approve for Accounting</button>`)
         : '';
       actWrap.innerHTML = `
+        <button class="btn btn-outline" style="white-space:nowrap;color:var(--muted);border-color:var(--border);" onclick="openLoadPaysheetModal()" title="Load saved daily or weekly paysheets">📂 Saved Paysheets</button>
         <button class="btn btn-outline" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);" onclick="psEnterEditMode()">✏️ Edit</button>
         ${_approveBtn}
         <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>`;
@@ -4649,7 +4650,9 @@ function psRenderCrewTabs() {
       const editBtn = canEdit()
         ? `<button class="btn btn-outline" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);" onclick="psEnterEditMode()">✏️ Edit</button>`
         : '';
-      actWrap.innerHTML = `${editBtn}`;
+      actWrap.innerHTML = `
+        <button class="btn btn-outline" style="white-space:nowrap;color:var(--muted);border-color:var(--border);" onclick="openLoadPaysheetModal()" title="Load saved daily or weekly paysheets">📂 Saved Paysheets</button>
+        ${editBtn}`;
     }
   }
 }
