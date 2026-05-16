@@ -3973,16 +3973,19 @@ function diOpenSaveInputModal(date, jobName, crews) {
   const autoWE = _calcWeekEnding(date);
 
   // Only offer folders that currently exist in Firestore — deleted folders are excluded.
-  // Always include the auto-computed week ending so saving always has at least one option.
-  const weSet   = new Set([...(_cache.psFolders||[]), autoWE]);
-  const weekEndings = [...weSet].sort((a,b) => b.localeCompare(a));
+  const weekEndings = [...(_cache.psFolders||[])].sort((a,b) => b.localeCompare(a));
 
   const sel = document.getElementById('di-save-input-folder-select');
-  sel.innerHTML = weekEndings.map(we => {
-    const auto  = we === autoWE;
-    const label = _fmtWeekDate(we) + (auto ? ' (suggested)' : '');
-    return `<option value="${eh(we)}"${auto ? ' selected' : ''}>${label}</option>`;
-  }).join('');
+  if (!weekEndings.length) {
+    sel.innerHTML = '<option value="" disabled>No folders — create one in Saved Paysheets first</option>';
+  } else {
+    // Mark the auto-computed week ending as suggested if it exists; otherwise suggest the nearest future folder
+    const suggested = weekEndings.includes(autoWE) ? autoWE : (weekEndings.find(we => we >= autoWE) || weekEndings[0]);
+    sel.innerHTML = weekEndings.map(we => {
+      const label = _fmtWeekDate(we) + (we === suggested ? ' (suggested)' : '');
+      return `<option value="${eh(we)}"${we === suggested ? ' selected' : ''}>${label}</option>`;
+    }).join('');
+  }
 
   const empCount = crews.reduce((s, c) => s + c.entries.filter(e => (e.employee||'').trim()).length, 0);
   document.getElementById('di-save-input-summary').textContent =
