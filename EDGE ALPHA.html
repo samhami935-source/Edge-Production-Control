@@ -844,20 +844,29 @@
         <div id="di-table-wrap">
         <!-- Crew lead name input — populated by diRenderCrewTable() -->
         <div id="di-crew-lead-wrap" style="margin-bottom:10px;"></div>
-        <div style="overflow-x:auto;">
-          <table style="min-width:700px;width:100%;border-collapse:collapse;">
-            <thead>
-              <tr style="background:var(--surface2);">
-                <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);width:200px;">Employee Name</th>
-                <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Area Worked</th>
-                <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Labor Code</th>
-                <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Notes</th>
-              </tr>
-            </thead>
-            <tbody id="di-crew-tbody"></tbody>
-          </table>
+        <!-- Employee Names section -->
+        <div style="margin-bottom:16px;">
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Crew Members</div>
+          <div id="di-employees-list"></div>
+          <button id="di-add-row-btn" class="btn btn-outline" style="margin-top:8px;font-size:.8rem;padding:5px 14px;" onclick="diAddRow()">+ Add Employee</button>
         </div>
-        <button id="di-add-row-btn" class="btn btn-outline" style="margin-top:8px;font-size:.8rem;padding:5px 14px;" onclick="diAddRow()">+ Add Row</button>
+        <!-- Daily Entries section -->
+        <div>
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Daily Entries</div>
+          <div style="overflow-x:auto;">
+            <table style="min-width:560px;width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="background:var(--surface2);">
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);width:30%;">Area Worked</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);width:35%;">Labor Code</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Notes</th>
+                  <th style="padding:8px 10px;border-bottom:1px solid var(--border);width:32px;"></th>
+                </tr>
+              </thead>
+              <tbody id="di-crew-tbody"></tbody>
+            </table>
+          </div>
+        </div>
         </div><!-- /di-table-wrap -->
 
         <!-- Daily Log -->
@@ -3304,7 +3313,7 @@ function diRenderCrewTable() {
         if (!firstEmp || firstEmp === prevLead) {
           rows[0].employee = val.trim();
           // Update DOM directly — avoids full table re-render which would reset this input
-          const firstEmpInput = document.querySelector('#di-crew-tbody tr:first-child td:first-child input');
+          const firstEmpInput = document.querySelector('#di-employees-list input[data-emp-idx="0"]');
           if (firstEmpInput) firstEmpInput.value = val.trim();
         }
       }
@@ -3325,8 +3334,19 @@ function diRenderCrewTable() {
 
   const csvFile = getSavedCSVFiles().find(x => x.name === jobName);
 
-  tbody.innerHTML = rows.map((row, i) => {
+  // ── Section 1: Employee name list ──
+  const empList = document.getElementById('di-employees-list');
+  if (empList) {
+    empList.innerHTML = rows.map((row, i) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
+        <input class="fi" data-emp-idx="${i}" style="flex:1;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
+          oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft();diRenderEntries()" />
+        <button onclick="diDeleteRow(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;flex-shrink:0;" title="Remove employee">✕</button>
+      </div>`).join('');
+  }
 
+  // ── Section 2: Daily entries table ──
+  tbody.innerHTML = rows.map((row, i) => {
     let codeOpts = '<option value=""></option>';
     // ── COR area: show the COR's labor code as the sole option ──
     if (row.area && row.area.startsWith('[COR]')) {
@@ -3340,13 +3360,10 @@ function diRenderCrewTable() {
         codeOpts = `<option value="${eh(corb.laborCode)}" ${row.costCode===corb.laborCode?'selected':''}>${corb.laborCode} \u2013 ${eh(corb.description)} | COR ${eh(corb.corNumber)} | Rem: ${remStr}</option>`;
       }
     } else if (csvFile && row.area) {
-      // Show individual CSV line items for this area (matches Budget by Area breakdown)
       const areaRows = csvFile.rows.filter(r => r.area === row.area);
       const areaEntries = getPayrollEntries().filter(e => e.csvFile === jobName && e.area === row.area);
       if (areaRows.length) {
         areaRows.filter(r => isForemanAllowedCode(r.costCode)).forEach(r => {
-          // Match on costCode only (no description) — synced payroll entries may use
-          // a group description that differs from the CSV row description.
           const exactPaid2 = areaEntries.filter(e => e.costCode === r.costCode).reduce((s,e) => s+e.price, 0);
           const paid = exactPaid2 > 0 ? exactPaid2
             : areaEntries.filter(e => getCodeGroup(e.costCode) === getCodeGroup(r.costCode)).reduce((s,e) => s+e.price, 0);
@@ -3366,12 +3383,10 @@ function diRenderCrewTable() {
     }
 
     const isCorRow = row.area && row.area.startsWith('[COR]');
+    const empLabel = (row.employee || '').trim();
     return `<tr style="border-top:1px solid var(--border);${isCorRow ? 'background:rgba(201,168,76,.07);' : ''}">
       <td style="padding:6px 8px;">
-        <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
-          oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft()" />
-      </td>
-      <td style="padding:6px 8px;">
+        ${empLabel ? `<div style="font-size:.72rem;color:var(--muted);font-weight:600;margin-bottom:3px;">${eh(empLabel)}</div>` : ''}
         <div class="di-area-wrap">
           <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.area)}" placeholder="Search area…"
             oninput="diAreaInput(this,${_diActiveCrew},${i})"
@@ -3391,10 +3406,15 @@ function diRenderCrewTable() {
           oninput="_diData[${_diActiveCrew}][${i}].description=this.value;diAutoSaveDraft()" />
       </td>
       <td style="padding:6px 4px;width:32px;text-align:center;">
-        <button onclick="diDeleteRow(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;" title="Delete row">✕</button>
+        <button onclick="diClearEntry(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;" title="Clear this entry">✕</button>
       </td>
     </tr>`;
   }).join('');
+}
+
+// Re-renders only the entries tbody (called when employee names change so labels stay in sync)
+function diRenderEntries() {
+  diRenderCrewTable();
 }
 
 // ── Area combobox helpers ──
@@ -4322,6 +4342,15 @@ function diAddRow() {
 function diDeleteRow(crew, i) {
   _diData[crew].splice(i, 1);
   if (_diData[crew].length === 0) _diData[crew].push({employee:'', area:'', costCode:'', description:''});
+  diRenderCrewTable();
+  diAutoSaveDraft();
+}
+
+// Clears only the work entry fields — employee name is preserved
+function diClearEntry(crew, i) {
+  _diData[crew][i].area        = '';
+  _diData[crew][i].costCode    = '';
+  _diData[crew][i].description = '';
   diRenderCrewTable();
   diAutoSaveDraft();
 }
