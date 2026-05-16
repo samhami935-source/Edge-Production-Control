@@ -1757,10 +1757,31 @@ function rowsToCSV(rows) {
 }
 
 async function removeCSVFile(name) {
-  if (_cache.jobs) _cache.jobs = _cache.jobs.filter(f => f.name !== name);
+  // Count associated data so the user knows what will be removed
+  const relatedPaysheets   = (_cache.paysheets    || []).filter(p => p.job === name);
+  const relatedDailyInputs = (_cache.dailyInputs  || []).filter(d => d.job === name);
+  const total = relatedPaysheets.length + relatedDailyInputs.length;
+  let msg = `Delete job "${name}"?`;
+  if (total > 0) {
+    const parts = [];
+    if (relatedPaysheets.length)   parts.push(`${relatedPaysheets.length} saved paysheet${relatedPaysheets.length !== 1 ? 's' : ''}`);
+    if (relatedDailyInputs.length) parts.push(`${relatedDailyInputs.length} daily input${relatedDailyInputs.length !== 1 ? 's' : ''}`);
+    msg += `\n\nThis will also permanently delete ${parts.join(' and ')} for this job.\n\nThis cannot be undone.`;
+  }
+  if (!confirm(msg)) return;
+
+  // Remove from cache immediately
+  if (_cache.jobs)         _cache.jobs         = _cache.jobs.filter(f => f.name !== name);
+  if (_cache.paysheets)    _cache.paysheets    = _cache.paysheets.filter(p => p.job !== name);
+  if (_cache.dailyInputs)  _cache.dailyInputs  = _cache.dailyInputs.filter(d => d.job !== name);
+
   const docId = name.replace(/[^\w-]/g, '_');
   try {
-    await db.collection('jobs').doc(docId).delete();
+    const batch = db.batch();
+    batch.delete(db.collection('jobs').doc(docId));
+    relatedPaysheets.forEach(p   => batch.delete(db.collection('paysheets').doc(p.id)));
+    relatedDailyInputs.forEach(d => batch.delete(db.collection('dailyinput').doc(d.id)));
+    await batch.commit();
   } catch(e) {
     console.error('jobs delete:', e);
     alert(`Failed to delete "${name}" from cloud: ${e.message}`);
