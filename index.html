@@ -3972,10 +3972,9 @@ function diOpenSaveInputModal(date, jobName, crews) {
 
   const autoWE = _calcWeekEnding(date);
 
-  // Collect all known week endings so the user can pick any existing folder
-  const allPsWE = (_cache.paysheets||[]).map(p => p.weekEnding).filter(Boolean);
-  const allDiWE = (_cache.dailyInputs||[]).map(d => d.weekEnding).filter(Boolean);
-  const weSet   = new Set([...(_cache.psFolders||[]), ...allPsWE, ...allDiWE, autoWE]);
+  // Only offer folders that currently exist in Firestore — deleted folders are excluded.
+  // Always include the auto-computed week ending so saving always has at least one option.
+  const weSet   = new Set([...(_cache.psFolders||[]), autoWE]);
   const weekEndings = [...weSet].sort((a,b) => b.localeCompare(a));
 
   const sel = document.getElementById('di-save-input-folder-select');
