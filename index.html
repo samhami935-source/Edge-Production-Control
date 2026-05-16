@@ -4595,12 +4595,9 @@ function psRenderCrewTabs() {
     btn.style.cssText = isActive
       ? 'background:var(--accent);color:#000;border-color:var(--accent);font-weight:700;position:relative;'
       : 'position:relative;' + (hasData ? 'border-color:var(--green);color:var(--green);' : '');
-    // For loaded weekly paysheets use the doc's header.crewName — daily input
-    // crew names (_diCrewLeadNames) should only label tabs in daily-input mode.
-    const _savedCrewName = _psState[c].header.crewName && _psState[c].header.crewName.trim();
-    const tabLabel = (_psCurrentType !== 'weekly' && _diCrewLeadNames && _diCrewLeadNames[c] && _diCrewLeadNames[c].trim())
+    const tabLabel = (_diCrewLeadNames && _diCrewLeadNames[c] && _diCrewLeadNames[c].trim())
       ? _diCrewLeadNames[c].trim()
-      : (_savedCrewName || `Crew ${c}`);
+      : ((_psState[c].header.crewName && _psState[c].header.crewName.trim()) || `Crew ${c}`);
     btn.innerHTML = tabLabel + (hasData && !isActive
       ? '<span style="position:absolute;top:3px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--green);"></span>'
       : '');
@@ -7881,9 +7878,11 @@ function acctGetData(weekEnding, jobFilter) {
     // Aggregate employees within this single job
     const empMap = new Map(); // lowercase name → { displayName, amount }
     docs.forEach(doc => {
-      for (let c = 1; c <= _psCrewCount; c++) {
-        const crew = doc.crews && doc.crews[String(c)];
-        if (!crew) continue;
+      // Iterate every crew stored in the doc rather than relying on the
+      // in-memory _psCrewCount which may not reflect this doc's crew count.
+      Object.keys(doc.crews || {}).forEach(ck => {
+        const crew = doc.crews[ck];
+        if (!crew) return;
         (crew.splits || []).forEach(s => {
           const name   = (s.employee || '').trim();
           const amount = parseFloat(s.amount) || 0;
@@ -7895,7 +7894,7 @@ function acctGetData(weekEnding, jobFilter) {
             empMap.set(key, { displayName: name, amount });
           }
         });
-      }
+      });
     });
 
     const rows = [...empMap.values()]
