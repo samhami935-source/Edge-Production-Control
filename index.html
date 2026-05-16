@@ -3383,10 +3383,8 @@ function diRenderCrewTable() {
     }
 
     const isCorRow = row.area && row.area.startsWith('[COR]');
-    const empLabel = (row.employee || '').trim();
     return `<tr style="border-top:1px solid var(--border);${isCorRow ? 'background:rgba(201,168,76,.07);' : ''}">
       <td style="padding:6px 8px;">
-        ${empLabel ? `<div style="font-size:.72rem;color:var(--muted);font-weight:600;margin-bottom:3px;">${eh(empLabel)}</div>` : ''}
         <div class="di-area-wrap">
           <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.area)}" placeholder="Search area…"
             oninput="diAreaInput(this,${_diActiveCrew},${i})"
