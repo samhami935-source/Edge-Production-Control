@@ -3918,6 +3918,14 @@ function diToggleDraftFolder(folderId) {
   _diRenderDraftsList();
 }
 
+// Returns the Saturday (week-ending) date for a given YYYY-MM-DD date string.
+function _calcWeekEnding(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00'); // noon avoids DST edge cases
+  const daysToSat = (6 - d.getDay() + 7) % 7;
+  d.setDate(d.getDate() + daysToSat);
+  return d.toISOString().slice(0, 10);
+}
+
 async function submitDailyInput() {
   const date    = document.getElementById('di-date').value;
   const jobName = document.getElementById('ps-job-select').value;
@@ -3938,9 +3946,12 @@ async function submitDailyInput() {
 
   const now = new Date();
   const timeStr = now.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:true});
+  const weekEnding = _calcWeekEnding(date);
   const id  = `${date}_${jobName.replace(/[^\w-]/g,'_')}_${Date.now()}`;
   const doc = {
-    id, date, job: jobName,
+    id, date, weekEnding,
+    job: jobName,
+    sourceType: 'dailyInput',
     crews,
     submittedBy: _currentUser ? _currentUser.email : 'unknown',
     submittedByRole: _currentUserRole || 'unknown',
@@ -3950,9 +3961,8 @@ async function submitDailyInput() {
 
   try {
     await db.collection('dailyinput').doc(id).set(doc);
-
-    // Auto-fill paysheet and auto-save into the matching week-ending folder
-    await psAutoFillFromSubmission(crews, jobName, date, id);
+    // Daily Inputs are now saved as raw records — no Daily Paysheet is created.
+    // They are compiled into a Weekly Summary Paysheet via the Compile button.
 
     await diClearDraft(); // draft promoted to real submission — remove it
     const badge = document.getElementById('di-saved-badge');
@@ -4056,17 +4066,21 @@ function diLoadLog() {
       .limit(300)
       .onSnapshot(snap => {
         _diLogDocs = snap.docs.map(d => d.data());
+        _cache.dailyInputs = _diLogDocs; // expose to compile + folder list
         diRenderLogRows();
         // Keep CO tab PTD + remaining live as daily input entries are submitted
         try { renderCOLog(); } catch(_) {}
         try { renderPSAreaBudgetTable(); } catch(_) {}
+        try { renderPSLoadList(); } catch(_) {}
       }, err => {
         // Fallback without orderBy if index missing
         _diLogUnsub = db.collection('dailyinput').onSnapshot(snap => {
           _diLogDocs = snap.docs.map(d => d.data()).sort((a,b) => (b.submittedAt||'').localeCompare(a.submittedAt||''));
+          _cache.dailyInputs = _diLogDocs;
           diRenderLogRows();
           try { renderCOLog(); } catch(_) {}
           try { renderPSAreaBudgetTable(); } catch(_) {}
+          try { renderPSLoadList(); } catch(_) {}
         });
       });
   } catch(e) { console.error('diLoadLog:', e); }
@@ -6267,94 +6281,111 @@ function _psInitSigCanvas(canvas) {
 }
 
 // ─── Compile Weekly Paysheet ───
-// Aggregates all daily paysheets in a folder into one compiled paysheet per crew
+// Aggregates all daily inputs (and legacy daily paysheets) in a folder into one compiled paysheet per crew.
 async function psCompileWeeklyPaysheet(weekEnding) {
   if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can compile weekly paysheets.'); return; }
   const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
   if (!activeJob) { alert('Please select a job before compiling.'); return; }
-  const daily = (_cache.paysheets || []).filter(p =>
+
+  // Primary source: new daily input records (sourceType='dailyInput')
+  const diInputs = (_cache.dailyInputs || []).filter(p =>
+    p.weekEnding === weekEnding && p.job === activeJob
+  );
+  // Backward compat: legacy type='daily' paysheets saved before this update
+  const legacyDailySheets = (_cache.paysheets || []).filter(p =>
     p.weekEnding === weekEnding && p.type === 'daily' && p.job === activeJob
   );
-  if (!daily.length) {
-    alert(`No daily paysheets found in this folder yet.\nSave at least one daily paysheet to this folder first.`);
+
+  const totalSources = diInputs.length + legacyDailySheets.length;
+  if (!totalSources) {
+    alert(`No daily inputs found for this week.\nSubmit at least one Daily Input for Week Ending ${_fmtWeekDate(weekEnding)} first.`);
     return;
   }
-  if (!confirm(`Compile ${daily.length} daily paysheet(s) for Week Ending ${_fmtWeekDate(weekEnding)} into a weekly summary?\n\nThis creates one paysheet per crew with all areas/employees combined and ready for % Split, Amount, and signatures.\n(Any existing weekly summary for this week will be overwritten.)`)) return;
 
-  // Group by job
-  const byJob = {};
-  daily.forEach(p => {
-    const job = p.job || '(No Job)';
-    if (!byJob[job]) byJob[job] = [];
-    byJob[job].push(p);
-  });
+  const srcLabel = diInputs.length
+    ? `${diInputs.length} daily input${diInputs.length !== 1 ? 's' : ''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy paysheet${legacyDailySheets.length !== 1 ? 's' : ''}` : ''}`
+    : `${legacyDailySheets.length} legacy daily paysheet${legacyDailySheets.length !== 1 ? 's' : ''}`;
 
-  let compiled = 0;
-  for (const [job, sheets] of Object.entries(byJob)) {
-    const crews = {};
+  if (!confirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into a weekly summary?\n\nThis creates one paysheet per crew with all areas/employees combined and ready for % Split, Amount, and signatures.\n(Any existing weekly summary for this week will be overwritten.)`)) return;
 
-    for (let c = 1; c <= _psCrewCount; c++) {
-      const areaMap = {};   // key: area|||code → aggregated row
-      const empSet  = new Set();
-      let   header  = _psEmptyHeader();
+  const crews = {};
 
-      sheets.forEach(p => {
-        const sc = p.crews && p.crews[String(c)];
-        if (!sc) return;
-        // Take header from first crew that has one; always clear foremanSig — signatures are manual only
-        if (!header.crewName && sc.header && sc.header.crewName) {
-          header = Object.assign(_psEmptyHeader(), sc.header, { foremanSig: '' });
+  for (let c = 1; c <= _psCrewCount; c++) {
+    const areaMap = {};   // key: area|||code → aggregated row
+    const empSet  = new Set();
+    let   header  = _psEmptyHeader();
+
+    // ── New format: daily input records (crews[].entries[]) ──
+    diInputs.forEach(p => {
+      (p.crews || []).forEach(crew => {
+        if (crew.crewNum !== c) return;
+        // Take crew lead name for header
+        if (!header.crewName && crew.crewLeadName) {
+          header.crewName = crew.crewLeadName.trim();
         }
-        // Aggregate main rows by area+code
-        (sc.rows || []).forEach(r => {
-          if (!r.area && !r.costCode) return;
-          const key = (r.area||'') + '|||' + (r.costCode||'');
-          if (!areaMap[key]) areaMap[key] = { area: r.area||'', costCode: r.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: '' };
-          areaMap[key].weAmount += parseFloat(r.weAmount) || 0;
-          areaMap[key].ptd      += parseFloat(r.ptd)      || 0;
-          // Carry first non-empty note for this area+code
-          if (!areaMap[key].notes && r.notes) areaMap[key].notes = r.notes;
+        if (!header.foreman && p.submittedBy) header.foreman = p.submittedBy;
+        (crew.entries || []).forEach(e => {
+          if (e.employee) empSet.add(e.employee.trim());
+          if (!e.area && !e.costCode) return;
+          const key = (e.area||'') + '|||' + (e.costCode||'');
+          if (!areaMap[key]) areaMap[key] = { area: e.area||'', costCode: e.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: '' };
+          if (!areaMap[key].notes && e.description) areaMap[key].notes = e.description;
         });
-        // Collect unique employees from splits
-        (sc.splits || []).forEach(s => { if (s.employee) empSet.add(s.employee); });
       });
+    });
 
-      // Skip crew if no data
-      if (!Object.keys(areaMap).length && !empSet.size) continue;
+    // ── Legacy format: type='daily' paysheets (crews[c].rows + splits) ──
+    legacyDailySheets.forEach(p => {
+      const sc = p.crews && p.crews[String(c)];
+      if (!sc) return;
+      if (!header.crewName && sc.header && sc.header.crewName) {
+        header = Object.assign(_psEmptyHeader(), sc.header, { foremanSig: '' });
+      }
+      (sc.rows || []).forEach(r => {
+        if (!r.area && !r.costCode) return;
+        const key = (r.area||'') + '|||' + (r.costCode||'');
+        if (!areaMap[key]) areaMap[key] = { area: r.area||'', costCode: r.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: '' };
+        areaMap[key].weAmount += parseFloat(r.weAmount) || 0;
+        areaMap[key].ptd      += parseFloat(r.ptd)      || 0;
+        if (!areaMap[key].notes && r.notes) areaMap[key].notes = r.notes;
+      });
+      (sc.splits || []).forEach(s => { if (s.employee) empSet.add(s.employee); });
+    });
 
-      header.weekEnding = weekEnding;
+    // Skip crew if no data
+    if (!Object.keys(areaMap).length && !empSet.size) continue;
 
-      // Pad rows to a full page boundary so there are no jagged partial pages
-      const rows = _psPadRows(Object.values(areaMap));
+    header.weekEnding = weekEnding;
+    header.foremanSig = ''; // signatures must be drawn manually after compilation
 
-      // signatureData always starts empty — signatures must be drawn manually after compilation
-      const splits = [...empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
-      while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
+    // Pad rows to a full page boundary so there are no jagged partial pages
+    const rows = _psPadRows(Object.values(areaMap));
 
-      crews[String(c)] = { header, rows, splits };
-    }
+    // signatureData always starts empty — signatures must be drawn manually after compilation
+    const splits = [...empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
+    while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
 
-    if (!Object.keys(crews).length) continue;
-
-    // Use same docId format as manual save so "Save" after editing overwrites the compiled doc
-    const docId = (job + '_' + weekEnding).replace(/[^\w-]/g, '_');
-    const doc = {
-      id: docId, job, weekEnding,
-      type: 'weekly',
-      savedAt: new Date().toISOString(),
-      savedBy: _currentUser ? _currentUser.email : 'unknown',
-      crews,
-    };
-    await db.collection('paysheets').doc(docId).set(doc);
-    if (!_cache.paysheets) _cache.paysheets = [];
-    const idx = _cache.paysheets.findIndex(p => p.id === docId);
-    if (idx !== -1) _cache.paysheets[idx] = doc; else _cache.paysheets.push(doc);
-    compiled++;
+    crews[String(c)] = { header, rows, splits };
   }
 
+  if (!Object.keys(crews).length) { alert('No crew data found to compile.'); return; }
+
+  // Use same docId format as manual save so "Save" after editing overwrites the compiled doc
+  const docId = (activeJob + '_' + weekEnding).replace(/[^\w-]/g, '_');
+  const doc = {
+    id: docId, job: activeJob, weekEnding,
+    type: 'weekly',
+    savedAt: new Date().toISOString(),
+    savedBy: _currentUser ? _currentUser.email : 'unknown',
+    crews,
+  };
+  await db.collection('paysheets').doc(docId).set(doc);
+  if (!_cache.paysheets) _cache.paysheets = [];
+  const idx = _cache.paysheets.findIndex(p => p.id === docId);
+  if (idx !== -1) _cache.paysheets[idx] = doc; else _cache.paysheets.push(doc);
+
   renderPSLoadList();
-  if (compiled) alert(`Weekly summary compiled for ${compiled} job(s) — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nOpen the Load tab and click "Load" on the weekly summary to fill it out.`);
-  else alert('No crew data found to compile.');
+  alert(`Weekly summary compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nOpen the Load tab and click "Load" on the weekly summary to fill it out.`);
 }
 
 // ─── Load paysheet modal ───
@@ -6595,13 +6626,14 @@ function renderPSLoadList() {
     return;
   }
 
-  // Collect all week endings: shared Firestore folders + paysheet weekEndings visible to this user.
+  // Collect all week endings: shared Firestore folders + paysheet weekEndings + daily input weekEndings.
   // For foremen, locked folders they cannot access are still included (so they can request access).
   const allPsWE = isForeman()
     ? all.map(p => p.weekEnding).filter(Boolean)
     : (_cache.paysheets||[]).map(p => p.weekEnding).filter(Boolean);
+  const allDiWE = (_cache.dailyInputs||[]).map(d => d.weekEnding).filter(Boolean);
   // Always include all management-created folders (locked ones visible to foremen as "locked")
-  const weekEndingSet = new Set([...(_cache.psFolders||[]), ...allPsWE]);
+  const weekEndingSet = new Set([...(_cache.psFolders||[]), ...allPsWE, ...allDiWE]);
   const weekEndings   = [...weekEndingSet].sort((a,b) => b.localeCompare(a));
 
   if (!weekEndings.length) {
@@ -6660,7 +6692,15 @@ function renderPSLoadList() {
       subtitle = '<span style="color:#ef4444;">🔒 Locked</span>';
     } else {
       const cnt = sheets.length;
-      subtitle = cnt === 0 ? 'Empty folder' : cnt + ' paysheet' + (cnt !== 1 ? 's' : '');
+      const diCount = (_cache.dailyInputs||[]).filter(d => d.weekEnding === we && (!activeJob || d.job === activeJob)).length;
+      if (cnt === 0 && diCount === 0) {
+        subtitle = 'Empty folder';
+      } else {
+        const parts = [];
+        if (diCount) parts.push(diCount + ' daily input' + (diCount !== 1 ? 's' : ''));
+        if (cnt)     parts.push(cnt + ' paysheet' + (cnt !== 1 ? 's' : ''));
+        subtitle = parts.join(' · ');
+      }
     }
 
     // ── Temporary-access banner (shown to foreman with active grant) ────
@@ -6719,16 +6759,48 @@ function renderPSLoadList() {
       folderBody = deniedMsg;
     } else if (sheets.length === 0) {
       const hasOtherJobSheets = allSheetsInFolder.length > 0;
-      folderBody = `<div style="padding:10px 36px;font-size:.82rem;color:var(--muted);display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <span>${hasOtherJobSheets ? 'No paysheets for the selected job — switch jobs to view.' : 'Empty — save a paysheet here.'}</span>
-        ${(canManagePSFolders() && !hasOtherJobSheets) ? `<button class="btn-sm btn-danger" style="font-size:.75rem;white-space:nowrap;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
-      </div>`;
+      const diInputsHere = (_cache.dailyInputs||[]).filter(d => d.weekEnding === we && (!activeJob || d.job === activeJob));
+      if (diInputsHere.length) {
+        // Folder has daily inputs but no paysheets yet
+        const weekly = sheets.filter(p => p.type !== 'daily');
+        folderBody = `
+          <div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Inputs (${diInputsHere.length})</div>
+          ${diInputsHere.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(d => `
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 14px 8px 36px;border-top:1px solid var(--border);flex-wrap:wrap;">
+              <span style="font-size:.72rem;background:rgba(201,168,76,.15);color:var(--accent);border:1px solid rgba(201,168,76,.3);padding:1px 6px;border-radius:4px;font-weight:700;">INPUT · ${_fmtWeekDate(d.date||'')}</span>
+              <span style="font-size:.82rem;flex:1;">${eh(d.job||'')}</span>
+              <span style="font-size:.75rem;color:var(--muted);">${(d.crews||[]).map(c=>(c.crewLeadName||`Crew ${c.crewNum}`)).join(', ')}</span>
+              <span style="font-size:.75rem;color:var(--muted);">${new Set((d.crews||[]).flatMap(c=>(c.entries||[]).map(e=>(e.employee||'').trim()).filter(Boolean))).size} emp</span>
+              <span style="font-size:.75rem;color:var(--muted);">${eh(d.submittedBy||'')}</span>
+            </div>`).join('')}
+          <div style="padding:8px 14px 10px 36px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap;">
+            ${canCompilePaysheet() && activeJob ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">
+              📋 Compile into Weekly Paysheet
+            </button>
+            <span style="font-size:.75rem;color:var(--muted);">Compiles all daily inputs into one summary per crew</span>` : ''}
+          </div>`;
+      } else {
+        folderBody = `<div style="padding:10px 36px;font-size:.82rem;color:var(--muted);display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <span>${hasOtherJobSheets ? 'No paysheets for the selected job — switch jobs to view.' : 'Empty — save a paysheet here.'}</span>
+          ${(canManagePSFolders() && !hasOtherJobSheets) ? `<button class="btn-sm btn-danger" style="font-size:.75rem;white-space:nowrap;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
+        </div>`;
+      }
     } else {
-      const daily  = sheets.filter(p => p.type === 'daily');
-      const weekly = sheets.filter(p => p.type !== 'daily');
-      const hasDone = weekly.length > 0;
+      const daily     = sheets.filter(p => p.type === 'daily');
+      const weekly    = sheets.filter(p => p.type !== 'daily');
+      const hasDone   = weekly.length > 0;
+      const diInputsHere = (_cache.dailyInputs||[]).filter(d => d.weekEnding === we && (!activeJob || d.job === activeJob));
       folderBody = `
-        ${daily.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Paysheets (${daily.length})</div>
+        ${diInputsHere.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Inputs (${diInputsHere.length})</div>
+          ${diInputsHere.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(d => `
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 14px 8px 36px;border-top:1px solid var(--border);flex-wrap:wrap;">
+              <span style="font-size:.72rem;background:rgba(201,168,76,.15);color:var(--accent);border:1px solid rgba(201,168,76,.3);padding:1px 6px;border-radius:4px;font-weight:700;">INPUT · ${_fmtWeekDate(d.date||'')}</span>
+              <span style="font-size:.82rem;flex:1;">${eh(d.job||'')}</span>
+              <span style="font-size:.75rem;color:var(--muted);">${(d.crews||[]).map(c=>(c.crewLeadName||`Crew ${c.crewNum}`)).join(', ')}</span>
+              <span style="font-size:.75rem;color:var(--muted);">${new Set((d.crews||[]).flatMap(c=>(c.entries||[]).map(e=>(e.employee||'').trim()).filter(Boolean))).size} emp</span>
+              <span style="font-size:.75rem;color:var(--muted);">${eh(d.submittedBy||'')}</span>
+            </div>`).join('')}` : ''}
+        ${daily.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Legacy Daily Paysheets (${daily.length})</div>
           ${daily.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(p => _psLoadRow(p, we)).join('')}` : ''}
         ${weekly.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--green);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">★ Weekly Summary</div>
           ${weekly.map(p => _psLoadRow(p, we)).join('')}` : ''}
@@ -6736,7 +6808,7 @@ function renderPSLoadList() {
           ${canCompilePaysheet() && activeJob ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">
             📋 Compile into Weekly Paysheet
           </button>
-          ${hasDone ? '<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>' : '<span style="font-size:.75rem;color:var(--muted);">Combines all daily paysheets into one per crew</span>'}` : ''}
+          ${hasDone ? '<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>' : '<span style="font-size:.75rem;color:var(--muted);">Compiles all daily inputs into one summary per crew</span>'}` : ''}
         </div>`;
     }
 
