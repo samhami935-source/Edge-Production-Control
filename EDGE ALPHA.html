@@ -4561,9 +4561,8 @@ function _psEnsureCrew(c) {
   if (c > _psCrewCount) _psCrewCount = c;
 }
 
-// 'daily' = auto-generated from daily input (no % split/amount/sign)
-// 'weekly' = compiled or manually saved (full crew splits)
-let _psCurrentType  = 'daily';
+// 'weekly' = the only paysheet type used (daily input sheet removed)
+let _psCurrentType  = 'weekly';
 let _psCurrentDocId = null;  // Firestore doc ID of the paysheet currently loaded in the view
 let _psEditMode    = false;  // true = daily paysheet in edit mode (admin/PM only)
 let _psFilterCode  = '';     // active labor code filter (weekly only)
@@ -6149,7 +6148,7 @@ function psSplitAmtChanged(i, val) {
 function clearPaysheet() {
   if (!confirm(`Clear Crew ${_psActiveCrew} paysheet?`)) return;
   _psState[_psActiveCrew] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
-  _psCurrentType = 'daily';
+  _psCurrentType = 'weekly';
   psLoadHeaderFields();
   psRenderMainTable();
   psRenderCrewTable();
@@ -7296,7 +7295,7 @@ async function loadPaysheetFromCloud(docId) {
   }
 
   // Set type for conditional rendering
-  _psCurrentType  = doc.type || 'weekly';
+  _psCurrentType  = 'weekly';
   _psCurrentDocId = docId;
   _psEditMode     = false;
 
