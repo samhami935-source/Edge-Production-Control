@@ -3340,7 +3340,7 @@ function diRenderCrewTable() {
     empList.innerHTML = rows.map((row, i) => `
       <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
         <input class="fi" data-emp-idx="${i}" style="flex:1;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
-          oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft();diRenderEntries()" />
+          oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft()" />
         <button onclick="diDeleteRow(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;flex-shrink:0;" title="Remove employee">✕</button>
       </div>`).join('');
   }
