@@ -3466,15 +3466,18 @@ function diOpenFilter(type, btn) {
 
   // Use all available values for the job (not just what's already entered)
   const jobName = document.getElementById('ps-job-select').value || '';
-  let values;
+  // items = [{value, label}] — value is what gets stored, label is what's displayed
+  let items;
   if (type === 'area') {
-    values = jobName ? psGetAreas(jobName) : [];
+    items = (jobName ? psGetAreas(jobName) : []).map(a => ({value: a, label: a}));
   } else {
-    // All unique codes from PAYROLL_GROUPS that this role can see
-    values = PAYROLL_GROUPS.filter(g => isForemanAllowedCode(g.code)).map(g => g.code);
-    // Also include any COR labor codes for this job
-    const corCodes = (_cache.corbudgets || []).filter(b => b.jobId === jobName).map(b => b.laborCode).filter(Boolean);
-    values = [...new Set([...values, ...corCodes])].sort();
+    const groups = PAYROLL_GROUPS.filter(g => isForemanAllowedCode(g.code))
+      .map(g => ({value: g.code, label: `${g.code} \u2013 ${g.description}`}));
+    const corCodes = [...new Set((_cache.corbudgets || []).filter(b => b.jobId === jobName).map(b => b.laborCode).filter(Boolean))]
+      .map(c => ({value: c, label: c}));
+    // Merge, deduplicate by value
+    const seen = new Set(groups.map(g => g.value));
+    items = [...groups, ...corCodes.filter(c => !seen.has(c.value))];
   }
 
   panel.innerHTML = `
@@ -3490,12 +3493,12 @@ function diOpenFilter(type, btn) {
       </label>
     </div>
     <div id="di-filter-list" style="max-height:240px;overflow-y:auto;padding:4px 0;display:flex;flex-direction:column;">
-      ${values.length
-        ? values.map(v => `<label style="display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:.83rem;cursor:pointer;width:100%;box-sizing:border-box;border-bottom:1px solid rgba(255,255,255,.04);" title="${eh(v)}">
-            <input type="checkbox" value="${eh(v)}" onchange="diFilterCheckChange('${type}')" style="cursor:pointer;flex-shrink:0;" />
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">${eh(v)}</span>
+      ${items.length
+        ? items.map(item => `<label style="display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:.83rem;cursor:pointer;width:100%;box-sizing:border-box;border-bottom:1px solid rgba(255,255,255,.04);" title="${eh(item.label)}">
+            <input type="checkbox" value="${eh(item.value)}" onchange="diFilterCheckChange('${type}')" style="cursor:pointer;flex-shrink:0;" />
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">${eh(item.label)}</span>
           </label>`).join('')
-        : '<p style="color:var(--muted);font-size:.8rem;padding:10px 12px;margin:0;">No areas found — select a job first.</p>'
+        : `<p style="color:var(--muted);font-size:.8rem;padding:10px 12px;margin:0;">${type==='area'?'No areas found — select a job first.':'No labor codes available.'}</p>`
       }
     </div>
     <div style="padding:8px 10px;border-top:1px solid var(--border);display:flex;gap:6px;justify-content:flex-end;">
@@ -3518,10 +3521,14 @@ function diOpenFilter(type, btn) {
 function diFilterSearch(q) {
   const list = document.getElementById('di-filter-list');
   if (!list) return;
+  const ql = q.toLowerCase();
   list.querySelectorAll('label').forEach(lbl => {
-    const val = (lbl.querySelector('input[type="checkbox"]') || {}).value || '';
-    lbl.style.display = val.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
+    const span = lbl.querySelector('span');
+    const text = span ? span.textContent.toLowerCase() : '';
+    lbl.style.display = text.includes(ql) ? '' : 'none';
   });
+  // Sync Select All state after search narrows the list
+  diFilterCheckChange('');
 }
 
 function diFilterSelectAll(cb) {
