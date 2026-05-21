@@ -3400,11 +3400,7 @@ function diRenderCrewTable() {
   tbody.innerHTML = rows.map((row, i) => {
     const codeOpts = _diMakeCodeOpts(row.area, row.costCode, jobName, csvFile);
     const isCorRow = row.area && row.area.startsWith('[COR]');
-    const hidden = (
-      (_diFilterAreas && !_diFilterAreas.has(row.area || '')) ||
-      (_diFilterCodes && !_diFilterCodes.has(row.costCode || ''))
-    );
-    return `<tr style="border-top:1px solid var(--border);${isCorRow ? 'background:rgba(201,168,76,.07);' : ''}${hidden ? 'display:none;' : ''}">
+    return `<tr style="border-top:1px solid var(--border);${isCorRow ? 'background:rgba(201,168,76,.07);' : ''}">
       <td style="padding:6px 8px;">
         <div class="di-area-wrap">
           <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.area)}" placeholder="Search area…"
@@ -3481,9 +3477,6 @@ function diOpenFilter(type, btn) {
     values = [...new Set([...values, ...corCodes])].sort();
   }
 
-  const currentFilter = type === 'area' ? _diFilterAreas : _diFilterCodes;
-  const allChecked = !currentFilter;
-
   panel.innerHTML = `
     <div style="padding:8px 10px 6px;border-bottom:1px solid var(--border);">
       <input id="di-filter-search" placeholder="Search…" autocomplete="off"
@@ -3491,17 +3484,16 @@ function diOpenFilter(type, btn) {
         oninput="diFilterSearch(this.value)" />
     </div>
     <div style="padding:5px 12px;border-bottom:1px solid var(--border);">
-      <label style="font-size:.78rem;cursor:pointer;display:flex;align-items:center;gap:6px;">
-        <input type="checkbox" id="di-filter-all" onchange="diFilterSelectAll(this)" ${allChecked ? 'checked' : ''} style="cursor:pointer;" />
+      <label style="font-size:.78rem;cursor:pointer;display:flex;align-items:center;gap:6px;width:100%;">
+        <input type="checkbox" id="di-filter-all" onchange="diFilterSelectAll(this)" style="cursor:pointer;flex-shrink:0;" />
         <span style="font-weight:600;">Select All</span>
       </label>
     </div>
-    <div id="di-filter-list" style="max-height:210px;overflow-y:auto;padding:4px 0;">
+    <div id="di-filter-list" style="max-height:240px;overflow-y:auto;padding:4px 0;display:flex;flex-direction:column;">
       ${values.length
-        ? values.map(v => `
-          <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;font-size:.82rem;cursor:pointer;" title="${eh(v)}">
-            <input type="checkbox" value="${eh(v)}" ${allChecked || currentFilter.has(v) ? 'checked' : ''} onchange="diFilterCheckChange('${type}')" style="cursor:pointer;" />
-            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${eh(v)}</span>
+        ? values.map(v => `<label style="display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:.83rem;cursor:pointer;width:100%;box-sizing:border-box;border-bottom:1px solid rgba(255,255,255,.04);" title="${eh(v)}">
+            <input type="checkbox" value="${eh(v)}" onchange="diFilterCheckChange('${type}')" style="cursor:pointer;flex-shrink:0;" />
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${eh(v)}</span>
           </label>`).join('')
         : '<p style="color:var(--muted);font-size:.8rem;padding:10px 12px;margin:0;">No areas found — select a job first.</p>'
       }
@@ -3512,11 +3504,12 @@ function diOpenFilter(type, btn) {
     </div>`;
 
   // Position panel below the button
-  const rect = btn.getBoundingClientRect();
+  const rect  = btn.getBoundingClientRect();
   const scrollY = window.pageYOffset || 0;
   const scrollX = window.pageXOffset || 0;
-  const panelW  = 260;
-  const left    = Math.min(rect.left + scrollX, window.innerWidth + scrollX - panelW - 8);
+  const panelW  = 320;
+  panel.style.width = panelW + 'px';
+  const left = Math.min(rect.left + scrollX, window.innerWidth + scrollX - panelW - 8);
   panel.style.left = Math.max(4, left) + 'px';
   panel.style.top  = (rect.bottom + scrollY + 4) + 'px';
   panel.style.display = 'block';
@@ -3549,24 +3542,53 @@ function diFilterCheckChange(type) {
 function diApplyFilter(type) {
   const list = document.getElementById('di-filter-list');
   if (!list) return;
-  const allCbs    = list.querySelectorAll('input[type="checkbox"]');
-  const checked   = [...list.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.value);
-  const isAll     = checked.length === allCbs.length;
-  if (type === 'area') _diFilterAreas = isAll ? null : new Set(checked);
-  else                 _diFilterCodes = isAll ? null : new Set(checked);
-  const panel = document.getElementById('_di-filter-panel');
+  const checked = [...list.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.value);
+  const panel   = document.getElementById('_di-filter-panel');
   if (panel) panel.style.display = 'none';
   _diActiveFilter = null;
+  if (!checked.length) return;
+
+  const crew    = _diActiveCrew;
+  const jobName = document.getElementById('ps-job-select').value || '';
+
+  if (type === 'area') {
+    // Expand row array if more areas selected than current rows
+    while (_diData[crew].length < checked.length) {
+      _diData[crew].push({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:''});
+    }
+    checked.forEach((area, i) => {
+      _diData[crew][i].area = area;
+      if (area.startsWith('[COR]')) {
+        const corb = (_cache.corbudgets || []).find(b =>
+          `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
+        );
+        if (corb) {
+          _diData[crew][i].costCode    = corb.laborCode;
+          _diData[crew][i].corBudgetId = corb.id;
+          _diData[crew][i].corNumber   = corb.corNumber;
+        } else {
+          _diData[crew][i].costCode = _diData[crew][i].corBudgetId = _diData[crew][i].corNumber = '';
+        }
+      } else {
+        _diData[crew][i].corBudgetId = '';
+        _diData[crew][i].corNumber   = '';
+      }
+    });
+  } else {
+    while (_diData[crew].length < checked.length) {
+      _diData[crew].push({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:''});
+    }
+    checked.forEach((code, i) => { _diData[crew][i].costCode = code; });
+  }
+
   diRenderCrewTable();
+  diAutoSaveDraft();
 }
 
 function diClearFilter(type) {
-  if (type === 'area') _diFilterAreas = null;
-  else                 _diFilterCodes = null;
   const panel = document.getElementById('_di-filter-panel');
   if (panel) panel.style.display = 'none';
   _diActiveFilter = null;
-  diRenderCrewTable();
 }
 
 function _diUpdateFilterBtnState() {
