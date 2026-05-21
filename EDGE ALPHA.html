@@ -3493,7 +3493,7 @@ function diOpenFilter(type, btn) {
       ${values.length
         ? values.map(v => `<label style="display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:.83rem;cursor:pointer;width:100%;box-sizing:border-box;border-bottom:1px solid rgba(255,255,255,.04);" title="${eh(v)}">
             <input type="checkbox" value="${eh(v)}" onchange="diFilterCheckChange('${type}')" style="cursor:pointer;flex-shrink:0;" />
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${eh(v)}</span>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">${eh(v)}</span>
           </label>`).join('')
         : '<p style="color:var(--muted);font-size:.8rem;padding:10px 12px;margin:0;">No areas found — select a job first.</p>'
       }
@@ -3552,11 +3552,9 @@ function diApplyFilter(type) {
   const jobName = document.getElementById('ps-job-select').value || '';
 
   if (type === 'area') {
-    // Expand row array if more areas selected than current rows
-    while (_diData[crew].length < checked.length) {
-      _diData[crew].push({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:''});
-    }
+    // Only fill existing rows — never push new rows (would create blank employee name slots)
     checked.forEach((area, i) => {
+      if (i >= _diData[crew].length) return;
       _diData[crew][i].area = area;
       if (area.startsWith('[COR]')) {
         const corb = (_cache.corbudgets || []).find(b =>
@@ -3575,10 +3573,9 @@ function diApplyFilter(type) {
       }
     });
   } else {
-    while (_diData[crew].length < checked.length) {
-      _diData[crew].push({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:''});
-    }
-    checked.forEach((code, i) => { _diData[crew][i].costCode = code; });
+    checked.forEach((code, i) => {
+      if (i < _diData[crew].length) _diData[crew][i].costCode = code;
+    });
   }
 
   diRenderCrewTable();
