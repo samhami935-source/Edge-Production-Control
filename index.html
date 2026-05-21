@@ -3593,9 +3593,17 @@ function diApplyFilter(type) {
       }
     });
   } else {
-    checked.forEach((code, i) => {
-      if (i < _diData[crew].length) _diData[crew][i].costCode = code;
-    });
+    // Get indices of rows that already have an area filled in
+    const filledRows = _diData[crew].map((r, i) => i).filter(i => (_diData[crew][i].area || '').trim());
+    if (checked.length === 1) {
+      // Single code selected: apply it to every row that has an area
+      filledRows.forEach(i => { _diData[crew][i].costCode = checked[0]; });
+    } else {
+      // Multiple codes: apply in order to each filled row
+      filledRows.forEach((rowIdx, j) => {
+        if (j < checked.length) _diData[crew][rowIdx].costCode = checked[j];
+      });
+    }
   }
 
   diRenderCrewTable();
