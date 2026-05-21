@@ -3468,13 +3468,17 @@ function diOpenFilter(type, btn) {
   }
   _diActiveFilter = type;
 
-  // Collect unique values from current crew data
-  const rows = _diData[_diActiveCrew] || [];
+  // Use all available values for the job (not just what's already entered)
+  const jobName = document.getElementById('ps-job-select').value || '';
   let values;
   if (type === 'area') {
-    values = [...new Set(rows.map(r => r.area).filter(Boolean))].sort();
+    values = jobName ? psGetAreas(jobName) : [];
   } else {
-    values = [...new Set(rows.map(r => r.costCode).filter(Boolean))].sort();
+    // All unique codes from PAYROLL_GROUPS that this role can see
+    values = PAYROLL_GROUPS.filter(g => isForemanAllowedCode(g.code)).map(g => g.code);
+    // Also include any COR labor codes for this job
+    const corCodes = (_cache.corbudgets || []).filter(b => b.jobId === jobName).map(b => b.laborCode).filter(Boolean);
+    values = [...new Set([...values, ...corCodes])].sort();
   }
 
   const currentFilter = type === 'area' ? _diFilterAreas : _diFilterCodes;
@@ -3499,7 +3503,7 @@ function diOpenFilter(type, btn) {
             <input type="checkbox" value="${eh(v)}" ${allChecked || currentFilter.has(v) ? 'checked' : ''} onchange="diFilterCheckChange('${type}')" style="cursor:pointer;" />
             <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${eh(v)}</span>
           </label>`).join('')
-        : '<p style="color:var(--muted);font-size:.8rem;padding:10px 12px;margin:0;">No entries yet — fill in some rows first.</p>'
+        : '<p style="color:var(--muted);font-size:.8rem;padding:10px 12px;margin:0;">No areas found — select a job first.</p>'
       }
     </div>
     <div style="padding:8px 10px;border-top:1px solid var(--border);display:flex;gap:6px;justify-content:flex-end;">
