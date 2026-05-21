@@ -857,8 +857,16 @@
             <table style="min-width:560px;width:100%;border-collapse:collapse;">
               <thead>
                 <tr style="background:var(--surface2);">
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);width:30%;">Area Worked</th>
-                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);width:35%;">Labor Code</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);width:30%;">
+                    <span style="display:flex;align-items:center;gap:5px;">Area Worked
+                      <button id="di-filter-area-btn" onclick="diOpenFilter('area',this)" title="Filter by area" style="background:none;border:1px solid var(--muted);border-radius:3px;font-size:.65rem;cursor:pointer;padding:1px 5px;color:var(--muted);line-height:1.3;white-space:nowrap;font-weight:600;">▼ Filter</button>
+                    </span>
+                  </th>
+                  <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);width:35%;">
+                    <span style="display:flex;align-items:center;gap:5px;">Labor Code
+                      <button id="di-filter-code-btn" onclick="diOpenFilter('code',this)" title="Filter by labor code" style="background:none;border:1px solid var(--muted);border-radius:3px;font-size:.65rem;cursor:pointer;padding:1px 5px;color:var(--muted);line-height:1.3;white-space:nowrap;font-weight:600;">▼ Filter</button>
+                    </span>
+                  </th>
                   <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Notes</th>
                   <th style="padding:8px 10px;border-bottom:1px solid var(--border);width:32px;"></th>
                 </tr>
@@ -3005,6 +3013,8 @@ function _diEmptyCrewData() {
 }
 
 function diSwitchJobData(jobName) {
+  _diFilterAreas = null;
+  _diFilterCodes = null;
   if (!jobName) {
     _diCrewCount = 10;
     const blank = _diEmptyCrewData();
@@ -3086,7 +3096,7 @@ function diRenderCrewTabs() {
       ? 'background:var(--accent);color:#000;border-color:var(--accent);font-weight:700;'
       : '';
     btn.textContent = label;
-    btn.onclick = () => { _diActiveCrew = c; diRenderCrewTabs(); diRenderCrewTable(); };
+    btn.onclick = () => { _diActiveCrew = c; _diFilterAreas = null; _diFilterCodes = null; diRenderCrewTabs(); diRenderCrewTable(); };
 
     // Delete (×) button on each crew tab — always visible so users can remove crews
     const xBtn = document.createElement('button');
@@ -3384,10 +3394,15 @@ function diRenderCrewTable() {
   }
 
   // ── Section 2: Daily entries table ──
+  _diUpdateFilterBtnState();
   tbody.innerHTML = rows.map((row, i) => {
     const codeOpts = _diMakeCodeOpts(row.area, row.costCode, jobName, csvFile);
     const isCorRow = row.area && row.area.startsWith('[COR]');
-    const primaryRow = `<tr style="border-top:1px solid var(--border);${isCorRow ? 'background:rgba(201,168,76,.07);' : ''}">
+    const hidden = (
+      (_diFilterAreas && !_diFilterAreas.has(row.area || '')) ||
+      (_diFilterCodes && !_diFilterCodes.has(row.costCode || ''))
+    );
+    return `<tr style="border-top:1px solid var(--border);${isCorRow ? 'background:rgba(201,168,76,.07);' : ''}${hidden ? 'display:none;' : ''}">
       <td style="padding:6px 8px;">
         <div class="di-area-wrap">
           <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.area)}" placeholder="Search area…"
@@ -3397,7 +3412,6 @@ function diRenderCrewTable() {
             onkeydown="diAreaKey(event,this)" autocomplete="off" />
           <div class="di-area-dropdown"></div>
         </div>
-        <button onclick="diAddExtraEntry(${_diActiveCrew},${i})" style="margin-top:3px;font-size:.72rem;color:var(--accent);background:none;border:none;cursor:pointer;padding:1px 0;display:block;opacity:.8;" title="Add another area to this entry">+ area</button>
       </td>
       <td style="padding:6px 8px;">
         <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value;diAutoSaveDraft()">
@@ -3412,32 +3426,6 @@ function diRenderCrewTable() {
         <button onclick="diClearEntry(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;" title="Clear this entry">✕</button>
       </td>
     </tr>`;
-    const extraRows = (row.extraEntries || []).map((ex, ei) => {
-      const exCodeOpts = _diMakeCodeOpts(ex.area, ex.costCode, jobName, csvFile);
-      const isExCor = ex.area && ex.area.startsWith('[COR]');
-      return `<tr style="border-top:1px solid var(--border);background:${isExCor ? 'rgba(201,168,76,.05)' : 'rgba(255,255,255,.02)'};">
-        <td style="padding:3px 8px 3px 22px;">
-          <div class="di-area-wrap">
-            <input class="fi" style="width:100%;padding:5px 8px;font-size:.83rem;" value="${eh(ex.area)}" placeholder="Search area…"
-              oninput="diAreaInputExtra(this,${_diActiveCrew},${i},${ei})"
-              onfocus="diAreaOpenExtra(this,${_diActiveCrew},${i},${ei})"
-              onblur="diAreaBlur(this,${_diActiveCrew},${i})"
-              onkeydown="diAreaKey(event,this)" autocomplete="off" />
-            <div class="di-area-dropdown"></div>
-          </div>
-        </td>
-        <td style="padding:3px 8px;">
-          <select class="fi" style="width:100%;padding:5px 8px;font-size:.83rem;" onchange="_diData[${_diActiveCrew}][${i}].extraEntries[${ei}].costCode=this.value;diAutoSaveDraft()">
-            ${exCodeOpts}
-          </select>
-        </td>
-        <td></td>
-        <td style="padding:3px 4px;width:32px;text-align:center;">
-          <button onclick="diRemoveExtraEntry(${_diActiveCrew},${i},${ei})" style="background:none;border:none;color:#ef4444;font-size:1rem;cursor:pointer;padding:2px 6px;line-height:1;" title="Remove area">✕</button>
-        </td>
-      </tr>`;
-    }).join('');
-    return primaryRow + extraRows;
   }).join('');
 }
 
@@ -3446,53 +3434,150 @@ function diRenderEntries() {
   diRenderCrewTable();
 }
 
-// ── Extra area entry helpers ──
-function diAddExtraEntry(crew, rowIdx) {
-  if (!_diData[crew][rowIdx].extraEntries) _diData[crew][rowIdx].extraEntries = [];
-  _diData[crew][rowIdx].extraEntries.push({area:'', costCode:'', corBudgetId:'', corNumber:''});
-  diRenderCrewTable();
-  diAutoSaveDraft();
-}
+// ── Column filter state ──
+let _diFilterAreas = null;  // null = no filter; Set<string> = show only these areas
+let _diFilterCodes = null;  // null = no filter; Set<string> = show only these codes
+let _diActiveFilter = null; // 'area' | 'code' | null — which panel is open
 
-function diRemoveExtraEntry(crew, rowIdx, extraIdx) {
-  const ex = _diData[crew][rowIdx].extraEntries;
-  if (ex) ex.splice(extraIdx, 1);
-  diRenderCrewTable();
-  diAutoSaveDraft();
-}
-
-function diAreaOpenExtra(input, crew, rowIdx, extraIdx) {
-  _diAreaRenderDropdown(input, crew, rowIdx, extraIdx);
-}
-
-function diAreaInputExtra(input, crew, rowIdx, extraIdx) {
-  _diAreaRenderDropdown(input, crew, rowIdx, extraIdx);
-}
-
-function diAreaPickExtra(area, crew, rowIdx, extraIdx) {
-  const extra = (_diData[crew][rowIdx].extraEntries || [])[extraIdx];
-  if (!extra) return;
-  extra.area = area;
-  if (area && area.startsWith('[COR]')) {
-    const jobName = document.getElementById('ps-job-select').value || '';
-    const corb = (_cache.corbudgets || []).find(b =>
-      `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
-    );
-    if (corb) {
-      extra.costCode    = corb.laborCode;
-      extra.corBudgetId = corb.id;
-      extra.corNumber   = corb.corNumber;
-    } else {
-      extra.costCode = extra.corBudgetId = extra.corNumber = '';
-    }
-  } else {
-    extra.corBudgetId = '';
-    extra.corNumber   = '';
+function _diGetFilterPanel() {
+  let p = document.getElementById('_di-filter-panel');
+  if (!p) {
+    p = document.createElement('div');
+    p.id = '_di-filter-panel';
+    p.style.cssText = 'position:absolute;z-index:10000;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.5);display:none;width:260px;';
+    document.body.appendChild(p);
+    document.addEventListener('mousedown', e => {
+      if (!p.contains(e.target) && !e.target.closest('#di-filter-area-btn, #di-filter-code-btn')) {
+        p.style.display = 'none';
+        _diActiveFilter = null;
+      }
+    }, true);
   }
-  const portal = document.getElementById('_di-area-portal');
-  if (portal) portal.style.display = 'none';
+  return p;
+}
+
+function diOpenFilter(type, btn) {
+  const panel = _diGetFilterPanel();
+  // Toggle closed if same filter already open
+  if (_diActiveFilter === type && panel.style.display !== 'none') {
+    panel.style.display = 'none';
+    _diActiveFilter = null;
+    return;
+  }
+  _diActiveFilter = type;
+
+  // Collect unique values from current crew data
+  const rows = _diData[_diActiveCrew] || [];
+  let values;
+  if (type === 'area') {
+    values = [...new Set(rows.map(r => r.area).filter(Boolean))].sort();
+  } else {
+    values = [...new Set(rows.map(r => r.costCode).filter(Boolean))].sort();
+  }
+
+  const currentFilter = type === 'area' ? _diFilterAreas : _diFilterCodes;
+  const allChecked = !currentFilter;
+
+  panel.innerHTML = `
+    <div style="padding:8px 10px 6px;border-bottom:1px solid var(--border);">
+      <input id="di-filter-search" placeholder="Search…" autocomplete="off"
+        style="width:100%;box-sizing:border-box;padding:5px 8px;font-size:.82rem;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);"
+        oninput="diFilterSearch(this.value)" />
+    </div>
+    <div style="padding:5px 12px;border-bottom:1px solid var(--border);">
+      <label style="font-size:.78rem;cursor:pointer;display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" id="di-filter-all" onchange="diFilterSelectAll(this)" ${allChecked ? 'checked' : ''} style="cursor:pointer;" />
+        <span style="font-weight:600;">Select All</span>
+      </label>
+    </div>
+    <div id="di-filter-list" style="max-height:210px;overflow-y:auto;padding:4px 0;">
+      ${values.length
+        ? values.map(v => `
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 12px;font-size:.82rem;cursor:pointer;" title="${eh(v)}">
+            <input type="checkbox" value="${eh(v)}" ${allChecked || currentFilter.has(v) ? 'checked' : ''} onchange="diFilterCheckChange('${type}')" style="cursor:pointer;" />
+            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${eh(v)}</span>
+          </label>`).join('')
+        : '<p style="color:var(--muted);font-size:.8rem;padding:10px 12px;margin:0;">No entries yet — fill in some rows first.</p>'
+      }
+    </div>
+    <div style="padding:8px 10px;border-top:1px solid var(--border);display:flex;gap:6px;justify-content:flex-end;">
+      <button onclick="diClearFilter('${type}')" style="font-size:.78rem;padding:4px 12px;background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--text);">Clear</button>
+      <button onclick="diApplyFilter('${type}')" style="font-size:.78rem;padding:4px 12px;background:var(--accent);border:none;border-radius:6px;cursor:pointer;color:#000;font-weight:700;">Apply</button>
+    </div>`;
+
+  // Position panel below the button
+  const rect = btn.getBoundingClientRect();
+  const scrollY = window.pageYOffset || 0;
+  const scrollX = window.pageXOffset || 0;
+  const panelW  = 260;
+  const left    = Math.min(rect.left + scrollX, window.innerWidth + scrollX - panelW - 8);
+  panel.style.left = Math.max(4, left) + 'px';
+  panel.style.top  = (rect.bottom + scrollY + 4) + 'px';
+  panel.style.display = 'block';
+}
+
+function diFilterSearch(q) {
+  const list = document.getElementById('di-filter-list');
+  if (!list) return;
+  list.querySelectorAll('label').forEach(lbl => {
+    const val = (lbl.querySelector('input[type="checkbox"]') || {}).value || '';
+    lbl.style.display = val.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
+  });
+}
+
+function diFilterSelectAll(cb) {
+  const list = document.getElementById('di-filter-list');
+  if (!list) return;
+  list.querySelectorAll('input[type="checkbox"]').forEach(c => c.checked = cb.checked);
+}
+
+function diFilterCheckChange(type) {
+  const allCb = document.getElementById('di-filter-all');
+  const list  = document.getElementById('di-filter-list');
+  if (!list || !allCb) return;
+  const all = list.querySelectorAll('input[type="checkbox"]');
+  allCb.checked = [...all].every(c => c.checked);
+  allCb.indeterminate = !allCb.checked && [...all].some(c => c.checked);
+}
+
+function diApplyFilter(type) {
+  const list = document.getElementById('di-filter-list');
+  if (!list) return;
+  const allCbs    = list.querySelectorAll('input[type="checkbox"]');
+  const checked   = [...list.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.value);
+  const isAll     = checked.length === allCbs.length;
+  if (type === 'area') _diFilterAreas = isAll ? null : new Set(checked);
+  else                 _diFilterCodes = isAll ? null : new Set(checked);
+  const panel = document.getElementById('_di-filter-panel');
+  if (panel) panel.style.display = 'none';
+  _diActiveFilter = null;
   diRenderCrewTable();
-  diAutoSaveDraft();
+}
+
+function diClearFilter(type) {
+  if (type === 'area') _diFilterAreas = null;
+  else                 _diFilterCodes = null;
+  const panel = document.getElementById('_di-filter-panel');
+  if (panel) panel.style.display = 'none';
+  _diActiveFilter = null;
+  diRenderCrewTable();
+}
+
+function _diUpdateFilterBtnState() {
+  const areaBtn = document.getElementById('di-filter-area-btn');
+  const codeBtn = document.getElementById('di-filter-code-btn');
+  if (areaBtn) {
+    const on = !!_diFilterAreas;
+    areaBtn.style.color       = on ? 'var(--accent)' : '';
+    areaBtn.style.borderColor = on ? 'var(--accent)' : '';
+    areaBtn.textContent       = on ? '▼ Filtered' : '▼ Filter';
+  }
+  if (codeBtn) {
+    const on = !!_diFilterCodes;
+    codeBtn.style.color       = on ? 'var(--accent)' : '';
+    codeBtn.style.borderColor = on ? 'var(--accent)' : '';
+    codeBtn.textContent       = on ? '▼ Filtered' : '▼ Filter';
+  }
 }
 
 // ── Area combobox helpers ──
@@ -3515,7 +3600,7 @@ function _diGetPortal() {
   return p;
 }
 
-function _diAreaRenderDropdown(input, crew, rowIdx, extraIdx) {
+function _diAreaRenderDropdown(input, crew, rowIdx) {
   const q        = input.value.trim().toLowerCase();
   const dropdown = _diGetPortal();
   const all      = _diAreaList();
@@ -3528,11 +3613,7 @@ function _diAreaRenderDropdown(input, crew, rowIdx, extraIdx) {
   dropdown.querySelectorAll('.di-area-opt').forEach(el => {
     el.addEventListener('mousedown', e => {
       e.preventDefault();
-      if (extraIdx !== undefined) {
-        diAreaPickExtra(el.dataset.area, crew, rowIdx, extraIdx);
-      } else {
-        diAreaPick(el.dataset.area, parseInt(el.dataset.crew), parseInt(el.dataset.row));
-      }
+      diAreaPick(el.dataset.area, parseInt(el.dataset.crew), parseInt(el.dataset.row));
     });
     let _touchStartY = 0;
     el.addEventListener('touchstart', e => { _touchStartY = e.touches[0].clientY; }, { passive: true });
@@ -3540,11 +3621,7 @@ function _diAreaRenderDropdown(input, crew, rowIdx, extraIdx) {
       const moved = Math.abs(e.changedTouches[0].clientY - _touchStartY);
       if (moved < 8) {
         e.preventDefault();
-        if (extraIdx !== undefined) {
-          diAreaPickExtra(el.dataset.area, crew, rowIdx, extraIdx);
-        } else {
-          diAreaPick(el.dataset.area, parseInt(el.dataset.crew), parseInt(el.dataset.row));
-        }
+        diAreaPick(el.dataset.area, parseInt(el.dataset.crew), parseInt(el.dataset.row));
       }
     });
   });
@@ -4446,10 +4523,9 @@ function diDeleteRow(crew, i) {
 
 // Clears only the work entry fields — employee name is preserved
 function diClearEntry(crew, i) {
-  _diData[crew][i].area         = '';
-  _diData[crew][i].costCode     = '';
-  _diData[crew][i].description  = '';
-  _diData[crew][i].extraEntries = [];
+  _diData[crew][i].area        = '';
+  _diData[crew][i].costCode    = '';
+  _diData[crew][i].description = '';
   diRenderCrewTable();
   diAutoSaveDraft();
 }
