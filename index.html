@@ -2999,7 +2999,7 @@ let _diLockCheckInterval = null;
 function _diEmptyCrewData() {
   const d = {};
   for (let c=1; c<=_diCrewCount; c++) {
-    d[c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:''}));
+    d[c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]}));
   }
   return d;
 }
@@ -3017,7 +3017,7 @@ function diSwitchJobData(jobName) {
   _diCrewCount = _diAllData[jobName].__crewCount || 10;
   for (let c=1; c<=_diCrewCount; c++) {
     if (!_diAllData[jobName][c]) {
-      _diAllData[jobName][c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:''}));
+      _diAllData[jobName][c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]}));
     }
     _diData[c] = _diAllData[jobName][c];
   }
@@ -3274,6 +3274,44 @@ async function diDeleteCrewSet(id, name) {
   } catch(e) { alert('Could not delete crew set: ' + e.message); }
 }
 
+// Builds <option> HTML for an area+code select — shared by primary rows and extra sub-rows
+function _diMakeCodeOpts(area, selectedCode, jobName, csvFile) {
+  let codeOpts = '<option value=""></option>';
+  if (area && area.startsWith('[COR]')) {
+    const corb = (_cache.corbudgets || []).find(b =>
+      `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
+    );
+    if (corb) {
+      const paid = computeCorPaid(corb);
+      const rem  = corb.amount - paid;
+      const remStr = rem < 0 ? `-${fm(Math.abs(rem))}` : fm(rem);
+      codeOpts = `<option value="${eh(corb.laborCode)}" ${selectedCode===corb.laborCode?'selected':''}>${corb.laborCode} \u2013 ${eh(corb.description)} | COR ${eh(corb.corNumber)} | Rem: ${remStr}</option>`;
+    }
+  } else if (csvFile && area) {
+    const areaRows    = csvFile.rows.filter(r => r.area === area);
+    const areaEntries = getPayrollEntries().filter(e => e.csvFile === jobName && e.area === area);
+    if (areaRows.length) {
+      areaRows.filter(r => isForemanAllowedCode(r.costCode)).forEach(r => {
+        const exactPaid2 = areaEntries.filter(e => e.costCode === r.costCode).reduce((s,e) => s+e.price, 0);
+        const paid = exactPaid2 > 0 ? exactPaid2
+          : areaEntries.filter(e => getCodeGroup(e.costCode) === getCodeGroup(r.costCode)).reduce((s,e) => s+e.price, 0);
+        const rem     = r.amount - paid;
+        const remStr  = rem < 0 ? `-${fm(Math.abs(rem))}` : fm(rem);
+        codeOpts += `<option value="${eh(r.costCode)}" data-desc="${eh(r.description)}" ${selectedCode===r.costCode?'selected':''}>${r.costCode} \u2013 ${r.description}   |   Rem: ${remStr}</option>`;
+      });
+    } else {
+      PAYROLL_GROUPS.filter(g => isForemanAllowedCode(g.code)).forEach(g => {
+        codeOpts += `<option value="${g.code}" ${selectedCode===g.code?'selected':''}>${g.code} \u2013 ${g.description}</option>`;
+      });
+    }
+  } else {
+    PAYROLL_GROUPS.filter(g => isForemanAllowedCode(g.code)).forEach(g => {
+      codeOpts += `<option value="${g.code}" ${selectedCode===g.code?'selected':''}>${g.code} \u2013 ${g.description}</option>`;
+    });
+  }
+  return codeOpts;
+}
+
 function diRenderCrewTable() {
   const jobName = document.getElementById('ps-job-select').value;
   const areas   = jobName ? psGetAreas(jobName) : [];
@@ -3347,43 +3385,9 @@ function diRenderCrewTable() {
 
   // ── Section 2: Daily entries table ──
   tbody.innerHTML = rows.map((row, i) => {
-    let codeOpts = '<option value=""></option>';
-    // ── COR area: show the COR's labor code as the sole option ──
-    if (row.area && row.area.startsWith('[COR]')) {
-      const corb = (_cache.corbudgets || []).find(b =>
-        `[COR] ${b.corNumber} \u2013 ${b.description}` === row.area && b.jobId === jobName
-      );
-      if (corb) {
-        const paid = computeCorPaid(corb);
-        const rem  = corb.amount - paid;
-        const remStr = rem < 0 ? `-${fm(Math.abs(rem))}` : fm(rem);
-        codeOpts = `<option value="${eh(corb.laborCode)}" ${row.costCode===corb.laborCode?'selected':''}>${corb.laborCode} \u2013 ${eh(corb.description)} | COR ${eh(corb.corNumber)} | Rem: ${remStr}</option>`;
-      }
-    } else if (csvFile && row.area) {
-      const areaRows = csvFile.rows.filter(r => r.area === row.area);
-      const areaEntries = getPayrollEntries().filter(e => e.csvFile === jobName && e.area === row.area);
-      if (areaRows.length) {
-        areaRows.filter(r => isForemanAllowedCode(r.costCode)).forEach(r => {
-          const exactPaid2 = areaEntries.filter(e => e.costCode === r.costCode).reduce((s,e) => s+e.price, 0);
-          const paid = exactPaid2 > 0 ? exactPaid2
-            : areaEntries.filter(e => getCodeGroup(e.costCode) === getCodeGroup(r.costCode)).reduce((s,e) => s+e.price, 0);
-          const rem  = r.amount - paid;
-          const remStr = rem < 0 ? `-${fm(Math.abs(rem))}` : fm(rem);
-          codeOpts += `<option value="${eh(r.costCode)}" data-desc="${eh(r.description)}" ${row.costCode===r.costCode?'selected':''}>${r.costCode} – ${r.description}   |   Rem: ${remStr}</option>`;
-        });
-      } else {
-        PAYROLL_GROUPS.filter(g => isForemanAllowedCode(g.code)).forEach(g => {
-          codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
-        });
-      }
-    } else {
-      PAYROLL_GROUPS.filter(g => isForemanAllowedCode(g.code)).forEach(g => {
-        codeOpts += `<option value="${g.code}" ${row.costCode===g.code?'selected':''}>${g.code} – ${g.description}</option>`;
-      });
-    }
-
+    const codeOpts = _diMakeCodeOpts(row.area, row.costCode, jobName, csvFile);
     const isCorRow = row.area && row.area.startsWith('[COR]');
-    return `<tr style="border-top:1px solid var(--border);${isCorRow ? 'background:rgba(201,168,76,.07);' : ''}">
+    const primaryRow = `<tr style="border-top:1px solid var(--border);${isCorRow ? 'background:rgba(201,168,76,.07);' : ''}">
       <td style="padding:6px 8px;">
         <div class="di-area-wrap">
           <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.area)}" placeholder="Search area…"
@@ -3393,6 +3397,7 @@ function diRenderCrewTable() {
             onkeydown="diAreaKey(event,this)" autocomplete="off" />
           <div class="di-area-dropdown"></div>
         </div>
+        <button onclick="diAddExtraEntry(${_diActiveCrew},${i})" style="margin-top:3px;font-size:.72rem;color:var(--accent);background:none;border:none;cursor:pointer;padding:1px 0;display:block;opacity:.8;" title="Add another area to this entry">+ area</button>
       </td>
       <td style="padding:6px 8px;">
         <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value;diAutoSaveDraft()">
@@ -3407,12 +3412,87 @@ function diRenderCrewTable() {
         <button onclick="diClearEntry(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;" title="Clear this entry">✕</button>
       </td>
     </tr>`;
+    const extraRows = (row.extraEntries || []).map((ex, ei) => {
+      const exCodeOpts = _diMakeCodeOpts(ex.area, ex.costCode, jobName, csvFile);
+      const isExCor = ex.area && ex.area.startsWith('[COR]');
+      return `<tr style="border-top:1px solid var(--border);background:${isExCor ? 'rgba(201,168,76,.05)' : 'rgba(255,255,255,.02)'};">
+        <td style="padding:3px 8px 3px 22px;">
+          <div class="di-area-wrap">
+            <input class="fi" style="width:100%;padding:5px 8px;font-size:.83rem;" value="${eh(ex.area)}" placeholder="Search area…"
+              oninput="diAreaInputExtra(this,${_diActiveCrew},${i},${ei})"
+              onfocus="diAreaOpenExtra(this,${_diActiveCrew},${i},${ei})"
+              onblur="diAreaBlur(this,${_diActiveCrew},${i})"
+              onkeydown="diAreaKey(event,this)" autocomplete="off" />
+            <div class="di-area-dropdown"></div>
+          </div>
+        </td>
+        <td style="padding:3px 8px;">
+          <select class="fi" style="width:100%;padding:5px 8px;font-size:.83rem;" onchange="_diData[${_diActiveCrew}][${i}].extraEntries[${ei}].costCode=this.value;diAutoSaveDraft()">
+            ${exCodeOpts}
+          </select>
+        </td>
+        <td></td>
+        <td style="padding:3px 4px;width:32px;text-align:center;">
+          <button onclick="diRemoveExtraEntry(${_diActiveCrew},${i},${ei})" style="background:none;border:none;color:#ef4444;font-size:1rem;cursor:pointer;padding:2px 6px;line-height:1;" title="Remove area">✕</button>
+        </td>
+      </tr>`;
+    }).join('');
+    return primaryRow + extraRows;
   }).join('');
 }
 
 // Re-renders only the entries tbody (called when employee names change so labels stay in sync)
 function diRenderEntries() {
   diRenderCrewTable();
+}
+
+// ── Extra area entry helpers ──
+function diAddExtraEntry(crew, rowIdx) {
+  if (!_diData[crew][rowIdx].extraEntries) _diData[crew][rowIdx].extraEntries = [];
+  _diData[crew][rowIdx].extraEntries.push({area:'', costCode:'', corBudgetId:'', corNumber:''});
+  diRenderCrewTable();
+  diAutoSaveDraft();
+}
+
+function diRemoveExtraEntry(crew, rowIdx, extraIdx) {
+  const ex = _diData[crew][rowIdx].extraEntries;
+  if (ex) ex.splice(extraIdx, 1);
+  diRenderCrewTable();
+  diAutoSaveDraft();
+}
+
+function diAreaOpenExtra(input, crew, rowIdx, extraIdx) {
+  _diAreaRenderDropdown(input, crew, rowIdx, extraIdx);
+}
+
+function diAreaInputExtra(input, crew, rowIdx, extraIdx) {
+  _diAreaRenderDropdown(input, crew, rowIdx, extraIdx);
+}
+
+function diAreaPickExtra(area, crew, rowIdx, extraIdx) {
+  const extra = (_diData[crew][rowIdx].extraEntries || [])[extraIdx];
+  if (!extra) return;
+  extra.area = area;
+  if (area && area.startsWith('[COR]')) {
+    const jobName = document.getElementById('ps-job-select').value || '';
+    const corb = (_cache.corbudgets || []).find(b =>
+      `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
+    );
+    if (corb) {
+      extra.costCode    = corb.laborCode;
+      extra.corBudgetId = corb.id;
+      extra.corNumber   = corb.corNumber;
+    } else {
+      extra.costCode = extra.corBudgetId = extra.corNumber = '';
+    }
+  } else {
+    extra.corBudgetId = '';
+    extra.corNumber   = '';
+  }
+  const portal = document.getElementById('_di-area-portal');
+  if (portal) portal.style.display = 'none';
+  diRenderCrewTable();
+  diAutoSaveDraft();
 }
 
 // ── Area combobox helpers ──
@@ -3435,7 +3515,7 @@ function _diGetPortal() {
   return p;
 }
 
-function _diAreaRenderDropdown(input, crew, rowIdx) {
+function _diAreaRenderDropdown(input, crew, rowIdx, extraIdx) {
   const q        = input.value.trim().toLowerCase();
   const dropdown = _diGetPortal();
   const all      = _diAreaList();
@@ -3448,7 +3528,11 @@ function _diAreaRenderDropdown(input, crew, rowIdx) {
   dropdown.querySelectorAll('.di-area-opt').forEach(el => {
     el.addEventListener('mousedown', e => {
       e.preventDefault();
-      diAreaPick(el.dataset.area, parseInt(el.dataset.crew), parseInt(el.dataset.row));
+      if (extraIdx !== undefined) {
+        diAreaPickExtra(el.dataset.area, crew, rowIdx, extraIdx);
+      } else {
+        diAreaPick(el.dataset.area, parseInt(el.dataset.crew), parseInt(el.dataset.row));
+      }
     });
     let _touchStartY = 0;
     el.addEventListener('touchstart', e => { _touchStartY = e.touches[0].clientY; }, { passive: true });
@@ -3456,7 +3540,11 @@ function _diAreaRenderDropdown(input, crew, rowIdx) {
       const moved = Math.abs(e.changedTouches[0].clientY - _touchStartY);
       if (moved < 8) {
         e.preventDefault();
-        diAreaPick(el.dataset.area, parseInt(el.dataset.crew), parseInt(el.dataset.row));
+        if (extraIdx !== undefined) {
+          diAreaPickExtra(el.dataset.area, crew, rowIdx, extraIdx);
+        } else {
+          diAreaPick(el.dataset.area, parseInt(el.dataset.crew), parseInt(el.dataset.row));
+        }
       }
     });
   });
@@ -3574,7 +3662,12 @@ function diPrint() {
     if (!rows.length) continue;
     html += `<h2>Crew ${c}</h2><p>Date: ${date} &nbsp;|&nbsp; Job: ${jobName}</p>
     <table><thead><tr><th>Employee</th><th>Area Worked</th><th>Labor Code</th><th>Notes</th></tr></thead><tbody>
-    ${rows.map(r => `<tr><td>${r.employee}</td><td>${r.area||''}</td><td>${r.costCode||''}</td><td>${r.description||''}</td></tr>`).join('')}
+    ${rows.map(r => {
+      const primary = `<tr><td>${r.employee}</td><td>${r.area||''}</td><td>${r.costCode||''}</td><td>${r.description||''}</td></tr>`;
+      const extras = (r.extraEntries||[]).filter(e=>e.area).map(e =>
+        `<tr><td></td><td>${e.area}</td><td>${e.costCode||''}</td><td></td></tr>`).join('');
+      return primary + extras;
+    }).join('')}
     </tbody></table>`;
   }
   html += '</body></html>';
@@ -3599,7 +3692,11 @@ function diExportExcel() {
       [`Date: ${date}`],
       [],
       ['Employee Name', 'Area Worked', 'Labor Code', 'Notes'],
-      ...rows.map(r => [r.employee, r.area||'', r.costCode||'', r.description||''])
+      ...rows.flatMap(r => {
+        const primary = [r.employee, r.area||'', r.costCode||'', r.description||''];
+        const extras  = (r.extraEntries||[]).filter(e=>e.area).map(e => ['', e.area, e.costCode||'', '']);
+        return [primary, ...extras];
+      })
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
     ws['!cols'] = [{wch:22},{wch:22},{wch:22},{wch:32}];
@@ -3675,10 +3772,11 @@ async function diConfirmSaveDraft() {
   const crewData = {};
   for (let c = 1; c <= _diCrewCount; c++) {
     crewData[String(c)] = (_diData[c] || []).map(r => ({
-      employee:    r.employee    || '',
-      area:        r.area        || '',
-      costCode:    r.costCode    || '',
-      description: r.description || ''
+      employee:     r.employee     || '',
+      area:         r.area         || '',
+      costCode:     r.costCode     || '',
+      description:  r.description  || '',
+      extraEntries: (r.extraEntries || []).map(e => ({area: e.area||'', costCode: e.costCode||'', corBudgetId: e.corBudgetId||'', corNumber: e.corNumber||''}))
     }));
   }
   crewData.__crewCount     = _diCrewCount;
@@ -3743,10 +3841,11 @@ function diAutoSaveDraft() {
     const autoCrewData = {};
     for (let c = 1; c <= _diCrewCount; c++) {
       autoCrewData[String(c)] = (_diData[c] || []).map(r => ({
-        employee:    r.employee    || '',
-        area:        r.area        || '',
-        costCode:    r.costCode    || '',
-        description: r.description || ''
+        employee:     r.employee     || '',
+        area:         r.area         || '',
+        costCode:     r.costCode     || '',
+        description:  r.description  || '',
+        extraEntries: (r.extraEntries || []).map(e => ({area: e.area||'', costCode: e.costCode||'', corBudgetId: e.corBudgetId||'', corNumber: e.corNumber||''}))
       }));
     }
     autoCrewData.__crewCount     = _diCrewCount;
@@ -3892,12 +3991,13 @@ async function diLoadDraftById(docId) {
         const crewRows = d.data && (d.data[String(c)] || d.data[c]);
         _diAllData[jobName][c] = Array.isArray(crewRows) && crewRows.length
           ? crewRows.map(r => ({
-              employee:    r.employee    || '',
-              area:        r.area        || '',
-              costCode:    r.costCode    || '',
-              description: r.description || ''
+              employee:     r.employee     || '',
+              area:         r.area         || '',
+              costCode:     r.costCode     || '',
+              description:  r.description  || '',
+              extraEntries: (r.extraEntries || []).map(e => ({area: e.area||'', costCode: e.costCode||'', corBudgetId: e.corBudgetId||'', corNumber: e.corNumber||''}))
             }))
-          : Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:''}));
+          : Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', extraEntries:[]}));
       }
       diSwitchJobData(jobName);  // also restores _diCrewLeadNames from _diAllData[jobName]
     }
@@ -4332,23 +4432,24 @@ function _diLogDetailHTML(r) {
 }
 
 function diAddRow() {
-  _diData[_diActiveCrew].push({employee:'', area:'', costCode:'', description:''});
+  _diData[_diActiveCrew].push({employee:'', area:'', costCode:'', description:'', extraEntries:[]});
   diRenderCrewTable();
   diAutoSaveDraft();
 }
 
 function diDeleteRow(crew, i) {
   _diData[crew].splice(i, 1);
-  if (_diData[crew].length === 0) _diData[crew].push({employee:'', area:'', costCode:'', description:''});
+  if (_diData[crew].length === 0) _diData[crew].push({employee:'', area:'', costCode:'', description:'', extraEntries:[]});
   diRenderCrewTable();
   diAutoSaveDraft();
 }
 
 // Clears only the work entry fields — employee name is preserved
 function diClearEntry(crew, i) {
-  _diData[crew][i].area        = '';
-  _diData[crew][i].costCode    = '';
-  _diData[crew][i].description = '';
+  _diData[crew][i].area         = '';
+  _diData[crew][i].costCode     = '';
+  _diData[crew][i].description  = '';
+  _diData[crew][i].extraEntries = [];
   diRenderCrewTable();
   diAutoSaveDraft();
 }
