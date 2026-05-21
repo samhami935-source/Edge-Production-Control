@@ -3527,22 +3527,35 @@ function diFilterSearch(q) {
 function diFilterSelectAll(cb) {
   const list = document.getElementById('di-filter-list');
   if (!list) return;
-  list.querySelectorAll('input[type="checkbox"]').forEach(c => c.checked = cb.checked);
+  // Only toggle visible items — hidden ones (filtered by search) stay untouched
+  list.querySelectorAll('label').forEach(lbl => {
+    if (lbl.style.display !== 'none') {
+      const input = lbl.querySelector('input[type="checkbox"]');
+      if (input) input.checked = cb.checked;
+    }
+  });
 }
 
 function diFilterCheckChange(type) {
   const allCb = document.getElementById('di-filter-all');
   const list  = document.getElementById('di-filter-list');
   if (!list || !allCb) return;
-  const all = list.querySelectorAll('input[type="checkbox"]');
-  allCb.checked = [...all].every(c => c.checked);
-  allCb.indeterminate = !allCb.checked && [...all].some(c => c.checked);
+  // Only consider visible items for the Select All state
+  const visible = [...list.querySelectorAll('label')].filter(l => l.style.display !== 'none')
+    .map(l => l.querySelector('input[type="checkbox"]')).filter(Boolean);
+  allCb.checked = visible.length > 0 && visible.every(c => c.checked);
+  allCb.indeterminate = !allCb.checked && visible.some(c => c.checked);
 }
 
 function diApplyFilter(type) {
   const list = document.getElementById('di-filter-list');
   if (!list) return;
-  const checked = [...list.querySelectorAll('input[type="checkbox"]:checked')].map(c => c.value);
+  // Only apply visible checked items — hidden rows (from search filter) are ignored
+  const checked = [...list.querySelectorAll('label')]
+    .filter(lbl => lbl.style.display !== 'none')
+    .map(lbl => lbl.querySelector('input[type="checkbox"]'))
+    .filter(cb => cb && cb.checked)
+    .map(cb => cb.value);
   const panel   = document.getElementById('_di-filter-panel');
   if (panel) panel.style.display = 'none';
   _diActiveFilter = null;
