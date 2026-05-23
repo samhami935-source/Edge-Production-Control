@@ -846,13 +846,19 @@
         <div id="di-crew-lead-wrap" style="margin-bottom:10px;"></div>
         <!-- Employee Names section -->
         <div style="margin-bottom:16px;">
-          <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Crew Members</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Crew Members</div>
+            <button onclick="diClearEmployees()" style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);border-radius:4px;font-size:.7rem;cursor:pointer;padding:2px 8px;color:#ef4444;line-height:1.4;font-weight:700;">Clear Names</button>
+          </div>
           <div id="di-employees-list"></div>
           <button id="di-add-row-btn" class="btn btn-outline" style="margin-top:8px;font-size:.8rem;padding:5px 14px;" onclick="diAddRow()">+ Add Employee</button>
         </div>
         <!-- Daily Entries section -->
         <div>
-          <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Daily Entries</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Daily Entries</div>
+            <button onclick="diClearEntries()" style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);border-radius:4px;font-size:.7rem;cursor:pointer;padding:2px 8px;color:#ef4444;line-height:1.4;font-weight:700;">Clear Entries</button>
+          </div>
           <div style="overflow-x:auto;">
             <table style="min-width:560px;width:100%;border-collapse:collapse;">
               <thead>
@@ -3614,6 +3620,25 @@ function diClearFilter(type) {
   const panel = document.getElementById('_di-filter-panel');
   if (panel) panel.style.display = 'none';
   _diActiveFilter = null;
+}
+
+function diClearEmployees() {
+  if (!confirm('Clear all employee names for this crew?')) return;
+  const crew = _diActiveCrew;
+  (_diData[crew] || []).forEach(r => { r.employee = ''; });
+  diRenderCrewTable();
+  diAutoSaveDraft();
+}
+
+function diClearEntries() {
+  if (!confirm('Clear all area and labor code entries for this crew?')) return;
+  const crew = _diActiveCrew;
+  (_diData[crew] || []).forEach(r => {
+    r.area = ''; r.costCode = ''; r.description = '';
+    r.corBudgetId = ''; r.corNumber = '';
+  });
+  diRenderCrewTable();
+  diAutoSaveDraft();
 }
 
 function _diUpdateFilterBtnState() {
