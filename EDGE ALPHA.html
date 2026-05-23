@@ -2146,38 +2146,61 @@ function renderBurnLog() {
     }
   });
 
-  const count=document.getElementById('burn-log-count');
-  const tbody=document.getElementById('burn-log-tbody');
-  count.textContent=rows.length===0?'All within budget':`${rows.length} item${rows.length!==1?'s':''} over budget`;
-  count.style.color=rows.length>0?'var(--red)':'var(--green)';
-
-  // Update burn card snapshot
-  const totalOver=rows.reduce((s,r)=>s+r.over,0);
-  const burnCard=document.getElementById('pr-stat-burn');
-  if(burnCard){
-    burnCard.textContent=totalOver>0?'-'+fm(totalOver):'$0';
-    document.getElementById('pr-stat-burn-sub').textContent=rows.length>0?`${rows.length} area${rows.length!==1?'s':''} over budget`:'All within budget';
-    // bar = overBudget / totalPaid
-    const totPaid=allEntries.reduce((s,e)=>s+e.price,0);
-    const burnPct=totPaid>0?Math.min(100,Math.round(totalOver/totPaid*100)):0;
-    document.getElementById('pr-burn-bar').style.width=burnPct+'%';
-    document.getElementById('pr-stat-burn-pct').textContent=rows.length>0?`${burnPct}% of total paid is over budget`:'';
-  }
-
   // Build 503-Burn CO rows to merge into the same table
   const burnCOs = (_cache.changeorders || []).filter(c =>
     c.workOrderNumber === '503 - Burn' && (!prActiveJob || c.jobId === prActiveJob)
   ).sort((a,b) => (b.submittedAt||'').localeCompare(a.submittedAt||''));
 
-  const burnCOHtml = burnCOs.map(c => {
-    const corb      = (_cache.corbudgets || []).find(b => b.changeOrderId === c.id);
-    const intAmt    = corb ? corbInternalAmount(corb) : null;
-    const ptd       = corb ? computeCorPaid(corb)     : null;
-    const remaining = (intAmt != null && ptd != null) ? intAmt - ptd : null;
-    const remColor  = remaining == null ? '' : remaining < 0 ? 'color:var(--red)' : remaining === 0 ? 'color:var(--yellow)' : 'color:var(--green)';
-    const fmtAmt    = intAmt    != null ? fm(intAmt) : '—';
-    const fmtPtd    = ptd       != null ? fm(ptd)    : '—';
-    const fmtRem    = remaining != null ? (remaining < 0 ? '-' + fm(Math.abs(remaining)) : fm(remaining)) : '—';
+  // Pre-compute amounts for each burn CO so they feed the card too
+  const burnCOAmounts = burnCOs.map(c => {
+    const corb   = (_cache.corbudgets || []).find(b => b.changeOrderId === c.id);
+    const intAmt = corb ? corbInternalAmount(corb) : 0;
+    const ptd    = corb ? computeCorPaid(corb)     : 0;
+    return { co: c, corb, intAmt, ptd, remaining: intAmt - ptd };
+  });
+
+  const totalOver    = rows.reduce((s,r)=>s+r.over, 0);
+  const totalBurnAmt = burnCOAmounts.reduce((s,b)=>s+b.intAmt, 0);
+  const totalBurnPtd = burnCOAmounts.reduce((s,b)=>s+b.ptd,    0);
+  const grandTotal   = totalOver + totalBurnAmt;
+  const totalItems   = rows.length + burnCOs.length;
+
+  const count=document.getElementById('burn-log-count');
+  const tbody=document.getElementById('burn-log-tbody');
+  if (totalItems === 0) {
+    count.textContent = 'All within budget';
+    count.style.color = 'var(--green)';
+  } else {
+    const parts = [];
+    if (rows.length)     parts.push(`${rows.length} over budget`);
+    if (burnCOs.length)  parts.push(`${burnCOs.length} burn CO${burnCOs.length!==1?'s':''}`);
+    count.textContent = parts.join(' · ');
+    count.style.color = 'var(--red)';
+  }
+
+  // Update burn card snapshot
+  const burnCard=document.getElementById('pr-stat-burn');
+  if(burnCard){
+    burnCard.textContent = grandTotal > 0 ? '-'+fm(grandTotal) : '$0';
+    if (totalItems === 0) {
+      document.getElementById('pr-stat-burn-sub').textContent = 'All within budget';
+    } else {
+      const parts = [];
+      if (rows.length)    parts.push(`${rows.length} area${rows.length!==1?'s':''} over budget`);
+      if (burnCOs.length) parts.push(`${burnCOs.length} burn CO${burnCOs.length!==1?'s':''}`);
+      document.getElementById('pr-stat-burn-sub').textContent = parts.join(' · ');
+    }
+    const totPaid = allEntries.reduce((s,e)=>s+e.price,0) + totalBurnPtd;
+    const burnPct = totPaid>0 ? Math.min(100,Math.round(grandTotal/totPaid*100)) : 0;
+    document.getElementById('pr-burn-bar').style.width = burnPct+'%';
+    document.getElementById('pr-stat-burn-pct').textContent = totalItems>0 ? `${burnPct}% of total paid is burn/over budget` : '';
+  }
+
+  const burnCOHtml = burnCOAmounts.map(({ co: c, corb, intAmt, ptd, remaining }) => {
+    const fmtAmt   = corb ? fm(intAmt)  : '—';
+    const fmtPtd   = corb ? fm(ptd)     : '—';
+    const fmtRem   = corb ? (remaining < 0 ? '-' + fm(Math.abs(remaining)) : fm(remaining)) : '—';
+    const remColor = !corb ? '' : remaining < 0 ? 'color:var(--red)' : remaining === 0 ? 'color:var(--yellow)' : 'color:var(--green)';
     const statusBadge = c.status === 'approved'
       ? `<span style="color:var(--green);font-weight:600;font-size:.75rem;">Approved</span>`
       : c.status === 'rejected'
