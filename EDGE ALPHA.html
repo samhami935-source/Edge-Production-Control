@@ -2173,7 +2173,7 @@ function renderBurnLog() {
   } else {
     const parts = [];
     if (rows.length)     parts.push(`${rows.length} over budget`);
-    if (burnCOs.length)  parts.push(`${burnCOs.length} burn CO${burnCOs.length!==1?'s':''}`);
+    if (burnCOs.length)  parts.push(`${burnCOs.length} burn${burnCOs.length!==1?'s':''}`);
     count.textContent = parts.join(' · ');
     count.style.color = 'var(--red)';
   }
@@ -2187,7 +2187,7 @@ function renderBurnLog() {
     } else {
       const parts = [];
       if (rows.length)    parts.push(`${rows.length} area${rows.length!==1?'s':''} over budget`);
-      if (burnCOs.length) parts.push(`${burnCOs.length} burn CO${burnCOs.length!==1?'s':''}`);
+      if (burnCOs.length) parts.push(`${burnCOs.length} burn${burnCOs.length!==1?'s':''}`);
       document.getElementById('pr-stat-burn-sub').textContent = parts.join(' · ');
     }
     const totPaid = allEntries.reduce((s,e)=>s+e.price,0) + totalBurnPtd;
