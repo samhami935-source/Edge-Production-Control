@@ -551,6 +551,22 @@
           <tbody id="burn-log-tbody"></tbody>
         </table>
       </div>
+      <!-- 503 Burn Change Orders -->
+      <div id="burn-503-co-section" style="margin-top:16px;display:none;">
+        <div style="font-size:.75rem;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding:0 2px;">503 — Burn Change Orders</div>
+        <div style="overflow-x:auto;">
+          <table style="min-width:650px;margin:0;">
+            <thead><tr>
+              <th>Job</th>
+              <th>Description</th>
+              <th>Submitted By</th>
+              <th>Date</th>
+              <th>Status</th>
+            </tr></thead>
+            <tbody id="burn-503-co-tbody"></tbody>
+          </table>
+        </div>
+      </div>
     </details>
 
     <!-- 501 & 502 Work Orders / Change Orders -->
@@ -2166,19 +2182,48 @@ function renderBurnLog() {
 
   if(!rows.length){
     tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px;">No items over budget.</td></tr>';
-    return;
+  } else {
+    tbody.innerHTML=rows.map(r=>`<tr>
+      <td><span class="pill">${eh(r.job)}</span></td>
+      <td><span class="pill">${eh(r.area)}</span></td>
+      <td><span class="lc-badge">${eh(r.code)}</span> ${eh(r.description)}</td>
+      <td class="ap" style="text-align:right;">${fm(r.budget)}</td>
+      <td class="ay" style="text-align:right;">${fm(r.paid)}</td>
+      <td class="ar" style="text-align:right;">-${fm(r.over)}</td>
+    </tr>`).join('')+`<tr style="border-top:2px solid var(--border);font-weight:700;">
+      <td colspan="5" style="text-align:right;padding-top:8px;color:var(--muted);">Total Over Budget</td>
+      <td class="ar" style="text-align:right;padding-top:8px;">-${fm(totalOver)}</td>
+    </tr>`;
   }
-  tbody.innerHTML=rows.map(r=>`<tr>
-    <td><span class="pill">${eh(r.job)}</span></td>
-    <td><span class="pill">${eh(r.area)}</span></td>
-    <td><span class="lc-badge">${eh(r.code)}</span> ${eh(r.description)}</td>
-    <td class="ap" style="text-align:right;">${fm(r.budget)}</td>
-    <td class="ay" style="text-align:right;">${fm(r.paid)}</td>
-    <td class="ar" style="text-align:right;">-${fm(r.over)}</td>
-  </tr>`).join('')+`<tr style="border-top:2px solid var(--border);font-weight:700;">
-    <td colspan="5" style="text-align:right;padding-top:8px;color:var(--muted);">Total Over Budget</td>
-    <td class="ar" style="text-align:right;padding-top:8px;">-${fm(totalOver)}</td>
-  </tr>`;
+
+  // Render 503 Burn change orders
+  const burnCOs = (_cache.changeorders || []).filter(c =>
+    c.workOrderNumber === '503 - Burn' && (!prActiveJob || c.jobId === prActiveJob)
+  ).sort((a,b) => (b.submittedAt||'').localeCompare(a.submittedAt||''));
+  const burnCOSection = document.getElementById('burn-503-co-section');
+  const burnCOTbody   = document.getElementById('burn-503-co-tbody');
+  if (burnCOSection && burnCOTbody) {
+    if (burnCOs.length) {
+      burnCOSection.style.display = '';
+      burnCOTbody.innerHTML = burnCOs.map(c => {
+        const dateStr = c.submittedAt ? new Date(c.submittedAt).toLocaleDateString() : '—';
+        const statusBadge = c.status === 'approved'
+          ? `<span style="color:var(--green);font-weight:700;">Approved</span>`
+          : c.status === 'rejected'
+          ? `<span style="color:var(--red);font-weight:700;">Rejected</span>`
+          : `<span style="color:#f59e0b;font-weight:700;">Submitted</span>`;
+        return `<tr>
+          <td><span class="pill">${eh(c.jobId)}</span></td>
+          <td style="max-width:240px;">${eh(c.description||'—')}</td>
+          <td style="font-size:.8rem;color:var(--muted);">${eh(c.submittedByEmail||'—')}</td>
+          <td style="font-size:.8rem;white-space:nowrap;">${dateStr}</td>
+          <td>${statusBadge}</td>
+        </tr>`;
+      }).join('');
+    } else {
+      burnCOSection.style.display = 'none';
+    }
+  }
 }
 
 function switchToLaborCodes() {
@@ -8726,7 +8771,7 @@ function coOpenSubmitModal() {
   const sel = document.getElementById('co-submit-job');
   sel.innerHTML = '<option value="">— Select Job —</option>' +
     getSavedCSVFiles().map(f => f.name).sort().map(j => `<option value="${eh(j)}">${eh(j)}</option>`).join('');
-  document.getElementById('co-submit-wo').value = '';
+  document.getElementById('co-submit-wo').selectedIndex = 0;
   document.getElementById('co-submit-desc').value = '';
   document.getElementById('co-submit-photos').value = '';
   document.getElementById('co-photo-preview').innerHTML = '';
@@ -8797,9 +8842,7 @@ async function coSubmit() {
   const wo    = document.getElementById('co-submit-wo').value.trim();
   const desc  = document.getElementById('co-submit-desc').value.trim();
   if (!jobId) { alert('Please select a job.'); return; }
-  if (!wo)    { alert('Please enter a Work Order Number.'); return; }
-  const dupe = (_cache.changeorders || []).find(c => c.jobId === jobId && c.workOrderNumber === wo);
-  if (dupe) { alert(`Work Order "${wo}" already exists for this job.`); return; }
+  if (!wo)    { alert('Please select a Work Order type.'); return; }
 
   const btn  = document.getElementById('co-submit-confirm-btn');
   const prog = document.getElementById('co-submit-progress');
@@ -9133,7 +9176,11 @@ function computeCorPaid(corb) {
       </div>
       <div>
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Work Order Number <span style="color:#ef4444;">*</span></label>
-        <input id="co-submit-wo" class="fi" style="width:100%;" placeholder="e.g. WO-2025-001" />
+        <select id="co-submit-wo" class="fi" style="width:100%;">
+          <option value="">— Select Work Order —</option>
+          <option value="502 - Change Orders">502 - Change Orders</option>
+          <option value="503 - Burn">503 - Burn</option>
+        </select>
       </div>
       <div>
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Description / Notes</label>
