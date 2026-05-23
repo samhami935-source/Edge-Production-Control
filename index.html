@@ -2197,10 +2197,10 @@ function renderBurnLog() {
   }
 
   const burnCOHtml = burnCOAmounts.map(({ co: c, corb, intAmt, ptd, remaining }) => {
-    const fmtAmt   = corb ? fm(intAmt)  : '—';
-    const fmtPtd   = corb ? fm(ptd)     : '—';
-    const fmtRem   = corb ? (remaining < 0 ? '-' + fm(Math.abs(remaining)) : fm(remaining)) : '—';
-    const remColor = !corb ? '' : remaining < 0 ? 'color:var(--red)' : remaining === 0 ? 'color:var(--yellow)' : 'color:var(--green)';
+    const fmtAmt   = '—';
+    const fmtPtd   = corb ? fm(ptd) : '—';
+    const fmtRem   = corb ? fm(remaining < 0 ? -remaining : remaining) : '—';
+    const remColor = 'color:var(--red)';
     const statusBadge = c.status === 'approved'
       ? `<span style="color:var(--green);font-weight:600;font-size:.75rem;">Approved</span>`
       : c.status === 'rejected'
