@@ -1033,7 +1033,8 @@
     <select id="co-filter-job" class="fi" style="padding:6px 10px;font-size:.83rem;width:auto;" onchange="renderCOLog()">
       <option value="">All Jobs</option>
     </select>
-    <button id="co-submit-btn" class="btn" style="margin:0;padding:7px 16px;font-size:.83rem;" onclick="coOpenSubmitModal()">+ Submit Change Order</button>
+    <button id="co-submit-btn" class="btn" style="margin:0;padding:7px 16px;font-size:.83rem;" onclick="coOpenSubmitModal(false)">+ Submit Change Order</button>
+    <button id="co-submit-burn-btn" class="btn" style="margin:0;padding:7px 16px;font-size:.83rem;background:var(--red);border-color:var(--red);color:#fff;" onclick="coOpenSubmitModal(true)">🔥 Submit 503 Burn</button>
   </div>
 
   <!-- CO Dashboard (visible when a specific job is selected) -->
@@ -1738,8 +1739,10 @@ function updateAdminUI() {
   if (lcTab)         lcTab.style.display         = isAccounting() ? 'none' : '';  // accounting can't see Labor Codes
   const coTab = document.getElementById('co-tab');
   if (coTab)         coTab.style.display         = canViewCO() ? '' : 'none';  // only foreman, VP, admin
-  const coSubmitBtn = document.getElementById('co-submit-btn');
-  if (coSubmitBtn)   coSubmitBtn.style.display   = canSubmitCO() ? '' : 'none';
+  const coSubmitBtn     = document.getElementById('co-submit-btn');
+  const coSubmitBurnBtn = document.getElementById('co-submit-burn-btn');
+  if (coSubmitBtn)     coSubmitBtn.style.display     = canSubmitCO() ? '' : 'none';
+  if (coSubmitBurnBtn) coSubmitBurnBtn.style.display = canSubmitCO() ? '' : 'none';
   // Only management can create week-ending folders
   const newFolderBtn = document.getElementById('ps-new-folder-btn');
   if (newFolderBtn) newFolderBtn.style.display = canManagePSFolders() ? '' : 'none';
@@ -8778,8 +8781,11 @@ function renderCOLog() {
   document.querySelectorAll('.co-mgmt-col').forEach(el => { el.style.display = isForeman() ? 'none' : ''; });
 }
 
-function coOpenSubmitModal() {
+let _coBurnMode = false;
+
+function coOpenSubmitModal(burnMode) {
   if (!canSubmitCO()) return;
+  _coBurnMode = !!burnMode;
   const sel = document.getElementById('co-submit-job');
   sel.innerHTML = '<option value="">— Select Job —</option>' +
     getSavedCSVFiles().map(f => f.name).sort().map(j => `<option value="${eh(j)}">${eh(j)}</option>`).join('');
@@ -8789,11 +8795,16 @@ function coOpenSubmitModal() {
   document.getElementById('co-photo-preview').innerHTML = '';
   document.getElementById('co-submit-progress').style.display = 'none';
   document.getElementById('co-submit-confirm-btn').disabled = false;
+  // Burn mode: hide WO row, update title and button label
+  document.getElementById('co-submit-wo-row').style.display   = _coBurnMode ? 'none' : '';
+  document.getElementById('co-submit-modal-title').textContent = _coBurnMode ? '🔥 Submit 503 Burn' : '📋 Submit Change Order';
+  document.getElementById('co-submit-confirm-btn').textContent = _coBurnMode ? 'Submit 503 Burn' : 'Submit Change Order';
   document.getElementById('co-submit-modal').classList.add('open');
 }
 
 function coCloseSubmitModal() {
   document.getElementById('co-submit-modal').classList.remove('open');
+  _coBurnMode = false;
 }
 
 function coOpenLightbox(idx, coId) {
@@ -8851,7 +8862,7 @@ async function _coCompressImage(file) {
 async function coSubmit() {
   if (!canSubmitCO()) return;
   const jobId = document.getElementById('co-submit-job').value.trim();
-  const wo    = document.getElementById('co-submit-wo').value.trim();
+  const wo    = _coBurnMode ? '503 - Burn' : document.getElementById('co-submit-wo').value.trim();
   const desc  = document.getElementById('co-submit-desc').value.trim();
   if (!jobId) { alert('Please select a job.'); return; }
   if (!wo)    { alert('Please select a Work Order type.'); return; }
@@ -9178,7 +9189,7 @@ function computeCorPaid(corb) {
 <div class="modal-overlay" id="co-submit-modal" onclick="if(event.target===this)coCloseSubmitModal()">
   <div class="modal" style="width:560px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
-      <h2 style="margin:0;font-size:1.1rem;">📋 Submit Change Order</h2>
+      <h2 id="co-submit-modal-title" style="margin:0;font-size:1.1rem;">📋 Submit Change Order</h2>
       <button onclick="coCloseSubmitModal()" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:4px;">×</button>
     </div>
     <div style="overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;display:flex;flex-direction:column;gap:14px;">
@@ -9186,12 +9197,11 @@ function computeCorPaid(corb) {
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Job <span style="color:#ef4444;">*</span></label>
         <select id="co-submit-job" class="fi" style="width:100%;"></select>
       </div>
-      <div>
+      <div id="co-submit-wo-row">
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Work Order Number <span style="color:#ef4444;">*</span></label>
         <select id="co-submit-wo" class="fi" style="width:100%;">
           <option value="">— Select Work Order —</option>
           <option value="502 - Change Orders">502 - Change Orders</option>
-          <option value="503 - Burn">503 - Burn</option>
         </select>
       </div>
       <div>
