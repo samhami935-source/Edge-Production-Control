@@ -3640,9 +3640,11 @@ function diApplyFilter(type) {
   const jobName = document.getElementById('ps-job-select').value || '';
 
   if (type === 'area') {
-    // Only fill existing rows — never push new rows (would create blank employee name slots)
+    // Fill existing rows; if there aren't enough, add new blank rows automatically
     checked.forEach((area, i) => {
-      if (i >= _diData[crew].length) return;
+      if (i >= _diData[crew].length) {
+        _diData[crew].push({ employee: '', area: '', costCode: '', description: '', corBudgetId: '', corNumber: '', extraEntries: [] });
+      }
       _diData[crew][i].area = area;
       if (area.startsWith('[COR]')) {
         const corb = (_cache.corbudgets || []).find(b =>
