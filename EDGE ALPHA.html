@@ -3280,8 +3280,9 @@ async function diOpenCrewSetsModal() {
   const list = document.getElementById('di-crewsets-list');
   list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Loading…</p>';
   try {
-    const snap = await db.collection('crewsets').orderBy('createdAt','desc').get();
-    const sets  = snap.docs.map(d => d.data());
+    const uid  = _currentUser ? _currentUser.uid : 'anon';
+    const snap = await db.collection('crewsets').where('createdByUid','==',uid).get();
+    const sets  = snap.docs.map(d => d.data()).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
     if (!sets.length) {
       list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">No crew sets saved yet.</p>';
       return;
@@ -3294,7 +3295,7 @@ async function diOpenCrewSetsModal() {
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;">
           <button class="btn-sm" style="border-color:var(--accent);color:var(--accent);font-weight:700;" onclick="diLoadCrewSet('${eh(s.id)}')">Load</button>
-          ${(isAdmin()||isPM())?`<button class="btn-sm btn-danger" onclick="diDeleteCrewSet('${eh(s.id)}','${eh(s.name)}')">Delete</button>`:''}
+          <button class="btn-sm btn-danger" onclick="diDeleteCrewSet('${eh(s.id)}','${eh(s.name)}')">Delete</button>
         </div>
       </div>`).join('');
   } catch(e) { list.innerHTML = `<p style="color:#ef4444;text-align:center;padding:20px;">Error: ${e.message}</p>`; }
