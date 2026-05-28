@@ -5238,20 +5238,21 @@ function _fmt$(n) {
 }
 
 function _psTableThead(isDaily) {
-  // Column widths: daily has 6 cols, weekly has 8 cols
-  const aw = isDaily ? '28%' : '20%';
-  const lc = isDaily ? '28%' : '20%';
-  const nt = isDaily ? '16%' : '12%';
+  // Column widths: daily has 6 cols (min-width 620px), weekly has 8 cols (min-width 860px)
+  const aw = isDaily ? '28%' : '22%';
+  const lc = isDaily ? '28%' : '22%';
+  const nt = isDaily ? '16%' : '10%';
+  const th = 'border:1px solid #000;padding:5px 6px;text-align:center;font-size:11px;text-decoration:underline;word-break:break-word;white-space:normal;';
   return `<tr style="background:#c9a84c;">
-    <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;text-decoration:underline;width:${aw};word-break:break-word;">Area Worked</th>
-    <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;text-decoration:underline;width:${lc};word-break:break-word;">Labor Code</th>
-    <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;text-decoration:underline;width:${nt};">Notes</th>
-    <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:9%;text-decoration:underline;">Budget ($)</th>
-    <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:9%;text-decoration:underline;">PTD ($)</th>
-    <th style="border:1px solid #000;${isDaily?'':'border-right:3px solid #000;'}padding:6px 8px;text-align:center;font-size:11px;width:10%;text-decoration:underline;">Remaining Budget</th>
+    <th style="${th}width:${aw};">Area Worked</th>
+    <th style="${th}width:${lc};">Labor Code</th>
+    <th style="${th}width:${nt};">Notes</th>
+    <th style="${th}width:9%;">Budget ($)</th>
+    <th style="${th}width:9%;">PTD ($)</th>
+    <th style="${th}${isDaily?'':'border-right:3px solid #000;'}width:10%;">Remaining Budget</th>
     ${isDaily ? '' : `
-    <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:11%;text-decoration:underline;">W/E Earned Amount</th>
-    <th style="border:1px solid #000;padding:6px 8px;text-align:center;font-size:11px;width:9%;text-decoration:underline;">% Complete</th>`}
+    <th style="${th}width:10%;">W/E Earned</th>
+    <th style="${th}width:8%;">% Complete</th>`}
   </tr>`;
 }
 
@@ -5464,7 +5465,7 @@ function psRenderMainTable() {
   let html = navHtml;
   html += `<div class="ps-page" style="margin-bottom:0;">
     ${pg > 0 ? `<div style="font-size:10px;color:#888;margin-bottom:4px;font-style:italic;">Continued — Page ${pg+1} of ${numPages}</div>` : ''}
-    <table style="width:100%;border-collapse:collapse;margin-bottom:4px;table-layout:fixed;">
+    <table style="width:100%;min-width:${isDaily ? '620px' : '860px'};border-collapse:collapse;margin-bottom:4px;table-layout:fixed;">
       <thead>${_psTableThead(isDaily)}</thead>
       <tbody>${pageRows.map((row, j) => _psRenderRow(row, start + j, jobName, areas, isDaily)).join('')}</tbody>
     </table>
