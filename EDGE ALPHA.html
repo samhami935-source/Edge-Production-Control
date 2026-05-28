@@ -5100,16 +5100,29 @@ function psAutoFillCrewFromDaily(crewNum) {
     si++;
   });
 
-  // Fill main rows with unique area+code combos
+  // Fill main rows with unique area+code combos (including extra labor codes per area)
   const seenAC = new Set();
   let ri = 0;
   diRows.forEach(r => {
+    // Primary code
     const key = (r.area||'') + '|||' + (r.costCode||'');
-    if (!r.area || seenAC.has(key) || ri >= PS_MAIN_ROWS) return;
-    seenAC.add(key);
-    state.rows[ri].area     = r.area     || '';
-    state.rows[ri].costCode = r.costCode || '';
-    ri++;
+    if (r.area && !seenAC.has(key) && ri < PS_MAIN_ROWS) {
+      seenAC.add(key);
+      state.rows[ri].area     = r.area     || '';
+      state.rows[ri].costCode = r.costCode || '';
+      ri++;
+    }
+    // Extra labor codes for the same area
+    (r.extraEntries || []).forEach(ex => {
+      if (!ex.costCode || ri >= PS_MAIN_ROWS) return;
+      const exKey = (r.area||'') + '|||' + (ex.costCode||'');
+      if (seenAC.has(exKey)) return;
+      seenAC.add(exKey);
+      state.rows[ri].area     = r.area      || '';
+      state.rows[ri].costCode = ex.costCode || '';
+      state.rows[ri].notes    = ex.description || '';
+      ri++;
+    });
   });
 
   psRenderMainTable();
@@ -6923,10 +6936,18 @@ async function psCompileWeeklyPaysheet(weekEnding) {
         }
         (crew.entries || []).forEach(e => {
           if (e.employee) empSet.add(e.employee.trim());
-          if (!e.area && !e.costCode) return;
-          const key = (e.area||'') + '|||' + (e.costCode||'');
-          if (!areaMap[key]) areaMap[key] = { area: e.area||'', costCode: e.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: '' };
-          if (!areaMap[key].notes && e.description) areaMap[key].notes = e.description;
+          // Primary area + labor code
+          if (e.area || e.costCode) {
+            const key = (e.area||'') + '|||' + (e.costCode||'');
+            if (!areaMap[key]) areaMap[key] = { area: e.area||'', costCode: e.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: '' };
+            if (!areaMap[key].notes && e.description) areaMap[key].notes = e.description;
+          }
+          // Extra labor codes for the same area
+          (e.extraEntries || []).forEach(ex => {
+            if (!ex.costCode) return;
+            const exKey = (e.area||'') + '|||' + (ex.costCode||'');
+            if (!areaMap[exKey]) areaMap[exKey] = { area: e.area||'', costCode: ex.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: ex.description||'' };
+          });
         });
       });
     });
