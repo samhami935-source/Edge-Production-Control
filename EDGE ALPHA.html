@@ -4998,6 +4998,7 @@ function psRenderCrewTabs() {
             : `<button class="btn" style="background:#1a56db;color:#fff;white-space:nowrap;border:none;" onclick="psApprovePaysheet()">✓ Approve for Accounting</button>`)
         : '';
       actWrap.innerHTML = `
+        <span id="ps-autosave-status" style="font-size:.78rem;font-weight:600;white-space:nowrap;padding:0 4px;"></span>
         <button class="btn btn-outline" style="white-space:nowrap;color:var(--muted);border-color:var(--border);" onclick="openLoadPaysheetModal()" title="Load saved daily or weekly paysheets">📂 Saved Paysheets</button>
         <button class="btn btn-outline" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);" onclick="psEnterEditMode()">✏️ Edit</button>
         ${_approveBtn}
@@ -5538,6 +5539,7 @@ let _psEditSnapshot = null; // deep copy of state before editing, for cancel
 
 function psEnterEditMode() {
   if (!canEdit()) { alert('Admin or Project Manager access required to edit daily paysheets.'); return; }
+  clearTimeout(_psAutoSaveTimer); _psAutoSaveTimer = null;
   // Snapshot current state for cancel
   _psEditSnapshot = JSON.parse(JSON.stringify(_psState));
   _psEditMode = true;
@@ -6301,6 +6303,39 @@ function psCancelEdit() {
   psRenderCrewTabs();
 }
 
+// ── Weekly auto-save ────────────────────────────────────────────────────────
+let _psAutoSaveTimer = null;
+
+function psScheduleAutoSave() {
+  // Only for non-foreman weekly paysheets outside of edit mode
+  if (_psCurrentType !== 'weekly' || isForeman() || _psEditMode) return;
+  const jobName = document.getElementById('ps-job-select').value;
+  if (!jobName) return;
+  _psSetAutoSaveStatus('pending');
+  clearTimeout(_psAutoSaveTimer);
+  _psAutoSaveTimer = setTimeout(async () => {
+    _psSetAutoSaveStatus('saving');
+    const doc = await savePaysheetToCloud(true);
+    _psSetAutoSaveStatus(doc ? 'saved' : 'error');
+  }, 3000);
+}
+
+function _psSetAutoSaveStatus(state) {
+  const el = document.getElementById('ps-autosave-status');
+  if (!el) return;
+  if (state === 'pending') {
+    el.textContent = 'Unsaved changes…'; el.style.color = '#f59e0b';
+  } else if (state === 'saving') {
+    el.textContent = 'Auto-saving…'; el.style.color = 'var(--muted)';
+  } else if (state === 'saved') {
+    el.textContent = 'Auto-saved ✓'; el.style.color = '#22c55e';
+    setTimeout(() => { if (el) el.textContent = ''; }, 3000);
+  } else if (state === 'error') {
+    el.textContent = 'Auto-save failed'; el.style.color = '#ef4444';
+  }
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 function psUpdateTotal() {
   const total   = _ps().rows.reduce((s, r) => s + (parseFloat(r.weAmount) || 0), 0);
   const el      = document.getElementById('ps-total-display');
@@ -6321,6 +6356,7 @@ function psUpdateTotal() {
     pctEl.parentElement.style.color = pct > 100 ? '#ef4444' : pct >= 80 ? '#c9a84c' : '#333';
   });
   psRenderCrewTable();
+  psScheduleAutoSave();
 }
 
 function _psGetTotal() {
