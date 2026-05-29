@@ -804,26 +804,13 @@
       </summary>
       <div style="margin-top:8px;padding:0;background:var(--surface);border:1px solid var(--border);border-radius:0 0 8px 8px;overflow:hidden;">
 
-        <!-- Action toolbar -->
+        <!-- Action toolbar — date only -->
         <div class="di-toolbar-outer" style="display:flex;gap:0;align-items:stretch;border-bottom:1px solid var(--border);background:var(--surface2);">
-          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;">
             <div style="display:flex;flex-direction:column;gap:1px;">
               <label style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;white-space:nowrap;">Date</label>
               <input type="date" id="di-date" class="fi" style="width:150px;padding:5px 8px;font-size:.85rem;" onchange="diLoadDraftIfExists();diUpdateLockState();" />
             </div>
-          </div>
-          <!-- Divider -->
-          <div style="width:1px;background:var(--border);"></div>
-          <!-- Action buttons -->
-          <div style="display:flex;align-items:center;gap:2px;padding:8px 10px;flex-shrink:0;">
-            <button id="di-save-btn" class="btn" onclick="submitDailyInput()" style="margin-top:0;padding:7px 16px;font-size:.83rem;white-space:nowrap;">💾 Save Daily Input</button>
-            <button id="di-draft-btn" class="btn btn-outline" onclick="diSaveDraft()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="Save progress as a draft — does not create a paysheet">📌 Save Draft</button>
-            <button class="btn btn-outline" onclick="diOpenDraftsModal()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="View and load saved drafts" id="di-drafts-btn">📋 Drafts</button>
-            <div style="width:1px;background:var(--border);margin:0 4px;height:24px;"></div>
-            <button class="btn btn-outline" onclick="diClearDropdowns()" style="margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;color:var(--muted);" title="Clear areas, labor codes and notes">Clear</button>
-
-            <button id="di-unlock-req-btn" onclick="diOpenUnlockRequestsModal()" style="display:none;position:relative;margin-top:0;padding:7px 13px;font-size:.83rem;white-space:nowrap;background:none;border:1px solid #f59e0b;color:#f59e0b;border-radius:6px;cursor:pointer;" title="Access requests">🔓 Requests <span id="di-unlock-req-badge" style="display:none;background:#ef4444;color:#fff;border-radius:9px;padding:1px 6px;font-size:.72rem;margin-left:2px;font-weight:700;">0</span></button>
-
           </div>
         </div>
 
@@ -855,9 +842,18 @@
         </div>
         <!-- Daily Entries section -->
         <div>
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
             <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Daily Entries</div>
-            <button onclick="diClearEntries()" style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);border-radius:4px;font-size:.7rem;cursor:pointer;padding:2px 8px;color:#ef4444;line-height:1.4;font-weight:700;">Clear Entries</button>
+            <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+              <button id="di-save-btn" class="btn" onclick="submitDailyInput()" style="margin-top:0;padding:5px 12px;font-size:.78rem;white-space:nowrap;">💾 Save Daily Input</button>
+              <button id="di-draft-btn" class="btn btn-outline" onclick="diSaveDraft()" style="margin-top:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="Save progress as a draft">📌 Save Draft</button>
+              <button class="btn btn-outline" onclick="diOpenDraftsModal()" style="margin-top:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="View and load saved drafts" id="di-drafts-btn">📋 Drafts</button>
+              <div style="width:1px;background:var(--border);margin:0 2px;height:20px;align-self:center;"></div>
+              <button class="btn btn-outline" onclick="diClearDropdowns()" style="margin-top:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;color:var(--muted);" title="Clear areas, labor codes and notes">Clear</button>
+              <button id="di-unlock-req-btn" onclick="diOpenUnlockRequestsModal()" style="display:none;position:relative;margin-top:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;background:none;border:1px solid #f59e0b;color:#f59e0b;border-radius:6px;cursor:pointer;" title="Access requests">🔓 Requests <span id="di-unlock-req-badge" style="display:none;background:#ef4444;color:#fff;border-radius:9px;padding:1px 6px;font-size:.72rem;margin-left:2px;font-weight:700;">0</span></button>
+              <div style="width:1px;background:var(--border);margin:0 2px;height:20px;align-self:center;"></div>
+              <button onclick="diClearEntries()" style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);border-radius:4px;font-size:.7rem;cursor:pointer;padding:4px 8px;color:#ef4444;line-height:1.4;font-weight:700;">Clear Entries</button>
+            </div>
           </div>
           <div style="overflow-x:auto;">
             <table style="min-width:560px;width:100%;border-collapse:collapse;">
