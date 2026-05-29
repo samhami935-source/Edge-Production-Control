@@ -3059,6 +3059,9 @@ let _diData = {};
 let _diAllData = {};
 // Crew lead names: maps crewNum (int) → lead name string; drives crew tab labels
 let _diCrewLeadNames = {};
+// Employee row count per crew — how many rows the employee names section shows.
+// Grows via Add Row, shrinks via Delete. Filter-added entry rows don't affect this.
+let _diEmpRowCount = {};
 // Per-job metadata (project, foreman, crewName) — loaded from Firestore jobmeta collection
 let _jobMeta = {};
 // Unlock grants keyed by "date__job" — populated by onSnapshot on unlockGrants collection
@@ -3099,6 +3102,9 @@ function diSwitchJobData(jobName) {
       _diAllData[jobName][c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]}));
     }
     _diData[c] = _diAllData[jobName][c];
+    _diEmpRowCount[c] = (_diAllData[jobName].__empRowCounts && _diAllData[jobName].__empRowCounts[c] != null)
+      ? _diAllData[jobName].__empRowCounts[c]
+      : DI_EMP_ROWS;
   }
   // Restore crew lead names for this job
   _diCrewLeadNames = Object.assign({}, _diAllData[jobName].__crewLeadNames || {});
@@ -3107,7 +3113,7 @@ function diSwitchJobData(jobName) {
 // Initialize with empty data for no job selected
 (function() {
   const blank = _diEmptyCrewData();
-  for (let c=1; c<=_diCrewCount; c++) _diData[c] = blank[c];
+  for (let c=1; c<=_diCrewCount; c++) { _diData[c] = blank[c]; _diEmpRowCount[c] = DI_EMP_ROWS; }
 })();
 
 function diInit() {
@@ -3455,7 +3461,8 @@ function diRenderCrewTable() {
   // ── Section 1: Employee name list ──
   const empList = document.getElementById('di-employees-list');
   if (empList) {
-    empList.innerHTML = rows.map((row, i) => `
+    const empCount = Math.min(_diEmpRowCount[_diActiveCrew] || DI_EMP_ROWS, rows.length);
+    empList.innerHTML = rows.slice(0, empCount).map((row, i) => `
       <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
         <input class="fi" data-emp-idx="${i}" style="flex:1;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
           oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft()" />
@@ -4027,6 +4034,7 @@ async function diConfirmSaveDraft() {
   }
   crewData.__crewCount     = _diCrewCount;
   crewData.__crewLeadNames = Object.assign({}, _diCrewLeadNames);
+  crewData.__empRowCounts  = Object.assign({}, _diEmpRowCount);
   const doc = {
     id: docId,
     name: draftName,
@@ -4096,6 +4104,7 @@ function diAutoSaveDraft() {
     }
     autoCrewData.__crewCount     = _diCrewCount;
     autoCrewData.__crewLeadNames = Object.assign({}, _diCrewLeadNames);
+    autoCrewData.__empRowCounts  = Object.assign({}, _diEmpRowCount);
     const doc = {
       id: docId, date, job: jobName,
       savedAt: new Date().toISOString(),
@@ -4245,7 +4254,19 @@ async function diLoadDraftById(docId) {
             }))
           : Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', extraEntries:[]}));
       }
-      diSwitchJobData(jobName);  // also restores _diCrewLeadNames from _diAllData[jobName]
+      // Restore employee row counts (new drafts have __empRowCounts; old drafts: infer from last named row)
+      const savedEmpCounts = (d.data && d.data.__empRowCounts) || {};
+      if (!_diAllData[jobName].__empRowCounts) _diAllData[jobName].__empRowCounts = {};
+      for (let c = 1; c <= _diCrewCount; c++) {
+        if (savedEmpCounts[c] != null || savedEmpCounts[String(c)] != null) {
+          _diAllData[jobName].__empRowCounts[c] = savedEmpCounts[c] != null ? savedEmpCounts[c] : savedEmpCounts[String(c)];
+        } else {
+          const crewRows = _diAllData[jobName][c] || [];
+          const lastEmpIdx = crewRows.reduce((max, r, i) => (r.employee ? i : max), -1);
+          _diAllData[jobName].__empRowCounts[c] = Math.max(DI_EMP_ROWS, lastEmpIdx + 1);
+        }
+      }
+      diSwitchJobData(jobName);  // also restores _diCrewLeadNames and _diEmpRowCount from _diAllData[jobName]
     }
     diRenderCrewTabs();
     diRenderCrewTable();
@@ -4692,15 +4713,28 @@ function _diLogDetailHTML(r) {
   </div>`;
 }
 
+function _diPersistEmpRowCount(crew) {
+  const jobName = (document.getElementById('ps-job-select') || {}).value || '';
+  if (!jobName || !_diAllData[jobName]) return;
+  if (!_diAllData[jobName].__empRowCounts) _diAllData[jobName].__empRowCounts = {};
+  _diAllData[jobName].__empRowCounts[crew] = _diEmpRowCount[crew] || DI_EMP_ROWS;
+}
+
 function diAddRow() {
-  _diData[_diActiveCrew].push({employee:'', area:'', costCode:'', description:'', extraEntries:[]});
+  const empCount = _diEmpRowCount[_diActiveCrew] || DI_EMP_ROWS;
+  // Insert new row right after the last employee-visible row so it appears in both sections
+  _diData[_diActiveCrew].splice(empCount, 0, {employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]});
+  _diEmpRowCount[_diActiveCrew] = empCount + 1;
+  _diPersistEmpRowCount(_diActiveCrew);
   diRenderCrewTable();
   diAutoSaveDraft();
 }
 
 function diDeleteRow(crew, i) {
   _diData[crew].splice(i, 1);
-  if (_diData[crew].length === 0) _diData[crew].push({employee:'', area:'', costCode:'', description:'', extraEntries:[]});
+  _diEmpRowCount[crew] = Math.max(1, (_diEmpRowCount[crew] || DI_EMP_ROWS) - 1);
+  _diPersistEmpRowCount(crew);
+  if (_diData[crew].length === 0) _diData[crew].push({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]});
   diRenderCrewTable();
   diAutoSaveDraft();
 }
