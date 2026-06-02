@@ -3359,15 +3359,14 @@ async function diDeleteCrewSet(id, name) {
 // Builds <option> HTML for an area+code select — shared by primary rows and extra sub-rows
 function _diMakeCodeOpts(area, selectedCode, jobName, csvFile) {
   let codeOpts = '<option value=""></option>';
-  if (area && area.startsWith('[COR]')) {
-    const corb = (_cache.corbudgets || []).find(b =>
-      `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
-    );
+  if (isSpecialArea(area)) {
+    const corb = corbForArea(area, jobName);
     if (corb) {
       const paid = computeCorPaid(corb);
       const rem  = corb.amount - paid;
       const remStr = rem < 0 ? `-${fm(Math.abs(rem))}` : fm(rem);
-      codeOpts = `<option value="${eh(corb.laborCode)}" ${selectedCode===corb.laborCode?'selected':''}>${corb.laborCode} \u2013 ${eh(corb.description)} | COR ${eh(corb.corNumber)} | Rem: ${remStr}</option>`;
+      const tag  = corb.isBurn ? 'Burn' : `COR ${eh(corb.corNumber)}`;
+      codeOpts = `<option value="${eh(corb.laborCode)}" ${selectedCode===corb.laborCode?'selected':''}>${corb.laborCode} \u2013 ${eh(corb.description)} | ${tag} | Rem: ${remStr}</option>`;
     }
   } else if (csvFile && area) {
     const areaRows    = csvFile.rows.filter(r => r.area === area);
@@ -3674,10 +3673,8 @@ function diApplyFilter(type) {
         _diData[crew].push({ employee: '', area: '', costCode: '', description: '', corBudgetId: '', corNumber: '', extraEntries: [] });
       }
       _diData[crew][i].area = area;
-      if (area.startsWith('[COR]')) {
-        const corb = (_cache.corbudgets || []).find(b =>
-          `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
-        );
+      if (isSpecialArea(area)) {
+        const corb = corbForArea(area, jobName);
         if (corb) {
           _diData[crew][i].costCode    = corb.laborCode;
           _diData[crew][i].corBudgetId = corb.id;
@@ -3844,13 +3841,11 @@ function diAreaBlur(input, crew, rowIdx) {
 
 function diAreaPick(area, crew, rowIdx) {
   _diData[crew][rowIdx].area = area;
-  // For COR areas: auto-populate costCode and store IDs so submissions are traceable
+  // For COR/BURN areas: auto-populate costCode and store IDs so submissions are traceable
   // by corBudgetId rather than fragile area-key string matching.
-  if (area && area.startsWith('[COR]')) {
+  if (isSpecialArea(area)) {
     const jobName = document.getElementById('ps-job-select').value || '';
-    const corb = (_cache.corbudgets || []).find(b =>
-      `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
-    );
+    const corb = corbForArea(area, jobName);
     if (corb) {
       _diData[crew][rowIdx].costCode    = corb.laborCode;
       _diData[crew][rowIdx].corBudgetId = corb.id;
@@ -5242,13 +5237,11 @@ function renderPSAreaBudgetTable() {
     return;
   }
 
-  // ── COR area: show COR budget + live PTD from daily inputs & approved paysheets ──
-  if (area.startsWith('[COR]')) {
-    const corb = (_cache.corbudgets || []).find(b =>
-      `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
-    );
+  // ── COR/BURN area: show budget + live PTD from daily inputs & approved paysheets ──
+  if (isSpecialArea(area)) {
+    const corb = corbForArea(area, jobName);
     if (!corb) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted);">COR budget not found.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted);">Budget not found.</td></tr>';
       return;
     }
     const ptd = computeCorPaid(corb);
@@ -5310,6 +5303,20 @@ function renderPSAreaBudgetTable() {
   </tr>`;
 }
 
+// ── COR / BURN area key helpers ─────────────────────────────────────────────
+// Burns get [BURN] prefix; regular COR budgets get [COR] prefix.
+function corbAreaKey(b) {
+  return b.isBurn
+    ? `[BURN] \u2013 ${b.burnArea || ''}`
+    : `[COR] ${b.corNumber} \u2013 ${b.description}`;
+}
+function isSpecialArea(area) {
+  return !!(area && (area.startsWith('[COR]') || area.startsWith('[BURN]')));
+}
+function corbForArea(area, jobName) {
+  return (_cache.corbudgets || []).find(b => corbAreaKey(b) === area && b.jobId === jobName);
+}
+
 // Get all areas for a job from both CSV rows and payroll entries
 function psGetAreas(jobName) {
   const f = getSavedCSVFiles().find(x => x.name === jobName);
@@ -5319,7 +5326,7 @@ function psGetAreas(jobName) {
   // Paid-out CORs (remainingBalance <= 0) are excluded from active selection.
   const corAreas = (_cache.corbudgets || [])
     .filter(b => b.jobId === jobName && (b.amount - computeCorPaid(b)) > 0)
-    .map(b => `[COR] ${b.corNumber} \u2013 ${b.description}`);
+    .map(corbAreaKey);
   const regular = [...new Set([...csvAreas, ...prAreas])].sort();
   return [...new Set([...corAreas, ...regular])];
 }
@@ -5361,15 +5368,14 @@ function _psTableThead(isDaily) {
 }
 
 function _psRenderRow(row, i, jobName, areas, isDaily) {
-  // ── COR row: pull budget & PTD live from corbudget, not CSV ──
-  const isCOR = !!(row.area && row.area.startsWith('[COR]'));
+  // ── COR/BURN row: pull budget & PTD live from corbudget, not CSV ──
+  const isCOR = isSpecialArea(row.area);
   // Prefer corBudgetId (strongest — immune to description drift across CORs sharing labor code)
   const corb = isCOR
     ? ((row.corBudgetId
         ? (_cache.corbudgets || []).find(b => b.id === row.corBudgetId && b.jobId === jobName)
         : null)
-       || (_cache.corbudgets || []).find(b =>
-           `[COR] ${b.corNumber} \u2013 ${b.description}` === row.area && b.jobId === jobName))
+       || corbForArea(row.area, jobName))
     : null;
 
   let budgetVal = 0;
@@ -5460,11 +5466,9 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
       ...areas.map(a => `<option value="${eh(a)}" ${row.area===a?'selected':''}>${eh(a)}</option>`)
     ].join('');
     let codeOpts = '<option value=""></option>';
-    if (row.area && row.area.startsWith('[COR]')) {
-      // COR rows: lock labor code to the corbudget's labor code
-      const corb2 = (_cache.corbudgets || []).find(b =>
-        `[COR] ${b.corNumber} \u2013 ${b.description}` === row.area && b.jobId === jobName
-      );
+    if (isSpecialArea(row.area)) {
+      // COR/BURN rows: lock labor code to the corbudget's labor code
+      const corb2 = corbForArea(row.area, jobName);
       if (corb2) {
         codeOpts = `<option value="${eh(corb2.laborCode)}" selected>${eh(corb2.laborCode)} – ${eh(corb2.description)}</option>`;
       }
@@ -5615,11 +5619,9 @@ function psAddRows(n) {
 
 function psAreaChanged(i, area) {
   _ps().rows[i].area = area;
-  if (area && area.startsWith('[COR]')) {
+  if (isSpecialArea(area)) {
     const jobName = document.getElementById('ps-job-select').value || '';
-    const corb = (_cache.corbudgets || []).find(b =>
-      `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName
-    );
+    const corb = corbForArea(area, jobName);
     // Lock labor code and store IDs — this is the authoritative corBudgetId for the row
     _ps().rows[i].costCode    = corb ? corb.laborCode : '';
     _ps().rows[i].corBudgetId = corb ? corb.id        : '';
@@ -5797,7 +5799,7 @@ async function psApproveSync(doc) {
     crew.rows.forEach((row, i) => {
       const area     = (row.area     || '').trim();
       const weAmount = parseFloat(row.weAmount) || 0;
-      const isCOR    = area.startsWith('[COR]');
+      const isCOR    = isSpecialArea(area);
 
       // ── Resolve labor code ────────────────────────────────────────────────
       let costCode = (row.costCode || '').trim();
@@ -5807,8 +5809,7 @@ async function psApproveSync(doc) {
         const corb0 = (row.corBudgetId
           ? (_cache.corbudgets || []).find(b => b.id === row.corBudgetId)
           : null)
-          || (_cache.corbudgets || []).find(b =>
-              `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName);
+          || corbForArea(area, jobName);
         if (corb0) costCode = corb0.laborCode;
       }
 
@@ -5820,7 +5821,7 @@ async function psApproveSync(doc) {
       const groupEntry  = PAYROLL_GROUPS.find(g => g.code === groupCode);
       const description = groupEntry ? groupEntry.description : costCode;
 
-      // ── COR row: prefer ID-based corb lookup; fall back to area-key string ──
+      // ── COR/BURN row: prefer ID-based corb lookup; fall back to area-key string ──
       let budget      = 0;
       let corBudgetId = null;
       let corNumber   = null;
@@ -5829,8 +5830,7 @@ async function psApproveSync(doc) {
         const corb = (row.corBudgetId
           ? (_cache.corbudgets || []).find(b => b.id === row.corBudgetId && b.jobId === jobName)
           : null)
-          || (_cache.corbudgets || []).find(b =>
-              `[COR] ${b.corNumber} \u2013 ${b.description}` === area && b.jobId === jobName);
+          || corbForArea(area, jobName);
         if (corb) {
           budget        = corb.amount;
           corBudgetId   = corb.id;
@@ -6213,14 +6213,13 @@ async function _psExportSheetsAsZip(sheets, zipLabel) {
           y = M;
           y = drawRow(pdf, y, mainCols, mainHdrs, {bg:GOLD, bold:true});
         }
-        // COR row: look up live budget & PTD
-        const isCOR = !!(row.area && row.area.startsWith('[COR]'));
+        // COR/BURN row: look up live budget & PTD
+        const isCOR = isSpecialArea(row.area);
         const corb  = isCOR
           ? ((row.corBudgetId
                ? (_cache.corbudgets||[]).find(b => b.id===row.corBudgetId && b.jobId===jobName)
                : null)
-             || (_cache.corbudgets||[]).find(b =>
-                  `[COR] ${b.corNumber} \u2013 ${b.description}` === row.area && b.jobId===jobName))
+             || corbForArea(row.area, jobName))
           : null;
 
         let budgetVal = 0;
@@ -8971,7 +8970,7 @@ function coBurnJobChanged() {
     areaSel.innerHTML = '<option value="">— Select Job First —</option>';
     return;
   }
-  const areas = psGetAreas(jobName).filter(a => !a.startsWith('[COR]'));
+  const areas = psGetAreas(jobName).filter(a => !isSpecialArea(a));
   areaSel.innerHTML = '<option value="">— Select Area —</option>' +
     areas.map(a => `<option value="${eh(a)}">${eh(a)}</option>`).join('');
 }
@@ -9346,7 +9345,7 @@ async function coConfirmBudget() {
       amount: foremanAmt,                   // amount always equals foremanTrackingAmount for all tracking code
       foremanTrackingAmount: foremanAmt,
       internalCorAmount: internalAmt,
-      ...(isBurn ? { burnHours, burnArea: co.burnArea || '' } : {}),
+      ...(isBurn ? { isBurn: true, burnHours, burnArea: co.burnArea || '' } : {}),
       createdAt: new Date().toISOString(), createdByEmail: _currentUser.email, createdByUid: _currentUser.uid,
     };
     await db.collection('corbudgets').doc(corbId).set(corb);
@@ -9386,7 +9385,7 @@ function computeCorPaid(corb) {
   // Area key is used as a fallback for DI entries that pre-date corBudgetId storage.
   // The primary match for payroll entries is the unique corBudgetId — this is what
   // prevents two CORs sharing the same labor code from cross-contaminating PTD.
-  const areaKey = `[COR] ${corb.corNumber} \u2013 ${corb.description}`;
+  const areaKey = corbAreaKey(corb);
   let paid = 0;
 
   // ── Daily input submissions ──────────────────────────────────────────────
