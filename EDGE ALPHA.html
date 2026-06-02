@@ -8930,6 +8930,8 @@ function renderCOLog() {
 }
 
 let _coBurnMode = false;
+let _coBurnSelectedAreas = [];
+let _coBurnAreaClickHandler = null;
 
 function coOpenSubmitModal(burnMode) {
   if (!canSubmitCO()) return;
@@ -8946,7 +8948,13 @@ function coOpenSubmitModal(burnMode) {
   // Burn mode: show burn fields, hide WO row, update title and button label
   const burnFields = document.getElementById('co-submit-burn-fields');
   burnFields.style.display = _coBurnMode ? 'flex' : 'none';
-  document.getElementById('co-burn-area').innerHTML  = '<option value="">— Select Job First —</option>';
+  _coBurnSelectedAreas = [];
+  const _bSearch = document.getElementById('co-burn-area-search');
+  if (_bSearch) _bSearch.value = '';
+  const _bTags = document.getElementById('co-burn-area-tags');
+  if (_bTags) { _bTags.innerHTML = ''; _bTags.style.marginBottom = '0'; }
+  const _bDd = document.getElementById('co-burn-area-dropdown');
+  if (_bDd) _bDd.style.display = 'none';
   document.getElementById('co-burn-code').innerHTML  = '<option value="">— Select Area First —</option>';
   document.getElementById('co-burn-hours').value     = '';
   document.getElementById('co-submit-wo-row').style.display   = _coBurnMode ? 'none' : '';
@@ -8962,40 +8970,115 @@ function coCloseSubmitModal() {
 
 function coBurnJobChanged() {
   if (!_coBurnMode) return;
-  const jobName  = document.getElementById('co-submit-job').value;
-  const areaSel  = document.getElementById('co-burn-area');
-  const codeSel  = document.getElementById('co-burn-code');
-  codeSel.innerHTML = '<option value="">— Select Area First —</option>';
-  if (!jobName) {
-    areaSel.innerHTML = '<option value="">— Select Job First —</option>';
-    return;
-  }
-  const areas = psGetAreas(jobName).filter(a => !isSpecialArea(a));
-  areaSel.innerHTML = '<option value="">— Select Area —</option>' +
-    areas.map(a => `<option value="${eh(a)}">${eh(a)}</option>`).join('');
+  // Reset area multi-select when job changes
+  _coBurnSelectedAreas = [];
+  const search = document.getElementById('co-burn-area-search');
+  const tags   = document.getElementById('co-burn-area-tags');
+  const dd     = document.getElementById('co-burn-area-dropdown');
+  if (search) search.value = '';
+  if (tags)   { tags.innerHTML = ''; tags.style.marginBottom = '0'; }
+  if (dd)     dd.style.display = 'none';
+  document.getElementById('co-burn-code').innerHTML = '<option value="">— Select Area First —</option>';
 }
 
-function coBurnAreaChanged() {
+function coBurnAreaOpen() {
   if (!_coBurnMode) return;
-  const jobName = document.getElementById('co-submit-job').value;
-  const area    = document.getElementById('co-burn-area').value;
-  const codeSel = document.getElementById('co-burn-code');
-  if (!area) { codeSel.innerHTML = '<option value="">— Select Area First —</option>'; return; }
-  const csvFile = getSavedCSVFiles().find(x => x.name === jobName);
-  let codes = [];
-  if (csvFile) {
-    const areaRows = csvFile.rows.filter(r => r.area === area);
-    codes = areaRows.length
-      ? [...new Set(areaRows.map(r => r.costCode).filter(Boolean))].sort()
-      : [];
+  _coBurnAreaRenderDropdown('');
+  if (_coBurnAreaClickHandler) document.removeEventListener('mousedown', _coBurnAreaClickHandler, true);
+  _coBurnAreaClickHandler = e => {
+    const wrap = document.getElementById('co-burn-area-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+      const dd = document.getElementById('co-burn-area-dropdown');
+      if (dd) dd.style.display = 'none';
+      document.removeEventListener('mousedown', _coBurnAreaClickHandler, true);
+      _coBurnAreaClickHandler = null;
+    }
+  };
+  document.addEventListener('mousedown', _coBurnAreaClickHandler, true);
+}
+
+function coBurnAreaSearch(q) {
+  _coBurnAreaRenderDropdown(q);
+}
+
+function _coBurnAreaRenderDropdown(filter) {
+  const dd = document.getElementById('co-burn-area-dropdown');
+  if (!dd) return;
+  const jobName = (document.getElementById('co-submit-job') || {}).value || '';
+  if (!jobName) {
+    dd.innerHTML = '<p style="padding:10px 12px;color:var(--muted);font-size:.82rem;margin:0;">Select a job first.</p>';
+    dd.style.display = 'block';
+    return;
   }
-  if (!codes.length) codes = PAYROLL_GROUPS.map(g => g.code);
-  const codeLabels = codes.map(c => {
-    const g = PAYROLL_GROUPS.find(x => x.code === c);
-    return g ? `${c} – ${g.description}` : c;
-  });
+  const all = psGetAreas(jobName).filter(a => !isSpecialArea(a));
+  const filtered = filter ? all.filter(a => a.toLowerCase().includes(filter.toLowerCase())) : all;
+  if (!filtered.length) {
+    dd.innerHTML = '<p style="padding:10px 12px;color:var(--muted);font-size:.82rem;margin:0;">No areas found.</p>';
+    dd.style.display = 'block';
+    return;
+  }
+  dd.innerHTML = filtered.map(a => {
+    const checked = _coBurnSelectedAreas.includes(a);
+    return `<label style="display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:.83rem;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);">
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="coBurnAreaToggle('${ea(a)}',this)" style="cursor:pointer;flex-shrink:0;width:14px;height:14px;" />
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${eh(a)}</span>
+    </label>`;
+  }).join('');
+  dd.style.display = 'block';
+}
+
+function coBurnAreaToggle(area, cb) {
+  if (cb.checked) {
+    if (!_coBurnSelectedAreas.includes(area)) _coBurnSelectedAreas.push(area);
+  } else {
+    _coBurnSelectedAreas = _coBurnSelectedAreas.filter(a => a !== area);
+  }
+  _coBurnAreaRenderTags();
+  coBurnAreasChanged();
+}
+
+function coBurnAreaRemove(area) {
+  _coBurnSelectedAreas = _coBurnSelectedAreas.filter(a => a !== area);
+  _coBurnAreaRenderTags();
+  const search = document.getElementById('co-burn-area-search');
+  _coBurnAreaRenderDropdown(search ? search.value.trim() : '');
+  coBurnAreasChanged();
+}
+
+function _coBurnAreaRenderTags() {
+  const wrap = document.getElementById('co-burn-area-tags');
+  if (!wrap) return;
+  wrap.style.marginBottom = _coBurnSelectedAreas.length ? '6px' : '0';
+  wrap.innerHTML = _coBurnSelectedAreas.map(a =>
+    `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px 2px 9px;background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.35);border-radius:12px;font-size:.78rem;color:var(--accent);">
+      ${eh(a)}
+      <button type="button" onclick="coBurnAreaRemove('${ea(a)}')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:1rem;padding:0 2px;line-height:1;" title="Remove">×</button>
+    </span>`
+  ).join('');
+}
+
+function coBurnAreasChanged() {
+  const jobName = (document.getElementById('co-submit-job') || {}).value || '';
+  const codeSel = document.getElementById('co-burn-code');
+  if (!codeSel) return;
+  if (!_coBurnSelectedAreas.length) {
+    codeSel.innerHTML = '<option value="">— Select Area First —</option>';
+    return;
+  }
+  const csvFile = getSavedCSVFiles().find(x => x.name === jobName);
+  const seen = new Set();
+  const codes = [];
+  if (csvFile) {
+    _coBurnSelectedAreas.forEach(area => {
+      csvFile.rows.filter(r => r.area === area && r.costCode).forEach(r => {
+        if (!seen.has(r.costCode)) { seen.add(r.costCode); codes.push(r.costCode); }
+      });
+    });
+    codes.sort();
+  }
+  if (!codes.length) PAYROLL_GROUPS.forEach(g => { if (!seen.has(g.code)) { seen.add(g.code); codes.push(g.code); } });
   codeSel.innerHTML = '<option value="">— Select Labor Code —</option>' +
-    codes.map((c, i) => `<option value="${eh(c)}">${eh(codeLabels[i])}</option>`).join('');
+    codes.map(c => { const g = PAYROLL_GROUPS.find(x => x.code === c); return `<option value="${eh(c)}">${eh(g ? `${c} – ${g.description}` : c)}</option>`; }).join('');
 }
 
 function coOpenLightbox(idx, coId) {
@@ -9057,10 +9140,11 @@ async function coSubmit() {
   const desc  = document.getElementById('co-submit-desc').value.trim();
   if (!jobId) { alert('Please select a job.'); return; }
   if (!wo)    { alert('Please select a Work Order type.'); return; }
-  const burnArea  = _coBurnMode ? document.getElementById('co-burn-area').value.trim()  : '';
+  const burnAreas = _coBurnMode ? [..._coBurnSelectedAreas] : [];
+  const burnArea  = burnAreas[0] || '';
   const burnCode  = _coBurnMode ? document.getElementById('co-burn-code').value.trim()  : '';
   const burnHours = _coBurnMode ? (parseFloat(document.getElementById('co-burn-hours').value) || 0) : 0;
-  if (_coBurnMode && !burnArea) { alert('Please select an area.'); return; }
+  if (_coBurnMode && !burnAreas.length) { alert('Please select at least one area.'); return; }
 
   const btn  = document.getElementById('co-submit-confirm-btn');
   const prog = document.getElementById('co-submit-progress');
@@ -9084,7 +9168,7 @@ async function coSubmit() {
     prog.textContent = 'Saving change order…';
     const doc = {
       id, jobId, workOrderNumber: wo, description: desc, photoUrls,
-      ...(wo === '503 - Burn' ? { burnArea, burnLaborCode: burnCode, burnHours, burnNumber } : {}),
+      ...(wo === '503 - Burn' ? { burnArea, burnAreas, burnLaborCode: burnCode, burnHours, burnNumber } : {}),
       submittedByEmail: _currentUser.email, submittedByUid: _currentUser.uid,
       submittedByRole: _currentUserRole, submittedAt: new Date().toISOString(),
       status: 'submitted', reviewerEmail: null, reviewerUid: null, reviewedAt: null,
@@ -9296,7 +9380,8 @@ function coOpenBudgetModal(coId) {
   if (isBurn) {
     areaRow.style.display  = '';
     hoursRow.style.display = '';
-    document.getElementById('co-budget-burn-area-val').textContent = co.burnArea || '—';
+    const _burnAreas = (co.burnAreas && co.burnAreas.length) ? co.burnAreas : (co.burnArea ? [co.burnArea] : []);
+    document.getElementById('co-budget-burn-area-val').textContent = _burnAreas.length ? _burnAreas.join(', ') : '—';
     document.getElementById('co-budget-hours').value = co.burnHours != null ? co.burnHours : '';
   } else {
     areaRow.style.display  = 'none';
@@ -9442,9 +9527,14 @@ function computeCorPaid(corb) {
       <div id="co-submit-burn-fields" style="display:none;flex-direction:column;gap:14px;">
         <div>
           <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Area <span style="color:#ef4444;">*</span></label>
-          <select id="co-burn-area" class="fi" style="width:100%;" onchange="coBurnAreaChanged()">
-            <option value="">— Select Job First —</option>
-          </select>
+          <div id="co-burn-area-wrap" style="position:relative;">
+            <div id="co-burn-area-tags" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:0;"></div>
+            <input id="co-burn-area-search" class="fi" style="width:100%;box-sizing:border-box;"
+              placeholder="Search areas…" autocomplete="off"
+              onfocus="coBurnAreaOpen()"
+              oninput="coBurnAreaSearch(this.value)" />
+            <div id="co-burn-area-dropdown" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.6);max-height:200px;overflow-y:auto;"></div>
+          </div>
         </div>
         <div>
           <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Labor Code</label>
