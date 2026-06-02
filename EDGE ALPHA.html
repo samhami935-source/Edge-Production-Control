@@ -1623,6 +1623,14 @@ firebase.auth().onAuthStateChanged(async user => {
   document.getElementById('pending-screen').style.display = 'none';
   // Load all Firestore data before revealing the app (loading screen stays up during this)
   try { await loadAllData(); } catch(e) { console.error('Data load error:', e); }
+  // Sync any existing budget negative rows → Burn log entries (admin only, idempotent)
+  if (isAdmin()) {
+    try {
+      for (const f of getSavedCSVFiles()) {
+        await _autoCreateBurnsFromNegativeRows(f.name, f.rows);
+      }
+    } catch(e) { console.warn('Auto-burn sync error:', e); }
+  }
   document.getElementById('loading-screen').style.display = 'none';
   document.getElementById('app-screen').style.display     = 'block';
   updateUserPill();
@@ -2436,12 +2444,24 @@ function guardedProcessFiles(list) { if (!canEdit()) { alert('Admin or Project M
 
 // Auto-creates 503-Burn CO log entries for any negative-amount rows in an uploaded budget.
 // Negative amounts represent pre-deducted/burned work and are excluded from budget totals.
+// Safe to call multiple times — deduplicates by area+costCode+description+absAmount.
 async function _autoCreateBurnsFromNegativeRows(jobId, rows) {
   const negRows = rows.filter(r => r.amount < 0);
   if (!negRows.length) return;
-  const existingBurns = (_cache.changeorders || []).filter(c => c.jobId === jobId && c.workOrderNumber === '503 - Burn');
-  let nextBurnNum = existingBurns.length + 1;
-  for (const r of negRows) {
+  // Dedup: skip rows that already have a matching auto-created burn
+  const existingAutoBurns = (_cache.changeorders || []).filter(c =>
+    c.jobId === jobId && c.autoCreatedFromBudget === true
+  );
+  const existingKeys = new Set(existingAutoBurns.map(c =>
+    `${c.burnArea}|${c.burnLaborCode}|${c.description}|${c.burnAmount}`
+  ));
+  const newRows = negRows.filter(r =>
+    !existingKeys.has(`${r.area}|${r.costCode}|${r.description}|${Math.abs(r.amount)}`)
+  );
+  if (!newRows.length) return;
+  const allBurns = (_cache.changeorders || []).filter(c => c.jobId === jobId && c.workOrderNumber === '503 - Burn');
+  let nextBurnNum = allBurns.length + 1;
+  for (const r of newRows) {
     const id = `co_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const doc = {
       id, jobId,
@@ -2467,10 +2487,7 @@ async function _autoCreateBurnsFromNegativeRows(jobId, rows) {
     _cache.changeorders.push(doc);
     await db.collection('changeorders').doc(id).set(doc);
   }
-  if (negRows.length) {
-    const plural = negRows.length > 1 ? `${negRows.length} Burn entries` : '1 Burn entry';
-    console.log(`[Budget Upload] Auto-created ${plural} for negative rows in "${jobId}".`);
-  }
+  console.log(`[Budget] Auto-created ${newRows.length} Burn entr${newRows.length===1?'y':'ies'} for "${jobId}".`);
 }
 
 function processFiles(list) {
