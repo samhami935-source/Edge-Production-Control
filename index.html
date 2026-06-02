@@ -9255,12 +9255,21 @@ function coOpenDetail(coId) {
   document.getElementById('co-detail-title').textContent = _isBurn
     ? `Burn#${co.burnNumber || '?'}`
     : `Change Order — WO# ${co.workOrderNumber}`;
+  const _burnAreaList = _isBurn
+    ? ((co.burnAreas && co.burnAreas.length) ? co.burnAreas : (co.burnArea ? [co.burnArea] : []))
+    : [];
+  const _corbAreaKey = (!_isBurn && corb) ? corbAreaKey(corb) : '';
+
   document.getElementById('co-detail-body').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:.83rem;">
       <div><span style="color:var(--muted);">Job</span><br/><strong>${eh(co.jobId)}</strong></div>
       <div><span style="color:var(--muted);">Status</span><br/>${coStatusBadge(co.status)}</div>
       <div><span style="color:var(--muted);">Submitted By</span><br/><strong>${eh(co.submittedByEmail)}</strong></div>
       <div><span style="color:var(--muted);">Submitted At</span><br/><strong>${dateStr}</strong></div>
+      ${_burnAreaList.length ? `<div style="grid-column:span 2"><span style="color:var(--muted);">Areas</span><br/><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${_burnAreaList.map(a => `<span style="display:inline-block;padding:2px 9px;background:rgba(201,168,76,.13);border:1px solid rgba(201,168,76,.35);border-radius:10px;font-size:.8rem;color:var(--accent);">${eh(a)}</span>`).join('')}</div></div>` : ''}
+      ${_isBurn && co.burnLaborCode ? `<div><span style="color:var(--muted);">Labor Code</span><br/><strong>${eh(co.burnLaborCode)}</strong></div>` : ''}
+      ${_isBurn && co.burnHours != null ? `<div><span style="color:var(--muted);">Hours</span><br/><strong>${co.burnHours}</strong></div>` : ''}
+      ${_corbAreaKey ? `<div style="grid-column:span 2"><span style="color:var(--muted);">Area (Budget Key)</span><br/><strong style="font-size:.82rem;">${eh(_corbAreaKey)}</strong></div>` : ''}
       ${co.reviewerEmail ? `<div><span style="color:var(--muted);">Reviewed By</span><br/><strong>${eh(co.reviewerEmail)}</strong></div>` : ''}
       ${co.reviewedAt    ? `<div><span style="color:var(--muted);">Reviewed At</span><br/><strong>${reviewedStr}</strong></div>` : ''}
       ${co.corNumber     ? `<div><span style="color:var(--muted);">COR #</span><br/><strong>${eh(co.corNumber)}</strong></div>` : ''}
