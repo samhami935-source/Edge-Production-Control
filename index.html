@@ -8944,7 +8944,12 @@ function coOpenSubmitModal(burnMode) {
   document.getElementById('co-photo-preview').innerHTML = '';
   document.getElementById('co-submit-progress').style.display = 'none';
   document.getElementById('co-submit-confirm-btn').disabled = false;
-  // Burn mode: hide WO row, update title and button label
+  // Burn mode: show burn fields, hide WO row, update title and button label
+  const burnFields = document.getElementById('co-submit-burn-fields');
+  burnFields.style.display = _coBurnMode ? 'flex' : 'none';
+  document.getElementById('co-burn-area').innerHTML  = '<option value="">— Select Job First —</option>';
+  document.getElementById('co-burn-code').innerHTML  = '<option value="">— Select Area First —</option>';
+  document.getElementById('co-burn-hours').value     = '';
   document.getElementById('co-submit-wo-row').style.display   = _coBurnMode ? 'none' : '';
   document.getElementById('co-submit-modal-title').textContent = _coBurnMode ? '🔥 Submit 503 Burn' : '📋 Submit Change Order';
   document.getElementById('co-submit-confirm-btn').textContent = _coBurnMode ? 'Submit 503 Burn' : 'Submit Change Order';
@@ -8954,6 +8959,44 @@ function coOpenSubmitModal(burnMode) {
 function coCloseSubmitModal() {
   document.getElementById('co-submit-modal').classList.remove('open');
   _coBurnMode = false;
+}
+
+function coBurnJobChanged() {
+  if (!_coBurnMode) return;
+  const jobName  = document.getElementById('co-submit-job').value;
+  const areaSel  = document.getElementById('co-burn-area');
+  const codeSel  = document.getElementById('co-burn-code');
+  codeSel.innerHTML = '<option value="">— Select Area First —</option>';
+  if (!jobName) {
+    areaSel.innerHTML = '<option value="">— Select Job First —</option>';
+    return;
+  }
+  const areas = psGetAreas(jobName).filter(a => !a.startsWith('[COR]'));
+  areaSel.innerHTML = '<option value="">— Select Area —</option>' +
+    areas.map(a => `<option value="${eh(a)}">${eh(a)}</option>`).join('');
+}
+
+function coBurnAreaChanged() {
+  if (!_coBurnMode) return;
+  const jobName = document.getElementById('co-submit-job').value;
+  const area    = document.getElementById('co-burn-area').value;
+  const codeSel = document.getElementById('co-burn-code');
+  if (!area) { codeSel.innerHTML = '<option value="">— Select Area First —</option>'; return; }
+  const csvFile = getSavedCSVFiles().find(x => x.name === jobName);
+  let codes = [];
+  if (csvFile) {
+    const areaRows = csvFile.rows.filter(r => r.area === area);
+    codes = areaRows.length
+      ? [...new Set(areaRows.map(r => r.costCode).filter(Boolean))].sort()
+      : [];
+  }
+  if (!codes.length) codes = PAYROLL_GROUPS.map(g => g.code);
+  const codeLabels = codes.map(c => {
+    const g = PAYROLL_GROUPS.find(x => x.code === c);
+    return g ? `${c} – ${g.description}` : c;
+  });
+  codeSel.innerHTML = '<option value="">— Select Labor Code —</option>' +
+    codes.map((c, i) => `<option value="${eh(c)}">${eh(codeLabels[i])}</option>`).join('');
 }
 
 function coOpenLightbox(idx, coId) {
@@ -9015,6 +9058,10 @@ async function coSubmit() {
   const desc  = document.getElementById('co-submit-desc').value.trim();
   if (!jobId) { alert('Please select a job.'); return; }
   if (!wo)    { alert('Please select a Work Order type.'); return; }
+  const burnArea  = _coBurnMode ? document.getElementById('co-burn-area').value.trim()  : '';
+  const burnCode  = _coBurnMode ? document.getElementById('co-burn-code').value.trim()  : '';
+  const burnHours = _coBurnMode ? (parseFloat(document.getElementById('co-burn-hours').value) || 0) : 0;
+  if (_coBurnMode && !burnArea) { alert('Please select an area.'); return; }
 
   const btn  = document.getElementById('co-submit-confirm-btn');
   const prog = document.getElementById('co-submit-progress');
@@ -9034,6 +9081,7 @@ async function coSubmit() {
     prog.textContent = 'Saving change order…';
     const doc = {
       id, jobId, workOrderNumber: wo, description: desc, photoUrls,
+      ...(wo === '503 - Burn' ? { burnArea, burnLaborCode: burnCode, burnHours } : {}),
       submittedByEmail: _currentUser.email, submittedByUid: _currentUser.uid,
       submittedByRole: _currentUserRole, submittedAt: new Date().toISOString(),
       status: 'submitted', reviewerEmail: null, reviewerUid: null, reviewedAt: null,
@@ -9344,7 +9392,26 @@ function computeCorPaid(corb) {
     <div style="overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;display:flex;flex-direction:column;gap:14px;">
       <div>
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Job <span style="color:#ef4444;">*</span></label>
-        <select id="co-submit-job" class="fi" style="width:100%;"></select>
+        <select id="co-submit-job" class="fi" style="width:100%;" onchange="coBurnJobChanged()"></select>
+      </div>
+      <!-- Burn-mode fields: Area, Labor Code, Hours -->
+      <div id="co-submit-burn-fields" style="display:none;flex-direction:column;gap:14px;">
+        <div>
+          <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Area <span style="color:#ef4444;">*</span></label>
+          <select id="co-burn-area" class="fi" style="width:100%;" onchange="coBurnAreaChanged()">
+            <option value="">— Select Job First —</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Labor Code</label>
+          <select id="co-burn-code" class="fi" style="width:100%;">
+            <option value="">— Select Area First —</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Hours</label>
+          <input type="number" id="co-burn-hours" class="fi" style="width:100%;" placeholder="0.0" min="0" step="0.5" />
+        </div>
       </div>
       <div id="co-submit-wo-row">
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Work Order Number <span style="color:#ef4444;">*</span></label>
