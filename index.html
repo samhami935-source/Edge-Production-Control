@@ -1897,7 +1897,7 @@ function renderBudgetsTable() {
   if(!files.length){tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">${isAdmin()?'No jobs uploaded yet. Use the upload area above to add a CSV.':'No jobs uploaded yet.'}</td></tr>`;return;}
   const admin=isAdmin();
   tbody.innerHTML=files.map(f=>{
-    const budget=f.rows.filter(r=>r.amount>=0).reduce((s,r)=>s+r.amount,0);
+    const budget=f.rows.reduce((s,r)=>s+r.amount,0);
     const paid=getFileTotalPaid(f.name);
     const rem=budget-paid;
     const pct=budget>0?Math.round(paid/budget*100):0;
@@ -1917,7 +1917,7 @@ function renderBudgetsTable() {
 function exportBudgetsCSV() {
   const lines=[['Job (CSV File)','Total Budget','Total Paid','Remaining','% Used'].join(',')];
   getSavedCSVFiles().forEach(f=>{
-    const budget=f.rows.filter(r=>r.amount>=0).reduce((s,r)=>s+r.amount,0);
+    const budget=f.rows.reduce((s,r)=>s+r.amount,0);
     const paid=getFileTotalPaid(f.name);
     const rem=budget-paid;
     const pct=budget>0?Math.round(paid/budget*100):0;
@@ -2059,7 +2059,7 @@ function renderAreaBudgetTable() {
     const paid = paidByCode[r.costCode] || 0;
     const rem  = r.amount - paid;
     const rc   = rem<0?'color:var(--red)':rem===0?'color:var(--yellow)':'color:var(--green)';
-    if (r.amount >= 0) totalBudget+=r.amount; totalPaid+=paid;
+    totalBudget+=r.amount; totalPaid+=paid;
     return `<tr>
       <td style="font-size:.85rem;color:var(--muted);font-family:monospace;">${eh(r.costCode)}</td>
       <td style="font-size:.85rem;">${eh(r.description)}</td>
@@ -2114,7 +2114,7 @@ function exportAreaBudgetCSV() {
     const lines = [['Job','Area','Labor Code','Description','Budget','Paid','Remaining'].join(',')];
     areas.forEach(a => {
       PAYROLL_GROUPS.forEach(g => {
-        const budget = f.rows.filter(r=>r.area===a&&getCodeGroup(r.costCode)===g.code&&r.amount>=0).reduce((s,r)=>s+r.amount,0);
+        const budget = f.rows.filter(r=>r.area===a&&getCodeGroup(r.costCode)===g.code).reduce((s,r)=>s+r.amount,0);
         const paid   = allEntries.filter(e=>e.area===a&&e.costCode===g.code).reduce((s,e)=>s+e.price,0);
         if (budget===0 && paid===0) return;
         const rem = budget - paid;
@@ -2138,8 +2138,8 @@ function renderBurnLog() {
     seen.add(key);
     const f=files.find(f=>f.name===e.csvFile);
     const _rlCode=String(e.costCode||''); const _rlGrp=getCodeGroup(_rlCode);
-    const _rlExact=f?f.rows.filter(r=>r.area===e.area&&String(r.costCode)===_rlCode&&r.amount>=0).reduce((s,r)=>s+r.amount,0):0;
-    const _rlGrpB =f&&!_rlExact?f.rows.filter(r=>r.area===e.area&&getCodeGroup(String(r.costCode))===_rlGrp&&r.amount>=0).reduce((s,r)=>s+r.amount,0):0;
+    const _rlExact=f?f.rows.filter(r=>r.area===e.area&&String(r.costCode)===_rlCode).reduce((s,r)=>s+r.amount,0):0;
+    const _rlGrpB =f&&!_rlExact?f.rows.filter(r=>r.area===e.area&&getCodeGroup(String(r.costCode))===_rlGrp).reduce((s,r)=>s+r.amount,0):0;
     const budget=_rlExact||_rlGrpB||e.amount||0;
     const paid=allEntries.filter(x=>x.csvFile===e.csvFile&&x.area===e.area&&x.costCode===_rlCode).reduce((s,x)=>s+x.price,0);
     const remRaw=budget-paid;
@@ -2649,7 +2649,7 @@ function renderCSVTable() {
 }
 
 function renderCSVSummary() {
-  const totalBudget=allRows.filter(r=>r.amount>=0).reduce((s,r)=>s+r.amount,0);
+  const totalBudget=allRows.reduce((s,r)=>s+r.amount,0);
   const totalPaid=getFileTotalPaid(activeTab);
   const totalRem=totalBudget-totalPaid;
   const areas=[...new Set(allRows.map(r=>r.area).filter(a=>a&&a!=='—'))];
@@ -2671,7 +2671,6 @@ function renderCharts() {
   const remMap={};
   allRows.forEach(r=>{
     if(!r.area||r.area==='—') return;
-    if(r.amount<0) return; // negative rows are burns — excluded from budget totals
     const{paid}=getPayrollTotals(activeTab,r.costCode,r.description);
     remMap[r.area]=(remMap[r.area]||0)+(r.amount-paid);
   });
@@ -2863,7 +2862,7 @@ function previewBalance() {
   if(!fileName||!costCode||!area){preview.innerHTML='';return;}
   const entry=getSavedCSVFiles().find(f=>f.name===fileName);
   // Budget for this exact line item
-  const budget=entry?entry.rows.filter(r=>r.area===area&&r.costCode===costCode&&r.description===description&&r.amount>=0).reduce((s,r)=>s+r.amount,0):0;
+  const budget=entry?entry.rows.filter(r=>r.area===area&&r.costCode===costCode&&r.description===description).reduce((s,r)=>s+r.amount,0):0;
   const{paid}=getPayrollTotals(fileName,costCode,description,area);
   const newRem=budget-(paid+price);
   preview.innerHTML=
