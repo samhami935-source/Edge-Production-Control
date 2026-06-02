@@ -6502,6 +6502,7 @@ function psCancelEdit() {
 
 // ── Weekly auto-save ────────────────────────────────────────────────────────
 let _psAutoSaveTimer = null;
+let _psForemanAutoSaveTimer = null;
 
 function psScheduleAutoSave() {
   // Only for non-foreman weekly paysheets outside of edit mode
@@ -6515,6 +6516,23 @@ function psScheduleAutoSave() {
     const doc = await savePaysheetToCloud(true);
     _psSetAutoSaveStatus(doc ? 'saved' : 'error');
   }, 3000);
+}
+
+function psScheduleForemanAutoSave() {
+  if (!isForeman() || _psCurrentType !== 'weekly' || !_psCurrentDocId) return;
+  _psSetAutoSaveStatus('pending');
+  clearTimeout(_psForemanAutoSaveTimer);
+  _psForemanAutoSaveTimer = setTimeout(async () => {
+    _psSetAutoSaveStatus('saving');
+    const ok = await psSaveWeeklySummaryForeman(true);
+    _psSetAutoSaveStatus(ok ? 'saved' : 'error');
+  }, 3000);
+}
+
+// Dispatches to the correct auto-save path based on the current user role
+function psScheduleAnyAutoSave() {
+  if (isForeman()) psScheduleForemanAutoSave();
+  else psScheduleAutoSave();
 }
 
 function _psSetAutoSaveStatus(state) {
@@ -6568,6 +6586,7 @@ function psSplitPctChanged(i, val) {
   _ps().splits[i].amount = amount;
   const amtEl = document.getElementById('ps-split-amt-' + i);
   if (amtEl) amtEl.value = amount;
+  psScheduleAnyAutoSave();
 }
 
 function _psRecalcSplitAmounts(total) {
@@ -6618,11 +6637,11 @@ function psRenderCrewTable() {
       return `<tr style="background:#fffbe6;">
         <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
           <input style="${inp}text-align:center;" value="${eh(s.empNum)}" placeholder="—"
-            oninput="_ps().splits[${i}].empNum=this.value" />
+            oninput="_ps().splits[${i}].empNum=this.value;psScheduleAnyAutoSave()" />
         </td>
         <td style="border:1px solid #000;padding:2px 4px;">
           <input style="${inp}" value="${eh(s.employee)}"
-            oninput="_ps().splits[${i}].employee=this.value" />
+            oninput="_ps().splits[${i}].employee=this.value;psScheduleAnyAutoSave()" />
         </td>
       </tr>`;
     }
@@ -6661,11 +6680,11 @@ function psRenderCrewTable() {
     return `<tr>
       <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
         <input style="${inp}text-align:center;" value="${eh(s.empNum)}" placeholder="—"
-          oninput="_ps().splits[${i}].empNum=this.value" />
+          oninput="_ps().splits[${i}].empNum=this.value;psScheduleAnyAutoSave()" />
       </td>
       <td style="border:1px solid #000;padding:2px 4px;">
         <input style="${inp}" value="${eh(s.employee)}"
-          oninput="_ps().splits[${i}].employee=this.value" />
+          oninput="_ps().splits[${i}].employee=this.value;psScheduleAnyAutoSave()" />
       </td>
       ${optCols}
     </tr>`;
@@ -6696,6 +6715,7 @@ function psSplitAmtChanged(i, val) {
   _ps().splits[i].pctSplit = pct;
   const pctEl = document.getElementById('ps-split-pct-' + i);
   if (pctEl) pctEl.value = pct;
+  psScheduleAnyAutoSave();
 }
 
 function clearPaysheet() {
@@ -6717,19 +6737,19 @@ function printPaysheet() {
 // signatureData, foremanSig) into the existing compiled doc without overwriting
 // management-compiled fields (Area, Code, Notes, PTD, header metadata, savedBy, etc.).
 // No duplicate is created — uses the same deterministic docId.
-async function psSaveWeeklySummaryForeman() {
-  if (!isForeman()) { alert('This save path is for foreman roles only.'); return; }
-  if (!_psCurrentDocId) { alert('Please load a weekly summary paysheet first before saving.'); return; }
-  if (_psCurrentType !== 'weekly') { alert('This action only applies to weekly summary paysheets.'); return; }
+async function psSaveWeeklySummaryForeman(silent = false) {
+  if (!isForeman()) { if (!silent) alert('This save path is for foreman roles only.'); return false; }
+  if (!_psCurrentDocId) { if (!silent) alert('Please load a weekly summary paysheet first before saving.'); return false; }
+  if (_psCurrentType !== 'weekly') { if (!silent) alert('This action only applies to weekly summary paysheets.'); return false; }
 
   // Fetch the authoritative existing doc (prefer cache to avoid an extra read)
   let existingDoc = (_cache.paysheets || []).find(p => p.id === _psCurrentDocId);
   if (!existingDoc) {
     try {
       const snap = await db.collection('paysheets').doc(_psCurrentDocId).get();
-      if (!snap.exists) { alert('Paysheet not found. It may have been deleted by management.'); return; }
+      if (!snap.exists) { if (!silent) alert('Paysheet not found. It may have been deleted by management.'); return false; }
       existingDoc = snap.data();
-    } catch(e) { alert('Save failed: ' + e.message); return; }
+    } catch(e) { if (!silent) alert('Save failed: ' + e.message); return false; }
   }
 
   // Build merged crews — carry over all management-compiled fields;
@@ -6779,9 +6799,11 @@ async function psSaveWeeklySummaryForeman() {
     if (!_cache.paysheets) _cache.paysheets = [];
     const idx = _cache.paysheets.findIndex(p => p.id === _psCurrentDocId);
     if (idx !== -1) _cache.paysheets[idx] = updatedDoc; else _cache.paysheets.push(updatedDoc);
-    alert('Your entries have been saved to the summary paysheet.');
+    if (!silent) alert('Your entries have been saved to the summary paysheet.');
+    return true;
   } catch(e) {
-    alert('Save failed: ' + e.message);
+    if (!silent) alert('Save failed: ' + e.message);
+    return false;
   }
 }
 
@@ -6923,6 +6945,7 @@ function psSaveSignature() {
   _psSigMode    = 'employee';
   _psResetSigModalTitle();
   document.getElementById('ps-sig-modal').classList.remove('open');
+  psScheduleAnyAutoSave();
 }
 
 function psOpenForemanSig() {
@@ -6946,6 +6969,7 @@ function psOpenForemanSig() {
 function psClearForemanSig() {
   if (_ps().header) _ps().header.foremanSig = '';
   _psUpdateForemanSigArea();
+  psScheduleAnyAutoSave();
 }
 
 function _psUpdateForemanSigArea() {
@@ -6976,6 +7000,7 @@ function _psResetSigModalTitle() {
 function psClearSignature(rowIdx) {
   _ps().splits[rowIdx].signatureData = '';
   psRenderCrewTable();
+  psScheduleAnyAutoSave();
 }
 
 function _psInitSigCanvas(canvas) {
