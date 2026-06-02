@@ -9142,6 +9142,8 @@ function coOpenDetail(coId) {
     </div>`;
   })() : '';
 
+  const _isBurn = co.workOrderNumber === '503 - Burn';
+
   let vpSection = '';
   if (canReviewCO() && co.status !== 'declined' && co.status !== 'approved') {
     vpSection = `
@@ -9154,18 +9156,19 @@ function coOpenDetail(coId) {
       </div>
       <div id="co-approval-form" style="display:none;border-top:1px solid var(--border);padding-top:12px;">
         <div style="display:flex;flex-direction:column;gap:10px;">
+          ${_isBurn ? '' : `
           <div>
             <label style="font-size:.82rem;color:var(--muted);display:block;margin-bottom:4px;">COR # <span style="color:#ef4444;">*</span></label>
             <input id="co-review-cor-num" class="fi" style="width:100%;" placeholder="e.g. COR-2025-001" oninput="coCheckApprovalReady()" />
           </div>
           <div style="font-size:.78rem;color:var(--muted);font-style:italic;">PDF attachment available after upgrading to Firebase Blaze plan.</div>
-          <button id="co-review-approve-btn" class="btn" style="margin:0;padding:8px 16px;background:#22c55e;border-color:#22c55e;opacity:.5;cursor:not-allowed;" disabled onclick="coApprove('${ea(coId)}')">✓ Confirm Approval</button>
+          `}
+          <button id="co-review-approve-btn" class="btn" style="margin:0;padding:8px 16px;background:#22c55e;border-color:#22c55e;${_isBurn ? '' : 'opacity:.5;cursor:not-allowed;'}" ${_isBurn ? '' : 'disabled'} onclick="coApprove('${ea(coId)}')">✓ Confirm Approval</button>
         </div>
       </div>
     </div>`;
   }
 
-  const _isBurn = co.workOrderNumber === '503 - Burn';
   document.getElementById('co-detail-title').textContent = _isBurn
     ? `Burn#${co.burnNumber || '?'}`
     : `Change Order — WO# ${co.workOrderNumber}`;
@@ -9226,16 +9229,18 @@ function coStartApproval(coId) {
 }
 
 function coCheckApprovalReady() {
-  const corNum = (document.getElementById('co-review-cor-num') || {}).value || '';
-  const btn    = document.getElementById('co-review-approve-btn');
-  const ready  = corNum.trim().length > 0;
+  const corInput = document.getElementById('co-review-cor-num');
+  const btn      = document.getElementById('co-review-approve-btn');
+  // Burns have no COR # field — always ready
+  const ready = corInput ? corInput.value.trim().length > 0 : true;
   if (btn) { btn.disabled = !ready; btn.style.opacity = ready ? '1' : '.5'; btn.style.cursor = ready ? 'pointer' : 'not-allowed'; }
 }
 
 async function coApprove(coId) {
   if (!canReviewCO()) return;
-  const corNum = (document.getElementById('co-review-cor-num') || {}).value.trim();
-  if (!corNum) { alert('Please enter a COR number.'); return; }
+  const corInput = document.getElementById('co-review-cor-num');
+  const corNum   = corInput ? corInput.value.trim() : '';
+  if (corInput && !corNum) { alert('Please enter a COR number.'); return; }
   const btn = document.getElementById('co-review-approve-btn');
   if (btn) btn.disabled = true;
   try {
