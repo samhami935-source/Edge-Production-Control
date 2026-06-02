@@ -1380,8 +1380,8 @@ async function loadAllData() {
   ]);
   _cache.jobs = jobsSnap.docs.map(d => {
     const data = d.data();
-    // New format: csvText stored — parse back to rows
-    if (data.csvText && !data.rows) {
+    // Always parse from csvText so formatting fixes (e.g. accounting negatives) apply
+    if (data.csvText) {
       try { data.rows = parseCSV(data.csvText); } catch(e) { data.rows = []; }
     }
     return data;
@@ -2550,7 +2550,13 @@ function parseCSV(text) {
   for (let i=1; i<lines.length; i++) {
     const c = splitCSVLine(lines[i]);
     if (c.every(x=>!x.trim())) continue;
-    const n = idx => idx===-1||!c[idx] ? 0 : parseFloat(c[idx].replace(/[$,\s]/g,''))||0;
+    const n = idx => {
+      if (idx===-1||!c[idx]) return 0;
+      const raw = c[idx].replace(/[$,\s]/g,'');
+      // Accounting notation: (1234.56) → -1234.56
+      if (/^\([\d.]+\)$/.test(raw)) return -parseFloat(raw.slice(1,-1));
+      return parseFloat(raw)||0;
+    };
     rows.push({ area:ia!==-1?(c[ia]||'').trim():'—', costCode:icc!==-1?(c[icc]||'').trim():'—',
       description:id!==-1?(c[id]||'').trim():'', quantity:n(iq),
       uom:iu!==-1?(c[iu]||'').trim():'—', unitCost:n(iuc), amount:n(iamt) });
