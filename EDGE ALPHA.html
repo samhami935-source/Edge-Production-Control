@@ -8912,7 +8912,7 @@ function renderCOLog() {
     const dateStr    = co.submittedAt ? new Date(co.submittedAt).toLocaleDateString() : '—';
     const photoCount = (co.photoUrls || []).length;
     return `<tr>
-      <td style="font-weight:600;">${eh(co.workOrderNumber || '—')}</td>
+      <td style="font-weight:600;">${co.workOrderNumber === '503 - Burn' ? `Burn#${co.burnNumber || '?'}` : eh(co.workOrderNumber || '—')}</td>
       <td>${eh(co.jobId || '—')}</td>
       <td style="font-size:.8rem;">${eh(co.submittedByEmail || '—')}</td>
       <td style="font-size:.8rem;white-space:nowrap;">${dateStr}</td>
@@ -9069,6 +9069,10 @@ async function coSubmit() {
   prog.style.display = 'block';
 
   const id = `co_${Date.now()}`;
+  // Calculate burn number per job before saving
+  const burnNumber = _coBurnMode
+    ? ((_cache.changeorders || []).filter(c => c.jobId === jobId && c.workOrderNumber === '503 - Burn').length + 1)
+    : null;
   let photoUrls = [];
   try {
     const allFiles  = document.getElementById('co-submit-photos').files;
@@ -9081,7 +9085,7 @@ async function coSubmit() {
     prog.textContent = 'Saving change order…';
     const doc = {
       id, jobId, workOrderNumber: wo, description: desc, photoUrls,
-      ...(wo === '503 - Burn' ? { burnArea, burnLaborCode: burnCode, burnHours } : {}),
+      ...(wo === '503 - Burn' ? { burnArea, burnLaborCode: burnCode, burnHours, burnNumber } : {}),
       submittedByEmail: _currentUser.email, submittedByUid: _currentUser.uid,
       submittedByRole: _currentUserRole, submittedAt: new Date().toISOString(),
       status: 'submitted', reviewerEmail: null, reviewerUid: null, reviewedAt: null,
@@ -9161,7 +9165,10 @@ function coOpenDetail(coId) {
     </div>`;
   }
 
-  document.getElementById('co-detail-title').textContent = `Change Order — WO# ${co.workOrderNumber}`;
+  const _isBurn = co.workOrderNumber === '503 - Burn';
+  document.getElementById('co-detail-title').textContent = _isBurn
+    ? `Burn#${co.burnNumber || '?'}`
+    : `Change Order — WO# ${co.workOrderNumber}`;
   document.getElementById('co-detail-body').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:.83rem;">
       <div><span style="color:var(--muted);">Job</span><br/><strong>${eh(co.jobId)}</strong></div>
@@ -9194,7 +9201,8 @@ async function coDelete(coId) {
   if (!isAdmin()) { alert('Admin access required to delete Change Orders.'); return; }
   const co = (_cache.changeorders || []).find(c => c.id === coId);
   if (!co) return;
-  if (!confirm(`Delete Change Order WO# ${co.workOrderNumber} for ${co.jobId}?\n\nThis cannot be undone. Any linked COR budget will also be deleted.`)) return;
+  const _deleteLabel = co.workOrderNumber === '503 - Burn' ? `Burn#${co.burnNumber || '?'}` : `WO# ${co.workOrderNumber}`;
+  if (!confirm(`Delete ${_deleteLabel} for ${co.jobId}?\n\nThis cannot be undone. Any linked COR budget will also be deleted.`)) return;
   try {
     const batch = db.batch();
     batch.delete(db.collection('changeorders').doc(coId));
