@@ -1290,6 +1290,7 @@ const LABOR_CODES_DEFAULT = [
   { code:'906',  description:'Water Clean-up' },
   { code:'907',  description:'Supervision' },
   { code:'908',  description:'Asst. Supervision' },
+  { code:'999',  description:'Admin Only' },
 ];
 
 // Consolidated payroll groups shown in the Line Item dropdown
@@ -1308,6 +1309,7 @@ const PAYROLL_GROUPS = [
   { code:'800', description:'Other Labor' },
   { code:'900', description:'Sub-Contractor' },
   { code:'907', description:'Supervision' },
+  { code:'999', description:'Admin Only' },
 ];
 
 // Maps any CSV cost code to its master payroll group code
@@ -1492,6 +1494,9 @@ const _FOREMAN_ALLOWED = {
 // "foreman" (plain) is a general foreman with no code restriction.
 // Specialist foremen are filtered to their _FOREMAN_ALLOWED ruleset.
 function isForemanAllowedCode(codeStr) {
+  // Code 999 is admin-only — hidden from every non-admin role
+  const _m999 = String(codeStr || '').match(/^(\d+)/);
+  if (_m999 && parseInt(_m999[1], 10) === 999) return isAdmin();
   if (!isForeman()) return true;
   const rules = _FOREMAN_ALLOWED[_currentUserRole];
   if (!rules) return true; // 'foreman' or unknown — unrestricted
