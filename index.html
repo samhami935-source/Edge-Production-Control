@@ -7065,7 +7065,8 @@ async function psCompileWeeklyPaysheet(weekEnding) {
 
   for (let c = 1; c <= _psCrewCount; c++) {
     const areaMap = {};   // key: area|||code → aggregated row
-    const empSet  = new Set();
+    const empSet  = new Set(); // normalized (trim + collapse spaces) names — ensures one row per person
+    const _normEmp = name => (name || '').trim().replace(/\s+/g, ' ');
     let   header  = _psEmptyHeader();
 
     // ── New format: daily input records (crews[].entries[]) ──
@@ -7084,7 +7085,7 @@ async function psCompileWeeklyPaysheet(weekEnding) {
           if (firstEmp) header.crewName = firstEmp.employee.trim();
         }
         (crew.entries || []).forEach(e => {
-          if (e.employee) empSet.add(e.employee.trim());
+          if (e.employee) empSet.add(_normEmp(e.employee));
           // Primary area + labor code
           if (e.area || e.costCode) {
             const key = (e.area||'') + '|||' + (e.costCode||'');
@@ -7116,7 +7117,7 @@ async function psCompileWeeklyPaysheet(weekEnding) {
         areaMap[key].ptd      += parseFloat(r.ptd)      || 0;
         if (!areaMap[key].notes && r.notes) areaMap[key].notes = r.notes;
       });
-      (sc.splits || []).forEach(s => { if (s.employee) empSet.add(s.employee); });
+      (sc.splits || []).forEach(s => { if (s.employee) empSet.add(_normEmp(s.employee)); });
     });
 
     // Skip crew if no data
@@ -7858,7 +7859,15 @@ async function loadPaysheetFromCloud(docId) {
     if (saved) {
       _psState[c].header = Object.assign(_psEmptyHeader(), saved.header || {});
       _psState[c].rows   = _psPadRows((saved.rows || []).map(r => Object.assign(_psEmptyRow(), r)));
-      _psState[c].splits = (saved.splits || []).map(s => Object.assign(_psEmptySplit(), s));
+      // Deduplicate splits by normalized name when loading — guards against stale docs with duplicates
+      const _seenSplitNames = new Set();
+      _psState[c].splits = (saved.splits || []).filter(s => {
+        if (!s.employee) return true; // keep blank rows as-is
+        const norm = s.employee.trim().replace(/\s+/g, ' ');
+        if (_seenSplitNames.has(norm)) return false;
+        _seenSplitNames.add(norm);
+        return true;
+      }).map(s => Object.assign(_psEmptySplit(), s));
       while (_psState[c].splits.length < PS_SPLIT_ROWS) _psState[c].splits.push(_psEmptySplit());
       // Sync _diCrewLeadNames from the saved header so crew tab labels always
       // reflect the paysheet's crew name rather than stale daily-input names.
