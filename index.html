@@ -1897,7 +1897,7 @@ function renderBudgetsTable() {
   if(!files.length){tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">${isAdmin()?'No jobs uploaded yet. Use the upload area above to add a CSV.':'No jobs uploaded yet.'}</td></tr>`;return;}
   const admin=isAdmin();
   tbody.innerHTML=files.map(f=>{
-    const budget=f.rows.reduce((s,r)=>s+r.amount,0);
+    const budget=f.rows.filter(r=>r.amount>=0).reduce((s,r)=>s+r.amount,0);
     const paid=getFileTotalPaid(f.name);
     const rem=budget-paid;
     const pct=budget>0?Math.round(paid/budget*100):0;
@@ -1917,7 +1917,7 @@ function renderBudgetsTable() {
 function exportBudgetsCSV() {
   const lines=[['Job (CSV File)','Total Budget','Total Paid','Remaining','% Used'].join(',')];
   getSavedCSVFiles().forEach(f=>{
-    const budget=f.rows.reduce((s,r)=>s+r.amount,0);
+    const budget=f.rows.filter(r=>r.amount>=0).reduce((s,r)=>s+r.amount,0);
     const paid=getFileTotalPaid(f.name);
     const rem=budget-paid;
     const pct=budget>0?Math.round(paid/budget*100):0;
@@ -2059,7 +2059,7 @@ function renderAreaBudgetTable() {
     const paid = paidByCode[r.costCode] || 0;
     const rem  = r.amount - paid;
     const rc   = rem<0?'color:var(--red)':rem===0?'color:var(--yellow)':'color:var(--green)';
-    totalBudget+=r.amount; totalPaid+=paid;
+    if (r.amount >= 0) totalBudget+=r.amount; totalPaid+=paid;
     return `<tr>
       <td style="font-size:.85rem;color:var(--muted);font-family:monospace;">${eh(r.costCode)}</td>
       <td style="font-size:.85rem;">${eh(r.description)}</td>
@@ -2114,7 +2114,7 @@ function exportAreaBudgetCSV() {
     const lines = [['Job','Area','Labor Code','Description','Budget','Paid','Remaining'].join(',')];
     areas.forEach(a => {
       PAYROLL_GROUPS.forEach(g => {
-        const budget = f.rows.filter(r=>r.area===a&&getCodeGroup(r.costCode)===g.code).reduce((s,r)=>s+r.amount,0);
+        const budget = f.rows.filter(r=>r.area===a&&getCodeGroup(r.costCode)===g.code&&r.amount>=0).reduce((s,r)=>s+r.amount,0);
         const paid   = allEntries.filter(e=>e.area===a&&e.costCode===g.code).reduce((s,e)=>s+e.price,0);
         if (budget===0 && paid===0) return;
         const rem = budget - paid;
@@ -2434,6 +2434,45 @@ document.getElementById('load-demo-btn').addEventListener('click', () => { if (c
 function guardedFileClick() { if (!canEdit()) { alert('Admin or Project Manager access required.'); return; } fileInput.click(); }
 function guardedProcessFiles(list) { if (!canEdit()) { alert('Admin or Project Manager access required.'); return; } processFiles(list); }
 
+// Auto-creates 503-Burn CO log entries for any negative-amount rows in an uploaded budget.
+// Negative amounts represent pre-deducted/burned work and are excluded from budget totals.
+async function _autoCreateBurnsFromNegativeRows(jobId, rows) {
+  const negRows = rows.filter(r => r.amount < 0);
+  if (!negRows.length) return;
+  const existingBurns = (_cache.changeorders || []).filter(c => c.jobId === jobId && c.workOrderNumber === '503 - Burn');
+  let nextBurnNum = existingBurns.length + 1;
+  for (const r of negRows) {
+    const id = `co_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const doc = {
+      id, jobId,
+      workOrderNumber: '503 - Burn',
+      description: r.description || r.costCode || 'Budget Deduction',
+      photoUrls: [],
+      burnArea:  r.area || '',
+      burnAreas: r.area ? [r.area] : [],
+      burnLaborCode: r.costCode || '',
+      burnHours: 0,
+      burnAmount: Math.abs(r.amount),
+      burnNumber: nextBurnNum++,
+      autoCreatedFromBudget: true,
+      submittedByEmail: _currentUser ? _currentUser.email : 'system',
+      submittedByUid:   _currentUser ? _currentUser.uid   : 'system',
+      submittedByRole:  _currentUserRole || 'admin',
+      submittedAt: new Date().toISOString(),
+      status: 'submitted',
+      reviewerEmail: null, reviewerUid: null, reviewedAt: null,
+      corNumber: null, corPdfUrl: null, linkedCorBudgetId: null,
+    };
+    if (!_cache.changeorders) _cache.changeorders = [];
+    _cache.changeorders.push(doc);
+    await db.collection('changeorders').doc(id).set(doc);
+  }
+  if (negRows.length) {
+    const plural = negRows.length > 1 ? `${negRows.length} Burn entries` : '1 Burn entry';
+    console.log(`[Budget Upload] Auto-created ${plural} for negative rows in "${jobId}".`);
+  }
+}
+
 function processFiles(list) {
   let last = null, pending = list.length;
   Array.from(list).forEach(file => {
@@ -2443,7 +2482,10 @@ function processFiles(list) {
         const text = e.target.result;
         const rows = parseCSV(text);
         const ok = await saveCSVFile(file.name, rows, text);
-        if (ok) last = file.name;
+        if (ok) {
+          last = file.name;
+          await _autoCreateBurnsFromNegativeRows(file.name, rows);
+        }
       } catch (err) { alert(`Could not parse "${file.name}": ${err.message}`); }
       if (--pending === 0 && last) { switchToBudgets(); switchToCSV(last); }
     };
@@ -2566,7 +2608,7 @@ function renderCSVTable() {
 }
 
 function renderCSVSummary() {
-  const totalBudget=allRows.reduce((s,r)=>s+r.amount,0);
+  const totalBudget=allRows.filter(r=>r.amount>=0).reduce((s,r)=>s+r.amount,0);
   const totalPaid=getFileTotalPaid(activeTab);
   const totalRem=totalBudget-totalPaid;
   const areas=[...new Set(allRows.map(r=>r.area).filter(a=>a&&a!=='—'))];
@@ -2588,6 +2630,7 @@ function renderCharts() {
   const remMap={};
   allRows.forEach(r=>{
     if(!r.area||r.area==='—') return;
+    if(r.amount<0) return; // negative rows are burns — excluded from budget totals
     const{paid}=getPayrollTotals(activeTab,r.costCode,r.description);
     remMap[r.area]=(remMap[r.area]||0)+(r.amount-paid);
   });
@@ -2779,7 +2822,7 @@ function previewBalance() {
   if(!fileName||!costCode||!area){preview.innerHTML='';return;}
   const entry=getSavedCSVFiles().find(f=>f.name===fileName);
   // Budget for this exact line item
-  const budget=entry?entry.rows.filter(r=>r.area===area&&r.costCode===costCode&&r.description===description).reduce((s,r)=>s+r.amount,0):0;
+  const budget=entry?entry.rows.filter(r=>r.area===area&&r.costCode===costCode&&r.description===description&&r.amount>=0).reduce((s,r)=>s+r.amount,0):0;
   const{paid}=getPayrollTotals(fileName,costCode,description,area);
   const newRem=budget-(paid+price);
   preview.innerHTML=
