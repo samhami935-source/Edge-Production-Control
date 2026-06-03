@@ -1397,6 +1397,14 @@ async function loadAllData() {
   _cache.psFolderRequests = psFolderReqSnap.docs.map(d => d.data());
   _cache.changeorders = coSnap.docs.map(d => d.data());
   _cache.corbudgets   = corbSnap.docs.map(d => d.data());
+  // Backfill burnNumber onto burn corbudgets that predate the field being stored at creation.
+  // Runs in-memory only — no Firestore writes needed for display to work correctly.
+  _cache.corbudgets.forEach(b => {
+    if (b.isBurn && (b.burnNumber == null || b.burnNumber === '')) {
+      const co = _cache.changeorders.find(c => c.id === b.changeOrderId);
+      if (co && co.burnNumber != null) b.burnNumber = co.burnNumber;
+    }
+  });
   // Load job metadata (project name, foreman, crew name per job)
   try {
     const metaSnap = await db.collection('jobmeta').get();
@@ -5399,17 +5407,25 @@ function renderPSAreaBudgetTable() {
 }
 
 // ── COR / BURN area key helpers ─────────────────────────────────────────────
-// Burns get [BURN] prefix; regular COR budgets get [COR] prefix.
+// Burns get [Burn#N] prefix (with burn number + description); regular COR budgets get [COR] prefix.
 function corbAreaKey(b) {
   return b.isBurn
-    ? `[BURN] \u2013 ${b.burnArea || ''}`
+    ? `[Burn#${b.burnNumber || '?'}] ${b.description || b.burnArea || ''}`
     : `[COR] ${b.corNumber} \u2013 ${b.description}`;
 }
 function isSpecialArea(area) {
-  return !!(area && (area.startsWith('[COR]') || area.startsWith('[BURN]')));
+  return !!(area && (area.startsWith('[COR]') || area.startsWith('[BURN]') || area.startsWith('[Burn#')));
 }
 function corbForArea(area, jobName) {
-  return (_cache.corbudgets || []).find(b => corbAreaKey(b) === area && b.jobId === jobName);
+  // Primary: exact match on current key format
+  const exact = (_cache.corbudgets || []).find(b => corbAreaKey(b) === area && b.jobId === jobName);
+  if (exact) return exact;
+  // Backward compat: old format was `[BURN] – areaName` — match by burnArea for docs saved before the rename
+  if (area && area.startsWith('[BURN]')) {
+    const oldArea = area.replace(/^\[BURN\]\s*[\u2013-]\s*/, '').trim();
+    return (_cache.corbudgets || []).find(b => b.isBurn && b.burnArea === oldArea && b.jobId === jobName);
+  }
+  return null;
 }
 
 // Get all areas for a job from both CSV rows and payroll entries
@@ -8872,6 +8888,13 @@ function coInit() {
 
   db.collection('corbudgets').onSnapshot(snap => {
     _cache.corbudgets = snap.docs.map(d => d.data());
+    // Backfill burnNumber for burn corbudgets saved before the field was stored at creation.
+    _cache.corbudgets.forEach(b => {
+      if (b.isBurn && (b.burnNumber == null || b.burnNumber === '')) {
+        const co = (_cache.changeorders || []).find(c => c.id === b.changeOrderId);
+        if (co && co.burnNumber != null) b.burnNumber = co.burnNumber;
+      }
+    });
     renderCOLog();
   }, () => {});
 
@@ -9568,7 +9591,7 @@ async function coConfirmBudget() {
       amount: foremanAmt,                   // amount always equals foremanTrackingAmount for all tracking code
       foremanTrackingAmount: foremanAmt,
       internalCorAmount: internalAmt,
-      ...(isBurn ? { isBurn: true, burnHours, burnArea: co.burnArea || '' } : {}),
+      ...(isBurn ? { isBurn: true, burnHours, burnArea: co.burnArea || '', burnNumber: co.burnNumber || null } : {}),
       createdAt: new Date().toISOString(), createdByEmail: _currentUser.email, createdByUid: _currentUser.uid,
     };
     await db.collection('corbudgets').doc(corbId).set(corb);
@@ -9609,6 +9632,9 @@ function computeCorPaid(corb) {
   // The primary match for payroll entries is the unique corBudgetId — this is what
   // prevents two CORs sharing the same labor code from cross-contaminating PTD.
   const areaKey = corbAreaKey(corb);
+  // Also build the legacy area key (old [BURN] – area format) for backward compat with DI entries
+  // saved before the area key was renamed to [Burn#N] format.
+  const legacyAreaKey = corb.isBurn ? `[BURN] \u2013 ${corb.burnArea || ''}` : null;
   let paid = 0;
 
   // ── Daily input submissions ──────────────────────────────────────────────
@@ -9625,7 +9651,7 @@ function computeCorPaid(corb) {
           if (!price) return; // DI entries currently have no price — skip to avoid false 0-sums
           const matched = e.corBudgetId
             ? e.corBudgetId === corb.id
-            : (e.area === areaKey && e.costCode === corb.laborCode);
+            : ((e.area === areaKey || (legacyAreaKey && e.area === legacyAreaKey)) && e.costCode === corb.laborCode);
           if (matched) paid += price;
         });
       });
