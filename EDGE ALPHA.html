@@ -5729,12 +5729,16 @@ function psAddRows(n) {
 }
 
 function psAreaChanged(i, area) {
+  const oldArea = _ps().rows[i].area;
+  const oldCode = _ps().rows[i].costCode;
   _ps().rows[i].area = area;
+  let newCode = '';
   if (isSpecialArea(area)) {
     const jobName = document.getElementById('ps-job-select').value || '';
     const corb = corbForArea(area, jobName);
     // Lock labor code and store IDs — this is the authoritative corBudgetId for the row
-    _ps().rows[i].costCode    = corb ? corb.laborCode : '';
+    newCode = corb ? corb.laborCode : '';
+    _ps().rows[i].costCode    = newCode;
     _ps().rows[i].corBudgetId = corb ? corb.id        : '';
     _ps().rows[i].corNumber   = corb ? corb.corNumber  : '';
   } else {
@@ -5742,12 +5746,104 @@ function psAreaChanged(i, area) {
     _ps().rows[i].corBudgetId = '';
     _ps().rows[i].corNumber   = '';
   }
+  // Propagate area change back to linked daily inputs (weekly paysheets, non-foremen only)
+  if (_psCurrentType === 'weekly' && !isForeman() && oldArea && oldArea !== area) {
+    _psQueueDiChange({ matchArea: oldArea, matchCode: null, setArea: area, setCode: newCode });
+  }
   psRenderMainTable();
 }
 
 function psCodeChanged(i, code) {
+  const oldCode = _ps().rows[i].costCode;
+  const area    = _ps().rows[i].area;
   _ps().rows[i].costCode = code;
+  // Propagate code change back to linked daily inputs (weekly paysheets, non-foremen only)
+  if (_psCurrentType === 'weekly' && !isForeman() && area && oldCode && oldCode !== code) {
+    _psQueueDiChange({ matchArea: area, matchCode: oldCode, setArea: area, setCode: code });
+  }
   psRenderMainTable();
+}
+
+// ─── Weekly Paysheet → Daily Input sync ──────────────────────────────────────
+// When a manager edits area or labor code on a weekly paysheet row, the change
+// is propagated back to all underlying daily input documents for the same job+week.
+let _psDiSyncTimer  = null;
+const _psDiPendingChanges = [];
+
+function _psQueueDiChange(change) {
+  _psDiPendingChanges.push(change);
+  clearTimeout(_psDiSyncTimer);
+  _psDiSyncTimer = setTimeout(_psSyncToDailyInputs, 2000);
+}
+
+async function _psSyncToDailyInputs() {
+  if (!_psDiPendingChanges.length) return;
+  const changes = _psDiPendingChanges.splice(0); // consume all pending changes
+
+  const jobName = document.getElementById('ps-job-select').value || '';
+  let weekEnding = '';
+  for (let c = 1; c <= _psCrewCount; c++) {
+    if (_psState[c] && _psState[c].header && _psState[c].header.weekEnding) {
+      weekEnding = _psState[c].header.weekEnding;
+      break;
+    }
+  }
+  if (!jobName || !weekEnding) return;
+
+  const diDocs = (_cache.dailyInputs || []).filter(d => d.job === jobName && d.weekEnding === weekEnding);
+  if (!diDocs.length) return;
+
+  for (const diDoc of diDocs) {
+    let docChanged = false;
+
+    const updatedCrews = (diDoc.crews || []).map(crew => ({
+      ...crew,
+      entries: (crew.entries || []).map(entry => {
+        let e = { ...entry };
+        for (const ch of changes) {
+          const areaMatch = e.area === ch.matchArea;
+          const codeMatch = ch.matchCode === null || e.costCode === ch.matchCode;
+          if (areaMatch && codeMatch) {
+            docChanged = true;
+            e.area     = ch.setArea;
+            e.costCode = ch.setCode;
+            // Update COR traceability fields when area changes to a COR/Burn area
+            if (isSpecialArea(ch.setArea)) {
+              const corb = corbForArea(ch.setArea, jobName);
+              e.corBudgetId = corb ? corb.id        : '';
+              e.corNumber   = corb ? corb.corNumber  : '';
+              if (!ch.setCode) e.costCode = corb ? corb.laborCode : '';
+            } else if (isSpecialArea(ch.matchArea)) {
+              // Was a COR/Burn area, now regular — clear COR fields
+              e.corBudgetId = '';
+              e.corNumber   = '';
+            }
+          }
+          // Also update extraEntries which carry their own area copy
+          e.extraEntries = (e.extraEntries || []).map(ex => {
+            const exArea = ex.area === ch.matchArea;
+            const exCode = ch.matchCode === null || ex.costCode === ch.matchCode;
+            if (exArea && exCode) {
+              docChanged = true;
+              return { ...ex, area: ch.setArea, costCode: ch.setCode };
+            }
+            return ex;
+          });
+        }
+        return e;
+      })
+    }));
+
+    if (docChanged) {
+      try {
+        await db.collection('dailyinput').doc(diDoc.id).update({ crews: updatedCrews });
+        const idx = (_cache.dailyInputs || []).findIndex(d => d.id === diDoc.id);
+        if (idx !== -1) _cache.dailyInputs[idx] = { ..._cache.dailyInputs[idx], crews: updatedCrews };
+      } catch(e) {
+        console.warn('[DI sync] Failed to update daily input', diDoc.id, e);
+      }
+    }
+  }
 }
 
 // ─── Daily Paysheet Edit Mode (Admin / PM only) ───
