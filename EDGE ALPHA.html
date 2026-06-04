@@ -10074,6 +10074,15 @@ function coBurnAreaOpen() {
   document.addEventListener('mousedown', _coBurnAreaClickHandler, true);
 }
 
+function coBurnAreaApply() {
+  const dd = document.getElementById('co-burn-area-dropdown');
+  if (dd) dd.style.display = 'none';
+  if (_coBurnAreaClickHandler) {
+    document.removeEventListener('mousedown', _coBurnAreaClickHandler, true);
+    _coBurnAreaClickHandler = null;
+  }
+}
+
 function coBurnAreaSearch(q) {
   _coBurnAreaRenderDropdown(q);
 }
@@ -10100,7 +10109,10 @@ function _coBurnAreaRenderDropdown(filter) {
       <input type="checkbox" ${checked ? 'checked' : ''} onchange="coBurnAreaToggle('${ea(a)}',this)" style="cursor:pointer;flex-shrink:0;width:14px;height:14px;" />
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${eh(a)}</span>
     </label>`;
-  }).join('');
+  }).join('') +
+  `<div style="padding:8px 10px;border-top:1px solid rgba(255,255,255,.08);position:sticky;bottom:0;background:var(--surface);">
+    <button type="button" onclick="coBurnAreaApply()" style="width:100%;padding:8px;background:var(--accent);color:#000;font-weight:700;font-size:.83rem;border:none;border-radius:6px;cursor:pointer;">Apply</button>
+  </div>`;
   dd.style.display = 'block';
 }
 
