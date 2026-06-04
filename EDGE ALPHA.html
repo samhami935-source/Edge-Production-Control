@@ -768,7 +768,11 @@
     <div class="filters" style="margin-bottom:16px;">
       <input type="text" id="emp-search" class="fi" placeholder="Search by name or employee #…" oninput="renderEmpTable()" style="flex:1;min-width:180px;" />
       <span id="emp-count" style="font-size:.8rem;color:var(--muted);white-space:nowrap;align-self:center;"></span>
-      <button class="btn" onclick="exportEmployeesExcel()" style="white-space:nowrap;">⬇ Export Excel</button>
+      <button onclick="exportEmployeesExcel()" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:.82rem;font-weight:700;line-height:1.2;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:64px;">
+        <span style="font-size:1rem;line-height:1;">⬇</span>
+        <span>Export</span>
+        <span>Excel</span>
+      </button>
     </div>
     <div class="table-wrap" style="overflow-x:auto;">
       <table>
