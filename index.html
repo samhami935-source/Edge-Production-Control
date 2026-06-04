@@ -245,9 +245,6 @@
     .users-table select { background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:4px 8px; font-size:.82rem; }
 
     /* ── Accounting-only role layout ───────────────────────── */
-    body.accounting-mode .tab-bar          { display:none !important; }
-    body.accounting-mode .container        { padding-top:8px; }
-    body.accounting-mode header            { margin-bottom:16px; }
     body.accounting-mode #accounting-content { padding-top:0; }
 
     /* Toolbar: keep everything on one row, spread evenly */
@@ -1786,8 +1783,10 @@ function updateAdminUI() {
   const psTab = document.getElementById('paysheet-tab');
   if (psTab)         psTab.style.display         = isAccounting() ? 'none' : '';  // accounting can't see Paysheet
   if (lcTab)         lcTab.style.display         = isAccounting() ? 'none' : '';  // accounting can't see Labor Codes
-  const coTab = document.getElementById('co-tab');
+  const coTab  = document.getElementById('co-tab');
   if (coTab)         coTab.style.display         = canViewCO() ? '' : 'none';  // only foreman, VP, admin
+  const empTab = document.getElementById('emp-tab');
+  if (empTab)        empTab.style.display         = '';  // visible to all roles
   const coSubmitBtn     = document.getElementById('co-submit-btn');
   const coSubmitBurnBtn = document.getElementById('co-submit-burn-btn');
   if (coSubmitBtn)     coSubmitBtn.style.display     = canSubmitCO() ? '' : 'none';
