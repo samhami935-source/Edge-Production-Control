@@ -10135,27 +10135,16 @@ function _coBurnAreaRenderTags() {
 }
 
 function coBurnAreasChanged() {
-  const jobName = (document.getElementById('co-submit-job') || {}).value || '';
   const codeSel = document.getElementById('co-burn-code');
   if (!codeSel) return;
   if (!_coBurnSelectedAreas.length) {
     codeSel.innerHTML = '<option value="">— Select Area First —</option>';
     return;
   }
-  const csvFile = getSavedCSVFiles().find(x => x.name === jobName);
-  const seen = new Set();
-  const codes = [];
-  if (csvFile) {
-    _coBurnSelectedAreas.forEach(area => {
-      csvFile.rows.filter(r => r.area === area && r.costCode).forEach(r => {
-        if (!seen.has(r.costCode)) { seen.add(r.costCode); codes.push(r.costCode); }
-      });
-    });
-    codes.sort();
-  }
-  if (!codes.length) PAYROLL_GROUPS.forEach(g => { if (!seen.has(g.code)) { seen.add(g.code); codes.push(g.code); } });
+  // Pull from the Labor Codes tab (getLaborCodes), sorted numerically
+  const lcs = sortLaborCodes(getLaborCodes());
   codeSel.innerHTML = '<option value="">— Select Labor Code —</option>' +
-    codes.map(c => { const g = PAYROLL_GROUPS.find(x => x.code === c); return `<option value="${eh(c)}">${eh(g ? `${c} – ${g.description}` : c)}</option>`; }).join('');
+    lcs.map(lc => `<option value="${eh(lc.code)}">${eh(lc.code + ' – ' + lc.description)}</option>`).join('');
 }
 
 function coOpenLightbox(idx, coId) {
