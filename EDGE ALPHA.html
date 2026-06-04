@@ -5847,14 +5847,16 @@ async function _psSyncToDailyInputs() {
   }
   if (!jobName || !weekEnding) return;
 
-  const diDocs = (_cache.dailyInputs || []).filter(d => d.job === jobName && d.weekEnding === weekEnding);
-  if (!diDocs.length) return;
+  // Helper — always reads fresh from cache so earlier mutations in this batch are visible
+  const freshDiDocs = () => (_cache.dailyInputs || []).filter(d => d.job === jobName && d.weekEnding === weekEnding);
+
+  if (!freshDiDocs().length) return;
 
   for (const ch of changes) {
 
     // ── ADD: new area on the paysheet → inject a tagged entry into the most recent DI doc ──
     if (ch.type === 'add') {
-      const sorted = [...diDocs].sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
+      const sorted = [...freshDiDocs()].sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
       const target = sorted.find(d => (d.crews || []).some(c => c.crewNum === ch.crewNum)) || sorted[0];
       if (!target) continue;
 
@@ -5883,7 +5885,7 @@ async function _psSyncToDailyInputs() {
 
     // ── REMOVE: area cleared on the paysheet → tag matching entries red in all DI docs ──
     if (ch.type === 'remove') {
-      for (const diDoc of diDocs) {
+      for (const diDoc of freshDiDocs()) {
         let docChanged = false;
         const updatedCrews = (diDoc.crews || []).map(crew => ({
           ...crew,
@@ -5907,7 +5909,7 @@ async function _psSyncToDailyInputs() {
     }
 
     // ── CHANGE: area or code rename → update matching entries in all DI docs ──
-    for (const diDoc of diDocs) {
+    for (const diDoc of freshDiDocs()) {
       let docChanged = false;
       const updatedCrews = (diDoc.crews || []).map(crew => ({
         ...crew,
@@ -6013,6 +6015,11 @@ async function psFinishEdit() {
 }
 
 function psDeleteRow(i) {
+  // Propagate area removal to linked daily inputs (weekly paysheets, non-foremen only)
+  const deletedRow = _ps().rows[i];
+  if (_psCurrentType === 'weekly' && !isForeman() && deletedRow && deletedRow.area) {
+    _psQueueDiChange({ type: 'remove', matchArea: deletedRow.area, crewNum: _psActiveCrew });
+  }
   _ps().rows.splice(i, 1);
   psRenderMainTable();
   psUpdateTotal();
