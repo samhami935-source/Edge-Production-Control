@@ -993,6 +993,7 @@
       <button class="btn btn-outline" style="padding:7px 14px;font-size:.8rem;" onclick="acctRefreshFromFirestore()">⟳ Refresh</button>
       <button id="acct-cleanup-btn" class="btn btn-outline" style="display:none;padding:7px 14px;font-size:.8rem;border-color:#ef4444;color:#ef4444;" onclick="acctCleanupOrphanedPaysheets()" title="Delete paysheets and daily inputs for jobs that no longer exist">🗑 Clean Up</button>
       <button class="btn" style="padding:7px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="acctExportPDF()">⬇ Export PDF</button>
+      <button class="btn" style="padding:7px 14px;font-size:.8rem;background:#16a34a;color:#fff;border:none;" onclick="acctExportExcel()">⬇ Export Excel</button>
     </div>
   </div>
 
@@ -9073,6 +9074,60 @@ function acctExportPDF() {
   const safeWeek = weekEnding.replace(/[^a-zA-Z0-9_-]/g,'_');
   const safeJob  = jobFilter ? '_' + jobFilter.replace(/[^a-zA-Z0-9 _-]/g,'').trim().replace(/\s+/g,'_') : '';
   pdf.save(`Accounting_Paysheet${safeJob}_${safeWeek}.pdf`);
+}
+
+/** Export accounting paysheet(s) to Excel. One sheet per job. */
+function acctExportExcel() {
+  if (typeof XLSX === 'undefined') { alert('Excel library not loaded — please wait a moment and try again.'); return; }
+  const weekEnding = (document.getElementById('acct-week-select') || {}).value || '';
+  const jobFilter  = (document.getElementById('acct-job-select')  || {}).value || '';
+  if (!weekEnding) { alert('Please select a week ending before exporting.'); return; }
+  const jobsData = acctGetData(weekEnding, jobFilter);
+  if (!jobsData.length) { alert('No data to export for the selected week.'); return; }
+
+  const wb = XLSX.utils.book_new();
+
+  for (const { jobName, rows, totalAmount, employeeCount, approvedDocs } of jobsData) {
+    const approvedBy = [...new Set(approvedDocs.map(d => d.approvedBy || '').filter(Boolean))].join(', ') || '—';
+
+    const sheetData = [
+      ['D9 EDGE — Accounting Weekly Paysheet'],
+      [],
+      ['Week Ending:', _fmtWeekDate(weekEnding)],
+      ['Job:', jobName],
+      ['Generated:', new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })],
+      ['Approved by:', approvedBy],
+      [],
+      ['#', 'Employee Name', 'Amount'],
+      ...rows.map((r, i) => [i + 1, r.displayName, r.amount]),
+      [],
+      ['', `Total (${employeeCount} employee${employeeCount !== 1 ? 's' : ''})`, totalAmount],
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+    // Column widths
+    ws['!cols'] = [{ wch: 4 }, { wch: 30 }, { wch: 14 }];
+
+    // Format Amount column as currency (rows 9 through 9+rows.length-1, then the total row)
+    const amtColIdx = 2; // column C (0-indexed)
+    const dataStartRow = 8; // 0-indexed: header row is row index 7, data starts at 8
+    for (let ri = dataStartRow; ri < dataStartRow + rows.length + 2; ri++) {
+      const cellAddr = XLSX.utils.encode_cell({ r: ri, c: amtColIdx });
+      if (ws[cellAddr] && typeof ws[cellAddr].v === 'number') {
+        ws[cellAddr].t = 'n';
+        ws[cellAddr].z = '"$"#,##0.00';
+      }
+    }
+
+    // Sheet name: trim job name to 31 chars (Excel limit)
+    const sheetName = jobName.replace(/[:\\/?*[\]]/g, '').slice(0, 31) || 'Paysheet';
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  }
+
+  const safeWeek = weekEnding.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const safeJob  = jobFilter ? '_' + jobFilter.replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_') : '';
+  XLSX.writeFile(wb, `Accounting_Paysheet${safeJob}_${safeWeek}.xlsx`);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
