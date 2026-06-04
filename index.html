@@ -4714,7 +4714,44 @@ function diRenderLogRows() {
   // Foremen only see their own submissions
   if (isForeman() && _currentUser) docs = docs.filter(r => r.submittedBy === _currentUser.email);
 
-  // Build unique values for each column dropdown (from all docs for this job)
+  // Merge supplemental paysheets into the log as pseudo-entries
+  const suppSheets = (_cache.paysheets || []).filter(p =>
+    p.type === 'weekly' && (p.isSupplemental === true || (p.id && p.id.includes('_add_'))) &&
+    (!jobName || p.job === jobName)
+  ).map(p => {
+    // Normalize to a shape compatible with the log renderer, tagged _isPS:true
+    const crewKeys = Object.keys(p.crews || {});
+    const crewsArr = crewKeys.map(ck => {
+      const c = p.crews[ck];
+      return { crewNum: parseInt(ck), crewLeadName: (c.header && c.header.crewName) || '' };
+    });
+    const empCount = crewKeys.reduce((n, ck) => {
+      const splits = (p.crews[ck] && p.crews[ck].splits) || [];
+      splits.forEach(s => { if ((s.employee||'').trim()) n++; });
+      return n;
+    }, 0);
+    return {
+      _isPS:       true,
+      _psDoc:      p,
+      id:          p.id,
+      date:        p.weekEnding,   // use weekEnding as the sort/display date
+      submittedTime: p.savedAt ? new Date(p.savedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : '—',
+      job:         p.job,
+      crews:       crewsArr,
+      submittedBy: p.savedBy || '',
+      _empCount:   empCount,
+      weekEnding:  p.weekEnding,
+    };
+  });
+
+  // Merge + sort newest first (use submittedAt/savedAt for precise ordering)
+  const allRows = [...docs, ...suppSheets].sort((a, b) => {
+    const da = (a._isPS ? (a._psDoc.savedAt || a.date) : (a.submittedAt || a.date)) || '';
+    const db_ = (b._isPS ? (b._psDoc.savedAt || b.date) : (b.submittedAt || b.date)) || '';
+    return db_.localeCompare(da);
+  });
+
+  // Build unique values for each column dropdown (from daily input docs only — keeps filters clean)
   const uniq = arr => [...new Set(arr.filter(Boolean))].sort();
   const allDates    = uniq(docs.map(r => r.date));
   const allJobs     = uniq(docs.map(r => r.job));
@@ -4745,22 +4782,67 @@ function diRenderLogRows() {
     mkSel('empCount',allEmpCounts,'empCount', 'Any Count') +
     `<td style="padding:4px 6px;"><button class="btn-sm" onclick="diClearLogFilters()" style="white-space:nowrap;font-size:.7rem;padding:3px 8px;">✕ Clear</button></td>`;
 
-  // Apply active filters
-  if (_diLogFilters.date)     docs = docs.filter(r => r.date === _diLogFilters.date);
-  if (_diLogFilters.job)      docs = docs.filter(r => r.job === _diLogFilters.job);
-  if (_diLogFilters.crew)     docs = docs.filter(r => (r.crews||[]).some(c => crewLabel(c) === _diLogFilters.crew));
-  if (_diLogFilters.foreman)  docs = docs.filter(r => r.submittedBy === _diLogFilters.foreman);
-  if (_diLogFilters.empCount) docs = docs.filter(r => String(countEmps(r)) === _diLogFilters.empCount);
+  // Apply active filters (only to daily input rows; supplemental paysheets always show)
+  let filteredDI = docs;
+  if (_diLogFilters.date)     filteredDI = filteredDI.filter(r => r.date === _diLogFilters.date);
+  if (_diLogFilters.job)      filteredDI = filteredDI.filter(r => r.job === _diLogFilters.job);
+  if (_diLogFilters.crew)     filteredDI = filteredDI.filter(r => (r.crews||[]).some(c => crewLabel(c) === _diLogFilters.crew));
+  if (_diLogFilters.foreman)  filteredDI = filteredDI.filter(r => r.submittedBy === _diLogFilters.foreman);
+  if (_diLogFilters.empCount) filteredDI = filteredDI.filter(r => String(countEmps(r)) === _diLogFilters.empCount);
 
-  if (!docs.length) {
+  const visibleRows = [...filteredDI, ...suppSheets].sort((a, b) => {
+    const da = (a._isPS ? (a._psDoc.savedAt || a.date) : (a.submittedAt || a.date)) || '';
+    const db_ = (b._isPS ? (b._psDoc.savedAt || b.date) : (b.submittedAt || b.date)) || '';
+    return db_.localeCompare(da);
+  });
+
+  if (!visibleRows.length) {
     tbody.innerHTML = `<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted);">${jobName ? 'No submissions match filters.' : 'Select a job above to view the submission log.'}</td></tr>`;
     return;
   }
-  tbody.innerHTML = docs.map(r => {
+  tbody.innerHTML = visibleRows.map(r => {
+    const isPS     = r._isPS === true;
+    const safeId   = r.id.replace(/[^\w-]/g, '_');
+    const isOpen   = _diLogExpanded.has(r.id);
+
+    if (isPS) {
+      // ── Supplemental paysheet row ──
+      const p        = r._psDoc;
+      const crewNums = Object.keys(p.crews || {}).map(ck => {
+        const c = p.crews[ck];
+        return (c.header && c.header.crewName) ? c.header.crewName : `Crew ${ck}`;
+      }).join(', ') || '—';
+      const empCount = r._empCount;
+      const approved = p.approvedAt
+        ? `<span style="font-size:.68rem;color:#22c55e;font-weight:700;"> ✓ Approved</span>`
+        : '';
+      return `<tr style="border-top:1px solid var(--border);background:rgba(26,86,219,.07);border-left:3px solid #1a56db;">
+        <td style="padding:4px 6px;width:28px;text-align:center;">
+          <button onclick="diToggleLogDetail('${safeId}')" id="ditog_${safeId}"
+            style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.78rem;padding:2px 5px;border-radius:3px;transition:transform .15s;transform:${isOpen?'rotate(90deg)':''}"
+            title="Show details">▶</button>
+        </td>
+        <td style="padding:8px 10px;">
+          <span style="font-size:.68rem;background:rgba(26,86,219,.15);color:#93c5fd;border:1px solid rgba(26,86,219,.3);padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;">ADDED PAYSHEET</span>${approved}
+        </td>
+        <td style="padding:8px 10px;color:var(--muted);">${r.submittedTime||'—'}</td>
+        <td style="padding:8px 10px;color:var(--accent);">${eh(r.job)}</td>
+        <td style="padding:8px 10px;">${eh(crewNums)}</td>
+        <td style="padding:8px 10px;color:var(--muted);">${eh(r.submittedBy)}</td>
+        <td style="padding:8px 10px;">${empCount} employee${empCount!==1?'s':''}</td>
+        <td style="padding:8px 10px;white-space:nowrap;">
+          <button class="btn-sm" onclick="loadPaysheetFromCloud('${r.id.replace(/'/g,"\\'")}');document.getElementById('ps-load-modal').classList.remove('open');" style="font-size:.72rem;padding:3px 8px;">Open</button>
+          ${isAdmin()?`<button class="btn-sm btn-danger" onclick="diDeleteSuppPaysheet('${r.id.replace(/'/g,"\\'")}')">Delete</button>`:''}
+        </td>
+      </tr>
+      <tr id="didetail_${safeId}" style="display:${isOpen?'':'none'};">
+        <td colspan="8" style="padding:0;">${_diPsLogDetailHTML(p)}</td>
+      </tr>`;
+    }
+
+    // ── Regular daily input row ──
     const crewNums  = (r.crews||[]).map(crewLabel).join(', ');
-    const empCount  = new Set((r.crews||[]).flatMap(c=>(c.entries||[]).map(e=>(e.employee||'').trim()).filter(Boolean))).size;
-    const isOpen    = _diLogExpanded.has(r.id);
-    const safeId    = r.id.replace(/[^\w-]/g, '_');
+    const empCount  = countEmps(r);
     // Green row = a weekly paysheet has been generated for this daily input's job+week
     const hasPaysheet = r.weekEnding && r.job &&
       (_cache.paysheets||[]).some(p => p.type === 'weekly' && p.weekEnding === r.weekEnding && p.job === r.job);
@@ -4790,6 +4872,55 @@ function diRenderLogRows() {
 function diClearLogFilters() {
   _diLogFilters = { date:'', job:'', crew:'', foreman:'', empCount:'' };
   diRenderLogRows();
+}
+
+/** Detail expand view for a supplemental paysheet entry in the submission log. */
+function _diPsLogDetailHTML(p) {
+  const thStyle = 'text-align:left;padding:3px 8px 3px 0;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;';
+  const tdStyle = 'padding:4px 8px 4px 0;font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  const colGroup = `<colgroup><col style="width:38%"><col style="width:18%"><col style="width:14%"><col style="width:30%"></colgroup>`;
+  const crewKeys = Object.keys(p.crews || {}).filter(k => {
+    const c = p.crews[k];
+    return c && (c.rows||[]).some(r => r.area || r.costCode);
+  });
+  if (!crewKeys.length) return `<div style="padding:8px 16px 10px;color:var(--muted);font-size:.8rem;font-style:italic;">No rows saved yet — open the paysheet to fill it in.</div>`;
+  return `<div style="padding:6px 14px 12px 42px;background:rgba(255,255,255,.025);border-top:1px solid rgba(255,255,255,.06);">
+    ${crewKeys.map(ck => {
+      const c = p.crews[ck];
+      const crewName = (c.header && c.header.crewName) ? c.header.crewName : `Crew ${ck}`;
+      const rows = (c.rows||[]).filter(r => r.area || r.costCode);
+      return `<div style="margin-top:8px;">
+        <div style="font-size:.72rem;font-weight:700;color:#93c5fd;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">${eh(crewName)}</div>
+        <table style="border-collapse:collapse;width:100%;table-layout:fixed;">
+          ${colGroup}
+          <tr>
+            <th style="${thStyle}">Area</th>
+            <th style="${thStyle}">Labor Code</th>
+            <th style="${thStyle}">W/E Earned</th>
+            <th style="${thStyle}">Notes</th>
+          </tr>
+          ${rows.map(r => `<tr style="border-top:1px solid rgba(255,255,255,.04);">
+            <td style="${tdStyle}">${eh(r.area||'—')}</td>
+            <td style="${tdStyle}color:var(--muted);text-align:center;">${eh(r.costCode||'—')}</td>
+            <td style="${tdStyle}color:#22c55e;text-align:right;">$${(parseFloat(r.weAmount)||0).toFixed(2)}</td>
+            <td style="${tdStyle}color:var(--muted);font-style:${r.notes?'normal':'italic'};">${eh(r.notes||'')}</td>
+          </tr>`).join('')}
+        </table>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+/** Delete a supplemental paysheet from Firestore + cache and refresh the log. */
+async function diDeleteSuppPaysheet(docId) {
+  if (!isAdmin()) { alert('Admin access required.'); return; }
+  if (!confirm('Delete this added paysheet? This cannot be undone.')) return;
+  try {
+    await db.collection('paysheets').doc(docId).delete();
+    if (_cache.paysheets) _cache.paysheets = _cache.paysheets.filter(p => p.id !== docId);
+    renderPSLoadList();
+    diRenderLogRows();
+  } catch(e) { alert('Delete failed: ' + e.message); }
 }
 
 // Tracks which submission log rows are expanded (persists across re-renders)
@@ -7111,6 +7242,8 @@ async function savePaysheetToCloud(silent, opts = {}) {
     ...(_existingCached && _existingCached.approvedAt
       ? { approvedAt: _existingCached.approvedAt, approvedBy: _existingCached.approvedBy || null }
       : {}),
+    // Preserve isSupplemental flag through re-saves so the submission log keeps showing it
+    ...(_existingCached && _existingCached.isSupplemental ? { isSupplemental: true } : {}),
   };
   try {
     await db.collection('paysheets').doc(docId).set(doc);
@@ -7118,6 +7251,7 @@ async function savePaysheetToCloud(silent, opts = {}) {
     const idx = _cache.paysheets.findIndex(p => p.id === docId);
     if (idx !== -1) _cache.paysheets[idx] = doc; else _cache.paysheets.push(doc);
     _psCurrentType = type;
+    if (typeof diRenderLogRows === 'function') diRenderLogRows(); // refresh log so supplemental paysheets update
     if (!silent) alert(`Paysheet saved — "${jobName}" · Week Ending ${_fmtWeekDate(weekEnd)}`);
     return doc;
   } catch(e) {
@@ -7411,6 +7545,7 @@ async function psAddSupplementalPaysheet(weekEnding) {
     job: activeJob,
     weekEnding,
     type: 'weekly',
+    isSupplemental: true,
     savedAt:     new Date().toISOString(),
     savedBy:     _currentUser ? _currentUser.email : 'unknown',
     savedByRole: _currentUserRole || 'unknown',
