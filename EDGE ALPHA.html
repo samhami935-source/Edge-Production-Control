@@ -3855,8 +3855,34 @@ function _diUpdateFilterBtnState() {
 // ── Area combobox helpers ──
 function _diAreaList() {
   const jobName = document.getElementById('ps-job-select').value;
-  // psGetAreas already prepends COR areas at the top — no need to add them again
-  return jobName ? psGetAreas(jobName) : [];
+  if (!jobName) return [];
+  const base = psGetAreas(jobName); // CSV + payroll + COR/Burn areas
+  // Also surface areas that were added by a weekly paysheet edit — they may not
+  // appear in the CSV or budget, so they wouldn't be in psGetAreas() otherwise.
+  const psExtra = [];
+  (_cache.dailyInputs || []).filter(d => d.job === jobName).forEach(d => {
+    (d.crews || []).forEach(crew => {
+      (crew.entries || []).forEach(e => {
+        if (e._psTag === 'added' && e.area && !base.includes(e.area) && !psExtra.includes(e.area)) {
+          psExtra.push(e.area);
+        }
+      });
+    });
+  });
+  return psExtra.length ? [...psExtra, ...base] : base;
+}
+
+// Build a map of { area → _psTag } from the DI cache for a given job
+function _diPsTagMap(jobName) {
+  const map = {};
+  (_cache.dailyInputs || []).filter(d => d.job === jobName).forEach(d => {
+    (d.crews || []).forEach(crew => {
+      (crew.entries || []).forEach(e => {
+        if (e._psTag && e.area && !map[e.area]) map[e.area] = e._psTag;
+      });
+    });
+  });
+  return map;
 }
 
 function _diGetPortal() {
@@ -3875,12 +3901,23 @@ function _diGetPortal() {
 function _diAreaRenderDropdown(input, crew, rowIdx) {
   const q        = input.value.trim().toLowerCase();
   const dropdown = _diGetPortal();
+  const jobName  = (document.getElementById('ps-job-select') || {}).value || '';
   const all      = _diAreaList();
   const filtered = q ? all.filter(a => a.toLowerCase().includes(q)) : all;
   if (!filtered.length) { dropdown.style.display = 'none'; return; }
-  dropdown.innerHTML = filtered.map(a =>
-    `<div class="di-area-opt" data-area="${eh(a)}" data-crew="${crew}" data-row="${rowIdx}">${eh(a)}</div>`
-  ).join('');
+  const tagMap   = _diPsTagMap(jobName);
+  dropdown.innerHTML = filtered.map(a => {
+    const tag = tagMap[a];
+    let label;
+    if (tag === 'added') {
+      label = `${eh(a)}&nbsp;<span style="color:#22c55e;font-size:.68rem;font-weight:700;">(Added)</span>`;
+    } else if (tag === 'removed') {
+      label = `<s>${eh(a)}</s>&nbsp;<span style="color:#ef4444;font-size:.68rem;font-weight:700;">(Removed)</span>`;
+    } else {
+      label = eh(a);
+    }
+    return `<div class="di-area-opt" data-area="${eh(a)}" data-crew="${crew}" data-row="${rowIdx}">${label}</div>`;
+  }).join('');
   // Attach listeners directly so special chars in area names don't break anything
   dropdown.querySelectorAll('.di-area-opt').forEach(el => {
     el.addEventListener('mousedown', e => {
@@ -4772,6 +4809,17 @@ function diToggleLogDetail(safeId) {
   }
 }
 
+// Returns colored HTML for an area cell in the DI log based on its _psTag
+function _diAreaTagHTML(e) {
+  if (e._psTag === 'added') {
+    return `<span style="color:#22c55e;">${eh(e.area||'—')}</span>&nbsp;<span style="color:#22c55e;font-size:.68rem;font-weight:700;">(Added)</span>`;
+  }
+  if (e._psTag === 'removed') {
+    return `<s style="color:#ef4444;">${eh(e.area||'—')}</s>&nbsp;<span style="color:#ef4444;font-size:.68rem;font-weight:700;">(Removed)</span>`;
+  }
+  return eh(e.area||'—');
+}
+
 function _diLogDetailHTML(r) {
   const crews = (r.crews||[]).filter(crew => (crew.entries||[]).some(e => e.employee||e.area||e.costCode||e.description));
   if (!crews.length) return `<div style="padding:8px 16px 10px;color:var(--muted);font-size:.8rem;font-style:italic;">No entries recorded.</div>`;
@@ -4797,7 +4845,7 @@ function _diLogDetailHTML(r) {
           </tr>
           ${entries.map(e => `<tr style="border-top:1px solid rgba(255,255,255,.04);">
             <td style="${tdStyle}">${eh(e.employee||'—')}</td>
-            <td style="${tdStyle}color:var(--muted);">${eh(e.area||'—')}</td>
+            <td style="${tdStyle}color:var(--muted);">${_diAreaTagHTML(e)}</td>
             <td style="${tdStyle}color:var(--muted);text-align:center;">${eh(e.costCode||'—')}</td>
             <td style="${tdStyle}color:var(--muted);font-style:${e.description?'normal':'italic'};">${eh(e.description||'')}</td>
           </tr>`).join('')}
@@ -5747,8 +5795,17 @@ function psAreaChanged(i, area) {
     _ps().rows[i].corNumber   = '';
   }
   // Propagate area change back to linked daily inputs (weekly paysheets, non-foremen only)
-  if (_psCurrentType === 'weekly' && !isForeman() && oldArea && oldArea !== area) {
-    _psQueueDiChange({ matchArea: oldArea, matchCode: null, setArea: area, setCode: newCode });
+  if (_psCurrentType === 'weekly' && !isForeman()) {
+    if (!oldArea && area) {
+      // Empty row → new area: ADD to DI (tagged green)
+      _psQueueDiChange({ type: 'add', area, costCode: newCode, crewNum: _psActiveCrew });
+    } else if (oldArea && !area) {
+      // Area cleared: REMOVE — mark existing DI entries (tagged red) rather than deleting them
+      _psQueueDiChange({ type: 'remove', matchArea: oldArea, crewNum: _psActiveCrew });
+    } else if (oldArea && area && oldArea !== area) {
+      // Old area → new area: CHANGE existing DI entries
+      _psQueueDiChange({ type: 'change', matchArea: oldArea, matchCode: null, setArea: area, setCode: newCode });
+    }
   }
   psRenderMainTable();
 }
@@ -5759,7 +5816,7 @@ function psCodeChanged(i, code) {
   _ps().rows[i].costCode = code;
   // Propagate code change back to linked daily inputs (weekly paysheets, non-foremen only)
   if (_psCurrentType === 'weekly' && !isForeman() && area && oldCode && oldCode !== code) {
-    _psQueueDiChange({ matchArea: area, matchCode: oldCode, setArea: area, setCode: code });
+    _psQueueDiChange({ type: 'change', matchArea: area, matchCode: oldCode, setArea: area, setCode: code });
   }
   psRenderMainTable();
 }
@@ -5793,20 +5850,77 @@ async function _psSyncToDailyInputs() {
   const diDocs = (_cache.dailyInputs || []).filter(d => d.job === jobName && d.weekEnding === weekEnding);
   if (!diDocs.length) return;
 
-  for (const diDoc of diDocs) {
-    let docChanged = false;
+  for (const ch of changes) {
 
-    const updatedCrews = (diDoc.crews || []).map(crew => ({
-      ...crew,
-      entries: (crew.entries || []).map(entry => {
-        let e = { ...entry };
-        for (const ch of changes) {
+    // ── ADD: new area on the paysheet → inject a tagged entry into the most recent DI doc ──
+    if (ch.type === 'add') {
+      const sorted = [...diDocs].sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
+      const target = sorted.find(d => (d.crews || []).some(c => c.crewNum === ch.crewNum)) || sorted[0];
+      if (!target) continue;
+
+      const updatedCrews = (target.crews || []).map(crew => {
+        if (crew.crewNum !== ch.crewNum) return crew;
+        // Don't duplicate if same area already exists as an added entry
+        const alreadyAdded = (crew.entries || []).some(e => e.area === ch.area && e._psTag === 'added');
+        if (alreadyAdded) return crew;
+        return {
+          ...crew,
+          entries: [...(crew.entries || []), {
+            employee: '', area: ch.area, costCode: ch.costCode || '',
+            description: '', corBudgetId: '', corNumber: '', extraEntries: [],
+            _psTag: 'added'
+          }]
+        };
+      });
+
+      try {
+        await db.collection('dailyinput').doc(target.id).update({ crews: updatedCrews });
+        const idx = (_cache.dailyInputs || []).findIndex(d => d.id === target.id);
+        if (idx !== -1) _cache.dailyInputs[idx] = { ..._cache.dailyInputs[idx], crews: updatedCrews };
+      } catch(e) { console.warn('[DI sync] ADD failed', target.id, e); }
+      continue;
+    }
+
+    // ── REMOVE: area cleared on the paysheet → tag matching entries red in all DI docs ──
+    if (ch.type === 'remove') {
+      for (const diDoc of diDocs) {
+        let docChanged = false;
+        const updatedCrews = (diDoc.crews || []).map(crew => ({
+          ...crew,
+          entries: (crew.entries || []).map(entry => {
+            if (entry.area === ch.matchArea && entry._psTag !== 'removed') {
+              docChanged = true;
+              return { ...entry, _psTag: 'removed' };
+            }
+            return entry;
+          })
+        }));
+        if (docChanged) {
+          try {
+            await db.collection('dailyinput').doc(diDoc.id).update({ crews: updatedCrews });
+            const idx = (_cache.dailyInputs || []).findIndex(d => d.id === diDoc.id);
+            if (idx !== -1) _cache.dailyInputs[idx] = { ..._cache.dailyInputs[idx], crews: updatedCrews };
+          } catch(e) { console.warn('[DI sync] REMOVE failed', diDoc.id, e); }
+        }
+      }
+      continue;
+    }
+
+    // ── CHANGE: area or code rename → update matching entries in all DI docs ──
+    for (const diDoc of diDocs) {
+      let docChanged = false;
+      const updatedCrews = (diDoc.crews || []).map(crew => ({
+        ...crew,
+        entries: (crew.entries || []).map(entry => {
+          let e = { ...entry };
           const areaMatch = e.area === ch.matchArea;
           const codeMatch = ch.matchCode === null || e.costCode === ch.matchCode;
           if (areaMatch && codeMatch) {
             docChanged = true;
             e.area     = ch.setArea;
             e.costCode = ch.setCode;
+            // Clear any prior ps tag when the entry is renamed (it's now a correction, not an add/remove)
+            delete e._psTag;
             // Update COR traceability fields when area changes to a COR/Burn area
             if (isSpecialArea(ch.setArea)) {
               const corb = corbForArea(ch.setArea, jobName);
@@ -5814,7 +5928,6 @@ async function _psSyncToDailyInputs() {
               e.corNumber   = corb ? corb.corNumber  : '';
               if (!ch.setCode) e.costCode = corb ? corb.laborCode : '';
             } else if (isSpecialArea(ch.matchArea)) {
-              // Was a COR/Burn area, now regular — clear COR fields
               e.corBudgetId = '';
               e.corNumber   = '';
             }
@@ -5829,21 +5942,22 @@ async function _psSyncToDailyInputs() {
             }
             return ex;
           });
-        }
-        return e;
-      })
-    }));
+          return e;
+        })
+      }));
 
-    if (docChanged) {
-      try {
-        await db.collection('dailyinput').doc(diDoc.id).update({ crews: updatedCrews });
-        const idx = (_cache.dailyInputs || []).findIndex(d => d.id === diDoc.id);
-        if (idx !== -1) _cache.dailyInputs[idx] = { ..._cache.dailyInputs[idx], crews: updatedCrews };
-      } catch(e) {
-        console.warn('[DI sync] Failed to update daily input', diDoc.id, e);
+      if (docChanged) {
+        try {
+          await db.collection('dailyinput').doc(diDoc.id).update({ crews: updatedCrews });
+          const idx = (_cache.dailyInputs || []).findIndex(d => d.id === diDoc.id);
+          if (idx !== -1) _cache.dailyInputs[idx] = { ..._cache.dailyInputs[idx], crews: updatedCrews };
+        } catch(e) { console.warn('[DI sync] CHANGE failed', diDoc.id, e); }
       }
     }
   }
+
+  // Refresh the DI submission log so the tags show immediately
+  if (typeof diRenderLogRows === 'function') diRenderLogRows();
 }
 
 // ─── Daily Paysheet Edit Mode (Admin / PM only) ───
