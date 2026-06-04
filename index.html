@@ -2604,6 +2604,11 @@ function getEmployees() {
 function saveEmployees(list) {
   _cache.employees = list;
   db.collection('config').doc('employees').set({ employees: list }).catch(e => console.error('employees write:', e));
+  const numEl = document.getElementById('emp-new-num');
+  if (numEl) {
+    const maxN = list.reduce((m, e) => Math.max(m, e.n || 0), 0);
+    numEl.placeholder = 'e.g. ' + (maxN + 1);
+  }
 }
 
 function sortEmployees(list) {
