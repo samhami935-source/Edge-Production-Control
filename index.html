@@ -768,6 +768,7 @@
     <div class="filters" style="margin-bottom:16px;">
       <input type="text" id="emp-search" class="fi" placeholder="Search by name or employee #…" oninput="renderEmpTable()" style="flex:1;min-width:180px;" />
       <span id="emp-count" style="font-size:.8rem;color:var(--muted);white-space:nowrap;align-self:center;"></span>
+      <button class="btn" onclick="exportEmployeesExcel()" style="white-space:nowrap;">⬇ Export Excel</button>
     </div>
     <div class="table-wrap" style="overflow-x:auto;">
       <table>
@@ -2707,6 +2708,28 @@ function deleteEmployee(num, name) {
   const updated = getEmployees().filter(e => e.n !== num);
   saveEmployees(updated);
   renderEmpTable();
+}
+
+function exportEmployeesExcel() {
+  if (typeof XLSX === 'undefined') { alert('Excel library not loaded — please wait a moment and try again.'); return; }
+  const q    = (document.getElementById('emp-search').value || '').toLowerCase().trim();
+  const all  = getEmployees();
+  const rows = all.filter(e => !q || String(e.n).includes(q) || e.name.toLowerCase().includes(q));
+  if (!rows.length) { alert('No employees to export.'); return; }
+
+  const sheetData = [
+    ['Employee #', 'Employee Name'],
+    ...rows.map(e => [e.n, e.name]),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(sheetData);
+  ws['!cols'] = [{ wch: 14 }, { wch: 36 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Employees');
+
+  const date = new Date().toLocaleDateString('en-US', { month:'2-digit', day:'2-digit', year:'numeric' }).replace(/\//g,'-');
+  XLSX.writeFile(wb, `Employee Names ${date}.xlsx`);
 }
 
 function renderLCTable() {
