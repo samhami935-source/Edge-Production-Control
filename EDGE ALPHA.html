@@ -5679,8 +5679,12 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
 
   // Weekly / summary read-only — Area, Labor Code, PTD locked; only W/E Earned is editable
   const n = 'width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:inherit;padding:0;text-align:right;';
+  // ✕ remove button — visible on non-empty rows for non-foremen without requiring Edit mode
+  const removeBtn = (row.area && !isForeman())
+    ? `<button onclick="psDeleteRow(${i})" title="Remove area" style="float:right;background:none;border:none;color:#ef4444;cursor:pointer;font-size:11px;line-height:1;padding:0 2px;opacity:.5;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.5'">✕</button>`
+    : '';
   return `<tr>
-    <td style="${cell}word-break:break-word;overflow-wrap:break-word;white-space:normal;">${eh(row.area||'')}</td>
+    <td style="${cell}word-break:break-word;overflow-wrap:break-word;white-space:normal;">${removeBtn}${eh(row.area||'')}</td>
     <td style="${cell}word-break:break-word;overflow-wrap:break-word;white-space:normal;">${eh(codeLabel)}</td>
     <td style="${cell}color:#444;font-style:italic;max-width:180px;word-wrap:break-word;overflow-wrap:break-word;white-space:normal;">${eh(row.notes||'')}</td>
     <td style="${cell}text-align:right;">${budgetDisp}</td>
