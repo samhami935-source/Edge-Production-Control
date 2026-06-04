@@ -418,6 +418,9 @@
       <span>📋</span><span class="tab-name">Change Orders</span>
       <span id="co-badge" style="display:none;position:absolute;top:4px;right:4px;background:#ef4444;color:#fff;border-radius:9px;padding:1px 6px;font-size:.65rem;font-weight:700;line-height:1.4;">0</span>
     </div>
+    <div class="tab" id="emp-tab" onclick="switchToEmployeeNames()">
+      <span>👥</span><span class="tab-name">Employee Names</span>
+    </div>
   </div>
 
   <input type="file" id="file-input" accept=".csv,text/csv" multiple />
@@ -743,6 +746,23 @@
           <th style="width:80px;cursor:default;" id="lc-action-col"></th>
         </tr></thead>
         <tbody id="lc-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Employee Names content -->
+  <div id="emp-content" style="display:none;">
+    <div class="filters" style="margin-bottom:16px;">
+      <input type="text" id="emp-search" class="fi" placeholder="Search by name or employee #…" oninput="renderEmpTable()" style="flex:1;min-width:180px;" />
+      <span id="emp-count" style="font-size:.8rem;color:var(--muted);white-space:nowrap;align-self:center;"></span>
+    </div>
+    <div class="table-wrap" style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th style="width:120px;">Employee #</th>
+          <th>Employee Name</th>
+        </tr></thead>
+        <tbody id="emp-tbody"></tbody>
       </table>
     </div>
   </div>
@@ -2296,6 +2316,285 @@ function switchToLaborCodes() {
   document.getElementById('lc-action-col').textContent   = (isAdmin() || isPM()) ? 'Action' : '';
 }
 
+// ── Employee Names ─────────────────────────────────────────────────────────
+const EMP_DB = [
+  {n:1,name:'Espino, Belinda'},{n:2,name:'Millan, Omar'},{n:3,name:'Gomez Rueda, Epifanio'},
+  {n:4,name:'Serafin Melgarejo, Alejandro'},{n:5,name:'Jimenez Ramos, Juan M'},{n:6,name:'Apeldoorn, Guadalupe'},
+  {n:20,name:'Camacho, Alejandro'},{n:26,name:'Gomez, Manuel'},{n:27,name:'Ramirez Arcos, Misael'},
+  {n:29,name:'Mendez Garcia, Mauro'},{n:31,name:'Quintero, Joel'},{n:33,name:'Quintero Ruiz, Hugo O'},
+  {n:34,name:'Rojo Quintero, Juan A'},{n:36,name:'Lozoya, Juan D'},{n:38,name:'Munoz Mayorga, Ricardo'},
+  {n:41,name:'G Pantoja, Alexis'},{n:44,name:'Gavina, Cristobal'},{n:45,name:'Preciado, Daniel N'},
+  {n:46,name:'Uribe, Cristian'},{n:47,name:'Ornelas, Oscar'},{n:49,name:'El Mani, Mohammed Z'},
+  {n:50,name:'Garcia, Kevin'},{n:51,name:'Lopez Aquino, Guilmar A'},{n:52,name:'Lossigrajeda, Hector A'},
+  {n:53,name:'Xocol De Leon, Iginio B'},{n:55,name:'Jimenez, Jorge'},{n:58,name:'Chavez De Leon, Bacilia'},
+  {n:61,name:'Lopez, Calel'},{n:72,name:'Rivera Figureoa, Rene O.'},{n:73,name:'Martinez, Cesar A'},
+  {n:74,name:'Guzman, Braulio'},{n:75,name:'Martinez Bartolo, Jose A.'},{n:78,name:'Salas Hernandez, Carlos'},
+  {n:81,name:'Gonzalez, Jacob'},{n:82,name:'Salgado, Juan R'},{n:94,name:'Cupa, Francisco'},
+  {n:95,name:'Parry, Mary E'},{n:97,name:'Lopez Guzman, Fredy I.'},{n:98,name:'Gamez, David'},
+  {n:99,name:'Melgar Hercules, Isai F'},{n:100,name:'Vazquez Aleman, Jefry A.'},{n:101,name:'Ortiz Cordero, Armando'},
+  {n:103,name:'Hamilton, Samuel M'},{n:104,name:'Ruelas Silva, Sergio'},{n:105,name:'Velasquez Alfaro, Carlos'},
+  {n:106,name:'Ceballos Aguilar, Jose M.'},{n:107,name:'Ruelas, Erika Y'},{n:108,name:'Hernandez, Jose A.'},
+  {n:109,name:'Arias, Michel'},{n:110,name:'Ramirez Flores, Maicol'},{n:111,name:'Reynoso, Jose De Jesus'},
+  {n:112,name:'Aguilar, Carlos'},{n:113,name:'Rodriguez Leonel, Juan J'},{n:114,name:'Rodriguez, Ramon'},
+  {n:115,name:'Fernandez, Juan'},{n:116,name:'Rodriguez, Juan'},{n:117,name:'Rodriguez Calderon, Octavio U'},
+  {n:118,name:'Rodriguez Barboza, Octavio'},{n:119,name:'Martinez Hernandez, Alfredo'},{n:120,name:'Refugio Remigio, Nicolas'},
+  {n:121,name:'Refugio Nicolas, Jose'},{n:122,name:'Refugio Remigio, Rosario'},{n:123,name:'Reyes Carrillo, Esteban'},
+  {n:124,name:'Trejo, Oswaldo'},{n:125,name:'Trejo Lossi, Cristyan O'},{n:126,name:'Hammond, Robert A'},
+  {n:127,name:'Aragon, Jesus'},{n:128,name:'Gonzalez, Alex S'},{n:129,name:'Alvarez, Walter'},
+  {n:130,name:'Rivas Martinez, Milton F'},{n:131,name:'Parra, Omar'},{n:132,name:'Parra Ramirez, Hugo E'},
+  {n:133,name:'Chavez, Jose'},{n:134,name:'De La Torre, Abelardo'},{n:135,name:'Marenca, Joseph'},
+  {n:136,name:'Brenes Arias, Victor'},{n:137,name:'Ramirez Alvarado, Edgar B'},{n:138,name:'Sandino Guevara, Fares E'},
+  {n:139,name:'Conrado, Danilo De Jesus'},{n:140,name:'Gamboa Riasco, Edwin'},{n:141,name:'Guerrero Enriquez, Eusebio P'},
+  {n:142,name:'Aguirre, Ulises D'},{n:143,name:'Preciado Cabreras, Edwin A'},{n:144,name:'Escamilla, Miguel A'},
+  {n:145,name:'Aguirre Diaz, Felipe De Jesus'},{n:146,name:'Ruano, Jorge L'},{n:147,name:'Lopez, Seidy'},
+  {n:148,name:'Pinto Salazar, Cesar O'},{n:149,name:'Munoz Lopez, Aneth'},{n:150,name:'Valdez Munoz, Miguel A'},
+  {n:151,name:'Murillo Sanchez, Senovio'},{n:152,name:'Hernandez Garcia, Alvino'},{n:153,name:'Enciso Garcia, Benjamin'},
+  {n:154,name:'Guerrero Enriquez, Alfonso'},{n:155,name:'Martinez Martinez, Mariano'},{n:156,name:'Perez Isidro, Argenis'},
+  {n:157,name:'Lopez Lopez, Diego A'},{n:158,name:'Lopez, Mynor F'},{n:159,name:'Vazquez De Leon, Norman H'},
+  {n:160,name:'Guarchaj, Marvin'},{n:161,name:'Domingo Xocol De Leon, Brayan'},{n:162,name:'Galdamez, Jimy'},
+  {n:163,name:'Galdamez, Ronald'},{n:164,name:'Chavez, Juana'},{n:165,name:'Ibarra Ramirez, Jesus A'},
+  {n:166,name:'Tambriz Ajtzalam, Elias V'},{n:167,name:'Lopez, Jose'},{n:168,name:'Gutierrez, Fernando'},
+  {n:169,name:'Narvaez, Wilmer'},{n:170,name:'Cortez, Jesus'},{n:171,name:'Gutierrez Baltazar, Victor E'},
+  {n:172,name:'Baltazar Gonzalez, Edgar'},{n:173,name:'Osuna Cobos, Eddy E'},{n:174,name:'Xocol De Leon, Franklin J'},
+  {n:175,name:'Mestanza Luna, Levi I'},{n:176,name:'Garcia Valdez, Ruben A'},{n:177,name:'Brene, Nelson'},
+  {n:178,name:'Enciso Garcia, Martin'},{n:179,name:'Zamora Baltazar, Gustavo'},{n:180,name:'Baltazar Loza, Misael'},
+  {n:181,name:'Tadeo Eugenio, Abram'},{n:182,name:'Santiago, Abel'},{n:183,name:'Franchilardo, Humberto'},
+  {n:184,name:'Camacho, Abram'},{n:185,name:'Tolentino Loza, Junior'},{n:186,name:'Luevano Jr., Edgar'},
+  {n:187,name:'Mendoza Guzman, Carlos'},{n:188,name:'Garcia, Jose'},{n:189,name:'Guardado Alas, Merlin E'},
+  {n:190,name:'Pineda, Armando'},{n:191,name:'Lopez, Azariel F'},{n:192,name:'Gonzaga Briseno, Horacio'},
+  {n:193,name:'Hernandez Vasquez, Jose F'},{n:194,name:'Rios Valdez, Juan'},{n:195,name:'Rios Valdez, Misael'},
+  {n:196,name:'Gonzalez, David'},{n:197,name:'Martinez Uriarte, Jose S'},{n:198,name:'Del Rio Lopez, Pascual'},
+  {n:199,name:'Blanco, Filiberto'},{n:200,name:'Armenta Espinoza, Ronaldo'},{n:201,name:'Dozier, Deshaun'},
+  {n:202,name:'Black, C Jason'},{n:203,name:'Olivares Castrejon, Manuel'},{n:204,name:'Luevano, Jose'},
+  {n:205,name:'Luevano SR., Edgar'},{n:206,name:'Reyes Vargas, Nemorio'},{n:207,name:'Fernandez Castro, Moises'},
+  {n:208,name:'Rodriguez, Antonio'},{n:209,name:'Torres Padilla, Jimmy V'},{n:210,name:'Garcia Garcia, Everardo'},
+  {n:211,name:'Garcia, Alberto'},{n:212,name:'Mercado, Flavio C'},{n:213,name:'Jaimes Hernandez, Ricardo'},
+  {n:214,name:'Aldvenda, Cristian'},{n:215,name:'Honorato, Antonio'},{n:216,name:'Alejo Guillermo, Albani'},
+  {n:217,name:'Pascual, Edgar I'},{n:218,name:'Gonzalez Loza, Saul'},{n:219,name:'Baltazar Gonzalez, Everardo'},
+  {n:220,name:'Salazar Bueno, Edwin A'},{n:221,name:'Pedroza Bernal, Jose E'},{n:222,name:'Flores, Mario'},
+  {n:223,name:'Rubalcava Guzman, Gerardo'},{n:224,name:'Rubalcaba, Gerardo'},{n:225,name:'Amaya, Rogelio'},
+  {n:226,name:'Altamirano, Tomas'},{n:227,name:'Flores, Lesther'},{n:228,name:'Blanco, Carlos'},
+  {n:229,name:'Vera Landa, Martha O'},{n:230,name:'Pina Soto, Jose A'},{n:231,name:'Montiel Arrizon, Rocio'},
+  {n:232,name:'Lopez Gutierrez, Hermilio'},{n:233,name:'Jaimes, Jose'},{n:234,name:'Amador, Enoc'},
+  {n:235,name:'Reynoso, Daniel'},{n:236,name:'Vazquez, Carlos'},{n:237,name:'Ortega Garcia, Marcos A'},
+  {n:238,name:'Gamboa, Geronimo'},{n:239,name:'Escobar Sanchez, Jose H'},{n:240,name:'Goree, Frenchell II'},
+  {n:241,name:'Aguirre, Jose'},{n:242,name:'Albarran, Vicente'},{n:243,name:'Millan, Ana K'},
+  {n:244,name:'Rojas Chaqueco, Raul'},{n:245,name:'Deniz R, Luis'},{n:246,name:'Romo Romo, Ricardo'},
+  {n:247,name:'Ramos Romero, Francisco'},{n:248,name:'Enriquez Vazquez, Celia'},{n:249,name:'Rubalcaba Guzman, Flavio'},
+  {n:250,name:'Garcia, Jose A'},{n:251,name:'Delgado Garin, Salvador'},{n:252,name:'Espinosa, Robert A'},
+  {n:253,name:'Reyes Montalvo, Aaron'},{n:254,name:'Lopez, Christian'},{n:255,name:'Mejia, Martin'},
+  {n:256,name:'Rodriguez, Luis'},{n:257,name:'Nadal, Fidel'},{n:258,name:'Alvarez, Martin'},
+  {n:259,name:'Gonzalez, Dana'},{n:260,name:'Elias, Jorge'},{n:261,name:'Garcia Carcamo, Elder A'},
+  {n:262,name:'Torres, Manuel'},{n:263,name:'Gomez Vera, Katherinne I'},{n:264,name:'Acevedo, Antonio R'},
+  {n:265,name:'Santiago, Jesus'},{n:266,name:'Ramirez Arellano, Isrrael'},{n:267,name:'Ibarra Corrales, Miguel A'},
+  {n:268,name:'Ibarra, Arnulfo'},{n:269,name:'Blandon, Fredman'},{n:270,name:'Rivera Altamirano, Arnold J'},
+  {n:271,name:'Rivera Altamirano, Moises A'},{n:272,name:'Gomez, Salvador'},{n:273,name:'Sahagun, Omar'},
+  {n:274,name:'Perez Gomez, Saul'},{n:275,name:'Tambriz Ajtzalam, Ricardo M'},{n:276,name:'Garcia, Jacob'},
+  {n:277,name:'Alvarez, Adrian'},{n:278,name:'Perez, Daniel'},{n:279,name:'Flores, Luis'},
+  {n:280,name:'Alarcon Macias, Osvaldo A'},{n:281,name:'Ayon, Reymundo'},{n:282,name:'Reza, Jose J'},
+  {n:283,name:'Camacho Ayabaca, Javier'},{n:284,name:'Garcia, Jorge'},{n:285,name:'Ortiz, Carlos'},
+  {n:286,name:'Garcia Nazario, Raymundo'},{n:287,name:'Argueta, Eduardo'},{n:288,name:'Reyes Montalvo, Gregory'},
+  {n:289,name:'Abundiz Valeriano, Jose A'},{n:290,name:'Abundiz Telliz, Zharo'},{n:291,name:'Abundiz Teliz, Juan G'},
+  {n:292,name:'Gomez Gomez, Gricelda'},{n:293,name:'Morfin, Miguel'},{n:294,name:'Cruz, Leopoldo'},
+  {n:295,name:'Anaya, Hector'},{n:296,name:'Hernandez Ortega, Niqueas'},{n:297,name:'Hernandez Ortega, Avimael'},
+  {n:298,name:'Montes Gastelum, Froylan E'},{n:299,name:'Armada, Mario'},{n:300,name:'Gonzalez Medina, Jose L'},
+  {n:301,name:'Casasola, Jose'},{n:302,name:'Arroyo Lavariega, Julio'},{n:303,name:'Valle, Darian'},
+  {n:304,name:'Lopez Gomez, Juan M'},{n:305,name:'Garcia, Brandon'},{n:306,name:'Licona Ruiz, Nelson A'},
+  {n:307,name:'Velazquez Romero, Claudio'},{n:308,name:'Cervantes, Francisco'},{n:309,name:'Lopez, Andy'},
+  {n:310,name:'Tepaz, Elizabeth'},{n:311,name:'Salazar, Walter'},{n:312,name:'Cruz, Jorge'},
+  {n:313,name:'Reyes, Arturo C'},{n:314,name:'Navarrete, Agustin'},{n:315,name:'Chavez, Juan'},
+  {n:316,name:'Espino, Maria'},{n:317,name:'Hernandez, Jorge'},{n:318,name:'Perez, Ivan'},
+  {n:319,name:'Munoz Padilla, Jose A'},{n:320,name:'Juarez Leon, Joaquin'},{n:321,name:'Juarez Leon, Jose A'},
+  {n:322,name:'Parra, Martin'},{n:323,name:'Lopez, Alfredo'},{n:324,name:'Yoxon Michicoj, Jose A'},
+  {n:325,name:'Quevedo, Carlos'},{n:326,name:'Delgado Lopez, Rafael'},{n:327,name:'Fino Martin, Ramon M'},
+  {n:328,name:'Martin Valenzuela, Juan M'},{n:329,name:'Becerra-Martin, Jose G'},{n:330,name:'Perez Martin, Josue'},
+  {n:331,name:'Lopez Guadarrama, Eduardo'},{n:332,name:'Valles Miranda, Alberto'},{n:333,name:'Lopez Luna, Evelio'},
+  {n:334,name:'Duran Landa, Victor'},{n:335,name:'Santana Salgado, Hector A'},{n:336,name:'Alvarez Almada, David S'},
+  {n:337,name:'De Lira Moreal, Jose E'},{n:338,name:'De Lira Andrade, Ricardo'},{n:339,name:'Guzman, Luis M'},
+  {n:340,name:'Penuelas, Omar'},{n:341,name:'Penuelas Parra, Eden D'},{n:342,name:'Martinez Giles, Francisco'},
+  {n:343,name:'Acosta Chica, Alberto A'},{n:344,name:'Padilla Zuniga, Rafael S'},{n:345,name:'Pereira, Humberto'},
+  {n:346,name:'Lopez Lopez, Max Escol'},{n:347,name:'Lopez Lopez, Pedro'},{n:348,name:'Sandoval Zaragoza, Trinidad'},
+  {n:349,name:'Rodriguez, Salvador'},{n:350,name:'Boanerges Paz, Hector'},{n:351,name:'Rivera, William J'},
+  {n:352,name:'Alvarez Lopez, Alberto'},{n:353,name:'Soto, Candido'},{n:354,name:'Bolanos Galeano, Terry J'},
+  {n:355,name:'Gomez, Pascual'},{n:356,name:'Garcia Garcia, Rey D'},{n:357,name:'Carrillo Rincon, Pedro'},
+  {n:358,name:'Arellano, Christian J'},{n:359,name:'Palacios, Alma Y'},{n:360,name:'Chavez Cayetano, Francisco'},
+  {n:361,name:'Martinez Alonso, Alejandro'},{n:362,name:'Torres Luna, Manuel'},{n:363,name:'Aguilar Bartolo, Magdalena'},
+  {n:364,name:'Mazariego Barrios, Jose C'},{n:365,name:'De Leon, Alessandro'},{n:366,name:'Torres Vasquez, Modesto'},
+  {n:367,name:'Nicasio Rodriguez, Juan C'},{n:368,name:'Perez Villalta, Emerson A'},{n:369,name:'Rojas Levia, Julio A'},
+  {n:370,name:'Ibarra Hernandez, Missael'},{n:371,name:'Avalos Martinez, Arturo'},{n:372,name:'Carrillo Chacon, Omar'},
+  {n:373,name:'Valenica, Marcos'},{n:374,name:'Delgado, Cristian'},{n:375,name:'Robles Fernandez, Ivan'},
+  {n:376,name:'Par Chavez, Maria V'},{n:377,name:'Perez, Fernando'},{n:378,name:'Reyna Bauzan, Lizbeth'},
+  {n:379,name:'Cabrera F, Samuel'},{n:380,name:'Cabrera, Yolanda'},{n:381,name:'Ruiz, Daniel'},
+  {n:382,name:'Lopez Perez, Julissa S'},{n:383,name:'Gonzalez, Diego'},{n:384,name:'Blanco, Roberto'},
+  {n:385,name:'Gacia Juarez, Benjamin C'},{n:386,name:'Cabrera Fierro, Daniel'},{n:387,name:'Lopez, Salvador'},
+  {n:388,name:'Juarez, Abraham'},{n:389,name:'Galdamez AJ, Selvin J'},{n:390,name:'Hernandez, Eberardo'},
+  {n:391,name:'Mejia Flores, Santos B'},{n:392,name:'Gonzalez Garcia, Carlos H'},{n:393,name:'Sep Chun, Ivan A'},
+  {n:394,name:'Garcia Garcia, Paulino'},{n:395,name:'Rodriguez Gamboa, David'},{n:396,name:'Bonilla Ramirez, Benjamin'},
+  {n:397,name:'Zuniga Montero, Adrian'},{n:398,name:'Gutierrez Meza, Jesus'},{n:399,name:'Albarran, Cecilia'},
+  {n:400,name:'Martinez, Jose L'},{n:401,name:'Benavente, Jose Luis'},{n:402,name:'Resendiz Aguilar, Dolores'},
+  {n:403,name:'Rodriguez Diaz, Alberto J'},{n:404,name:'Garcia, Juan'},{n:405,name:'Campos Castro, Rojelio'},
+  {n:406,name:'Meza, Jesus Manuel'},{n:407,name:'Ortiz Olvera, Francisco'},{n:408,name:'Ortiz Olvera, Cristian'},
+  {n:409,name:'Ortiz Arroyo, Jose Valentin'},{n:410,name:'Aguilar Santibanez, Gustavo'},{n:411,name:'Aguilar, Jose'},
+  {n:412,name:'Gomez, Rosmeri'},{n:413,name:'Zavaleta Flores, Fredy'},{n:414,name:'Medina, Christian Giancarlo'},
+  {n:415,name:'Ortiz Olvera, Giovanni Gabriel'},{n:416,name:'Martinez Maceda, Jaime'},{n:417,name:'Torralba Galeana, Hilario'},
+  {n:418,name:'Garcia Vidal, Nicolas'},{n:419,name:'Garcia Ramirez, Nicolas De Jesus'},{n:420,name:'Galeana Lopez, Jesus'},
+  {n:421,name:'Torralva Galeana, Jhoni'},{n:422,name:'Rosales, Jose Manuel'},{n:423,name:'Vidal Ramos, Benito'},
+  {n:424,name:'Galeana, Oscar'},{n:425,name:'Aguilar, Lorenzo'},{n:426,name:'Rios, Roman'},
+  {n:427,name:'Cruz, Sabino'},{n:428,name:'Carillo, Roberto Carlos'},{n:429,name:'Escobar Castaneda, Odra E'},
+  {n:430,name:'Gomez Deniz, Alan D'},{n:431,name:'Renteria, Jorge Benjamin'},{n:432,name:'Carrasco Lamas, Kevin'},
+  {n:433,name:'Martinez Hernandez, Luis J'},{n:434,name:'Parral, Jose'},{n:435,name:'Lizardi Rodriguez, Francisco'},
+  {n:436,name:'Ramirez, Alberto'},{n:437,name:'Anguiano Ocampo, Jonathan Alejandro'},{n:438,name:'Dominguez Mendoza, Enrique'},
+  {n:439,name:'Gama Calderon, Alfonso'},{n:440,name:'Terriquez, Marina'},{n:441,name:'Lopez Moralez, Alfonso'},
+  {n:442,name:'Garcia Fuentes, Juan'},{n:443,name:'Garcia Paz, Gerardo'},{n:444,name:'Nino Munoz, Luis Antonio'},
+  {n:445,name:'Ceja Santiago, Alfredo'},{n:446,name:'Munoz Martinez, Leonel'},{n:447,name:'Rodela, Edgar'},
+  {n:448,name:'Becerril, Cesar J'},{n:449,name:'Corona Flores, Emilio'},{n:450,name:'Duran Fierros, Alejandro'},
+  {n:451,name:'Mejia Romero, Osbaldo'},{n:452,name:'Mejia, Rene'},{n:453,name:'Gonzaga, Roberto'},
+  {n:454,name:'Aleman, Jorge Luis'},{n:455,name:'Aleman, Jorge Luis Jr'},{n:456,name:'Virgen Galvan, Jacinto'},
+  {n:457,name:'Robledo, Antonio'},{n:458,name:'Lopez, Beatriz'},{n:459,name:'Ochoa Zendejas, Armando'},
+  {n:460,name:'Lopez Perez, Byron'},{n:461,name:'Xocol Lopez, Domingo'},{n:462,name:'Ventura, Cesar'},
+  {n:463,name:'Guzman, Brandy'},{n:464,name:'Chilotillo Guarchaj, Kevin Emilio'},{n:465,name:'Parra, Jose M'},
+  {n:466,name:'Aleman, Erick Daman'},{n:467,name:'Soto, Alexander'},{n:468,name:'Casarrubias, Bernardino'},
+  {n:469,name:'Lattimore, Jordan P'},{n:470,name:'Rios Salazar, Mario'},{n:471,name:'Dominguez, Enrique Jr.'},
+  {n:472,name:'Yac, Ezequiel'},{n:473,name:'Flores Silva, Eduardo'},{n:474,name:'Ochoa Lopez, Joan'},
+  {n:475,name:'Corona, Erik'},{n:476,name:'Soto, Juan'},{n:477,name:'Ochoa, Miguel'},
+  {n:478,name:'Castro, Eloisa'},{n:479,name:'Leal Navarrete, Ever Usbaldo'},{n:480,name:'Hernandez, Daniel'},
+  {n:481,name:'Hernandez, Gerardo'},{n:482,name:'Montes, Antonio'},{n:483,name:'Vazquez, Martin'},
+  {n:484,name:'Gonzalez, Pedro'},{n:485,name:'Montes, Raul'},{n:486,name:'Martinez, Alejandro'},
+  {n:487,name:'Montes, Ruben'},{n:488,name:'Valencia Silva, Ricardo'},{n:489,name:'Tzaput Chox, Santos'},
+  {n:490,name:'Reyes Lopez, Juan Manuel'},{n:491,name:'Reyes Casas, Pedro'},{n:492,name:'Mejia, Jaime Angel Jr'},
+  {n:493,name:'Vazquez, Oscar'},{n:494,name:'Vazquez, Angel'},{n:495,name:'Grijalva, Martin'},
+  {n:496,name:'Prado Lopez, Fernando Antonio'},{n:497,name:'Chase, Kristen L'},{n:498,name:'Vasquez Perlaza, Rosa Hilda'},
+  {n:499,name:'Ramos Quinonez, Antonio'},{n:500,name:'Resendiz Resendiz, Antonio'},{n:501,name:'Garcia Aguas, Francisco'},
+  {n:502,name:'Garcia Perez, Jovanni'},{n:503,name:'Mariche de la Paz, Yadira'},{n:504,name:'Reyes, Sahori'},
+  {n:505,name:'Garcia Zarazua, Armando'},{n:506,name:'Melchor Aguas, Israel'},{n:507,name:'Zarazua, Antonio'},
+  {n:508,name:'Zarazua Cruz, Alejandro'},{n:509,name:'Aguilar, Edilberto'},{n:510,name:'Mariche De La Paz, Paola'},
+  {n:511,name:'Sanabria Ascencio, Nicole Alejandra'},{n:512,name:'Cupa, Anthony Leroy'},{n:513,name:'Gutierrez Partida, Juan Josue'},
+  {n:514,name:'Martinez, Eduardo'},{n:515,name:'Perez, Juan Jesus'},{n:516,name:'Avila, Guadalupe'},
+  {n:517,name:'Resendiz Aguas, Jose Abraham'},{n:518,name:'Garcia, Marco'},{n:519,name:'Gervacio, Marcelo'},
+  {n:520,name:'Torres, Francisco'},{n:521,name:'Francisco, Edy Cristobal'},{n:522,name:'Pena Ramiro, Monfilio'},
+  {n:523,name:'Navarro Segura, Ruben'},{n:524,name:'Sanchez, Jesus M'},{n:525,name:'Rodriguez Rolon, Gustavo'},
+  {n:526,name:'Gonzalez Aguilar, Oscar'},{n:527,name:'Alvarado, Joel'},{n:528,name:'Alvarado, Luis Daniel'},
+  {n:529,name:'Tobar Zavala, Carlos J'},{n:530,name:'Gutierrez Herrera, Sait'},{n:531,name:'Hernandez, Antonio De Jesus'},
+  {n:532,name:'Arevalo Portillo, Lucio Enrique'},{n:533,name:'Palomo, Pedro Antonio'},{n:534,name:'Munoz, David'},
+  {n:535,name:'Aguilar Morales, Juan Antonio'},{n:536,name:'Regla Lomeli, Cristobal'},{n:537,name:'Regla, Anthony Joel'},
+  {n:538,name:'Apeldoorn, Frank'},{n:539,name:'Espinoza Gutierrez, Antonio'},{n:540,name:'Ortiz, Walter Elenilzon'},
+  {n:541,name:'Florentino, Jose Luis'},{n:542,name:'Saucedo, Gustavo'},{n:543,name:'Reyes, Santiago'},
+  {n:544,name:'Hernandez, Salvador'},{n:545,name:'Lopez, Eric'},{n:546,name:'Samaniego Martinez, Ramiro'},
+  {n:547,name:'Medrano Torres, Jose Manuel'},{n:548,name:'Mejicanos, Jose'},{n:549,name:'Delgado Alvarez, Efrain'},
+  {n:550,name:'Cruz, Cristian'},{n:551,name:'Villafuerte Arana, David'},{n:552,name:'Maciel, Julio Cesar'},
+  {n:553,name:'Carvajal, Gumaro'},{n:554,name:'Sauceda, Gilberto'},{n:555,name:'Vasquez, Jose'},
+  {n:556,name:'Martinez Flores, Jeferson Alexander'},{n:557,name:'Contreras Barrera, Jose Isabel'},{n:558,name:'Sauceda, Eduardo'},
+  {n:559,name:'Chavez, Joshua'},{n:560,name:'Vazquez Lopez, Inocencio'},{n:561,name:'Morales Garcia, Angel'},
+  {n:562,name:'Garduno, Axel'},{n:563,name:'Carvajal, Porfirio'},{n:564,name:'Carvajal, Luis Antonio'},
+  {n:565,name:'Martinez Sanchez, Zeferino'},{n:566,name:'Aguilar, Jose Luis'},{n:567,name:'Aguilar Zuniga, Jose Luis'},
+  {n:568,name:'Alvirde, Jesus'},{n:569,name:'Vega, Rogelio'},{n:570,name:'Rodriguez, Kevin Jesus'},
+  {n:571,name:'Tavarez, Ricardo'},{n:572,name:'Esparza, Martin'},{n:573,name:'Hernandez, Jose'},
+  {n:574,name:'Hernandez Tapia, Cesar'},{n:575,name:'Nunez Torres, Benito'},{n:576,name:'Rosas, Omar'},
+  {n:577,name:'Perez, Alfonso'},{n:578,name:'Valles, Jose'},{n:579,name:'Parra, Refugio'},
+  {n:580,name:'Rodriguez, Oscar'},{n:581,name:'Espino, Dalia'},{n:582,name:'Hernandez, Jose Luis'},
+  {n:583,name:'Hernandez, Jose'},{n:584,name:'Flores, Mauricio Antonio'},{n:585,name:'Dolores, Cristian'},
+  {n:586,name:'Hernandez, Luis Fernando'},{n:587,name:'Cruz, Juan'},{n:588,name:'Ortiz Arroyo, Carlos'},
+  {n:589,name:'Rodriguez, Celia'},{n:590,name:'Trujillo, Juan Alfredo'},{n:591,name:'Marquez Monrroy, Epifanio'},
+  {n:592,name:'Galeana Victoriano, Misael'},{n:593,name:'Sierra De La Cruz, Ismael'},{n:594,name:'Sanchez Cristobal, Leonardo'},
+  {n:595,name:'Ramirez, Juan Lorenzo'},{n:596,name:'Hernandez Lorenzo, Jesus Alberto'},{n:597,name:'Diaz Diaz, Alfredo'},
+  {n:598,name:'Diaz Diaz, Edgar Leonel'},{n:599,name:'Maya, Adalberto'},{n:600,name:'Trigueros Ramirez, Ever Rodrigo'},
+  {n:601,name:'Villanueva, Jose Samuel'},{n:602,name:'Gonzalez Barahona, Noe I'},{n:603,name:'Garcia Cornejo, Oliver'},
+  {n:604,name:'Guillen, Lila'},{n:605,name:'Rubio, Rodrigo Fabian'},{n:606,name:'Cupa Guzman, Daniel A'},
+  {n:607,name:'Hernandez, Juan Pablo'},{n:608,name:'Quesada, Rogelio Jr'},{n:609,name:'Quesada, Ruben'},
+  {n:610,name:'Quesada, Rogelio Marin'},{n:611,name:'Reyes Tambriz, Gaspar'},{n:612,name:'Villarreal, Kevin'},
+  {n:613,name:'Soto, Antonio'},{n:614,name:'Villanueva Cano, Jose Israel'},{n:615,name:'Rivera, Rigoberto'},
+  {n:616,name:'Villanueva, Guillermo Eliezer'},{n:617,name:'Aparicio Guzman, Juan'},{n:618,name:'Mejia Amaya, Demetrio'},
+  {n:619,name:'Ruiz Garcia, Jose Francisco'},{n:620,name:'Llamas, Gabriel Fernando'},{n:621,name:'Tierrablanca Alvarez, Eloi'},
+  {n:622,name:'Valdillez Jr., Carlos'},{n:623,name:'Avila, Brandon'},{n:624,name:'Acevedo, Benjamin Jose'},
+  {n:625,name:'Rodriguez, Emilio'},{n:626,name:'Romero, Enrique'},{n:627,name:'Toscano Rivera, Alejandro Israel'},
+  {n:628,name:'Velazquez lopez, Martin'},{n:629,name:'Velazquez Sepulveda, Jose Martin'},{n:630,name:'Olivas Hernandez, Angel De Jesus'},
+  {n:631,name:'Hernandez, Jose Carlos'},{n:632,name:'Dias, Carlos'},{n:633,name:'Rodriguez, Margarita'},
+  {n:634,name:'Galvan, Raymond'},{n:635,name:'Martinez, Cirilo'},{n:636,name:'Luis Martinez, Juan Carlos'},
+  {n:637,name:'Coria, Ernesto'},{n:638,name:'Carlin Esparza, Alfredo'},{n:639,name:'Villarreal Meza, Mayra'},
+  {n:640,name:'Lopez Ramos, Raudy'},{n:641,name:'Rodriguez, Brian'},{n:642,name:'Arvizu Ibarra, Jose Manuel'},
+  {n:643,name:'Martinez, Salvador'},{n:644,name:'Garcia Rodriguez, Marco Alonzo'},{n:645,name:'Gonzalez Davila, Ricardo'},
+  {n:646,name:'Carvajal, Osorio'},{n:647,name:'Garcia, Francisco'},{n:648,name:'Zuriel, Santiago Mara'},
+  {n:649,name:'Vazquez Mendez, Ricardo'},{n:650,name:'Vazquez Mendez, Agustin'},{n:651,name:'Raymundo Lopez, Cristian Fernando'},
+  {n:652,name:'Parra Yepez, Antonio'},{n:653,name:'De Leon Garcia, Lorenzo P'},{n:654,name:'Gonzaga, Francisco'},
+  {n:655,name:'Gonzaga, Jose'},{n:656,name:'Calderon, Boris Fernando'},{n:657,name:'Alvarado, Arturo'},
+  {n:658,name:'Alvarado, Efrain'},{n:659,name:'Alvarado Lopez, Rafael'},{n:660,name:'Alvarado, Jose Luis'},
+  {n:661,name:'Mendez Garcia, Eduardo'},{n:662,name:'Marquez Aldana, Gumaro'},{n:663,name:'Barrales, Luis'},
+  {n:664,name:'Lopez Hernandez, Mauricio'},{n:665,name:'Acosta Chavez, Gabriel'},{n:666,name:'Ramirez Ortiz, Antonio'},
+  {n:667,name:'Villa, Natalio Soto'},{n:668,name:'Soto, Alejandro'},{n:669,name:'Ponce, Franco'},
+  {n:670,name:'Ledon, Luis'},{n:671,name:'Guzman Romero, Mercedes Adolfo'},{n:672,name:'Jimenez Machorro, Jose Gilberto'},
+  {n:673,name:'Machorro, Angel'},{n:674,name:'Aguilar, Steven'},{n:675,name:'Hernandez, Joseph'},
+  {n:676,name:'Tolentino Loza, Jose'},{n:677,name:'Tolentino Loza, Jose Luis'},{n:678,name:'Burciaga, Jesus'},
+  {n:679,name:'Baltazar Gonzalez, Salvador'},{n:680,name:'Flores, Homero'},{n:681,name:'Munoz, German'},
+  {n:682,name:'Valdez Llamas, Fabian'},{n:683,name:'Hernandez Munoz, Edgar Manuel'},{n:684,name:'Rios Velazquez, Florencio'},
+  {n:685,name:'Arce, Carlos'},{n:686,name:'Esparza, Fernando'},{n:687,name:'Romero, Cesar'},
+  {n:688,name:'Burciaga Carbajal, Jesus Fabian'},{n:689,name:'Arambula, Jose'},{n:690,name:'Elizarraraz, Alonso'},
+  {n:691,name:'Castillo Amay, Gonzalo De Jesus'},{n:692,name:'Corro, Jose L.'},{n:693,name:'Flores, Alondra'},
+  {n:694,name:'Morales, Emilio'},{n:695,name:'Perez, Vicente'},{n:696,name:'Mercado, Ricardo'},
+  {n:697,name:'Jimenez, Jose'},{n:698,name:'Hernandez, Elias'},{n:699,name:'Garcia Alvarez, Walner'},
+  {n:700,name:'Tiscareno, Refugio'},{n:701,name:'Zambrano, Jesus'},{n:702,name:'Pineda, Jose Luis'},
+  {n:703,name:'Garcia, Miguel'},{n:704,name:'Carlin, Cristian'},{n:705,name:'Jaimes, Jaime'},
+  {n:706,name:'Vera, Jennifer'},{n:707,name:'Hernandez, Jesus'},{n:708,name:'Bonilla, Mateo'},
+  {n:709,name:'Bonilla, Juan Carlos'},{n:710,name:'Hernandez, Francisco'},{n:711,name:'Gonzalez, Antonio D'},
+  {n:712,name:'Sanchez, Damian'},{n:713,name:'Mendoza Sanchez, Armando'},{n:714,name:'Nunez, Manuel de Jesus'},
+  {n:715,name:'Guerrero Nevarez, Rafael Antonio'},{n:716,name:'Mondragon Diaz, Bryan'},{n:717,name:'Martinez, Leonel'},
+  {n:718,name:'Valencia Cazarez, Juan Manuel'},{n:719,name:'Cortes Saldivar, Jose Juan'},{n:720,name:'Alcaraz Delgado, Ruben'},
+  {n:721,name:'Diaz, Roberto'},{n:722,name:'Garcia, Antonio'},{n:723,name:'Roldan, Salvador'},
+  {n:724,name:'Diaz Martines, Isidro'},{n:725,name:'Tolentino, Santiago'},{n:726,name:'Canizales, Juan'},
+  {n:727,name:'Flores, Jose'},{n:728,name:'Posada, Nelson'},{n:729,name:'Contreras, Alejandro'},
+  {n:730,name:'Hernandez Cruz, Yair'},{n:731,name:'Castro, Armando'},{n:732,name:'Garcia, Edwin'},
+  {n:733,name:'Espinoza, Miguel'},{n:734,name:'Hernandez, Carlos'},{n:735,name:'Corpeno Perez, Brayan E'},
+  {n:736,name:'Corpeno Perez, Evin H'},{n:737,name:'Irvin, Pedroza'},{n:738,name:'Romero, Ever'},
+  {n:739,name:'Ventura, Walter'},{n:740,name:'Pineda P, Jair G'},{n:741,name:'Reza, Jose J'},
+  {n:742,name:'Molina, Juan'},{n:743,name:'Pedroza, Alfredo'},{n:744,name:'Reza Soto, Rene'},
+  {n:745,name:'Rodriguez, Irving'},{n:746,name:'Espinoza, Yuliana'},{n:747,name:'Perez De La Luz, Martin'},
+  {n:748,name:'Nava, Felipe'},{n:749,name:'Rodriguez, Carmen L'},{n:750,name:'Lizarraga, Gilberto'},
+  {n:751,name:'Lizarraga, Sergio J'},{n:752,name:'Ramirez Gonzalez, Mikel M'},{n:753,name:'Preciado, Bryan'},
+  {n:754,name:'Preciado, Jose'},{n:755,name:'Rodriguez Bernal, David'},{n:756,name:'Chavez Santana, Omar'},
+  {n:757,name:'Estrada, Rosalio'},{n:758,name:'Acosta Lemus, Francisco'},{n:759,name:'Barrera, Daniel'},
+  {n:760,name:'Barrera, Bulmaro'},{n:761,name:'Quezada, Manuel'},{n:762,name:'Chavez, Valeria E'},
+  {n:763,name:'Aguirre Garcia, Antonio'},{n:764,name:'Sandoval Mendoza, Omar'},{n:765,name:'Gomez, Salvador'},
+  {n:766,name:'Perez, Leo'},{n:767,name:'Carillo, Tomas'},{n:768,name:'Haro Avila, Mariano'},
+  {n:769,name:'Haro, Arnulfo'},{n:770,name:'Haro Raygoza, Gonzalo'},{n:771,name:'Rodriguez, Benito'},
+  {n:772,name:'Altamirano, Rigoberto'},{n:773,name:'Flores, Ramiro'},{n:774,name:'Silva, Omar'},
+  {n:775,name:'Solorzano, Arturo'},{n:776,name:'Valencia Trujillo, Maria De Lourdes'},{n:777,name:'Luis Zavala Cortes'},
+  {n:778,name:'Tabiano Roldan Saldivar'},{n:779,name:'Fernando Dias Roldan'},{n:780,name:'Luis Baldenegro'},
+  {n:781,name:'Ismael Pedroza'},{n:782,name:'Yoni Portillo'},{n:783,name:'Fernando Benitez'},
+  {n:784,name:'Ryan Galvan'},{n:785,name:'Jose Francisco Martinez Mendoza'},{n:786,name:'Luis Perez'},
+  {n:787,name:'Jesus Bautista'},{n:788,name:'Adrian Rodriguez Martinez'},{n:789,name:'Jose Angel Mendoza Martinez'},
+  {n:790,name:'Jimmy Alexander Sigaran'},{n:791,name:'Manuel Montoya Recendez'},{n:792,name:'Austen Pualson'},
+  {n:793,name:'Jesus Corona'},{n:794,name:'Fausto Villasenor'},{n:795,name:'German Martinez'},
+  {n:796,name:'Alberto Bonilla'},{n:797,name:'Ramiro Beltran'},{n:798,name:'Brian Contreras'},
+  {n:799,name:'Luis Contreras'},{n:800,name:'Luis Contreras (Sr.)'},{n:801,name:'Servando Valenzuela'},
+  {n:802,name:'David Valenzuela'},{n:803,name:'Marti Carillo'},{n:804,name:'John Carrillo'},
+  {n:805,name:'Juan Carillo Gonzaga'},{n:806,name:'Raquel Carillo'},{n:807,name:'Abelardo De La Torre'},
+  {n:808,name:'Fidel Perez'},{n:809,name:'Rodolfo Duenas'},{n:810,name:'Jose Luis Murillo'},
+  {n:811,name:'Reinaldo Duenas'},{n:812,name:'Daniel Laguna'},{n:813,name:'Cecillo Perez'},
+  {n:814,name:'Miguel Perez'},{n:815,name:'Idelfonso Barrera Hernandez'},{n:816,name:'Victor Bautista'},
+  {n:817,name:'Diego Paz Ceja'},{n:818,name:'Ahren Aguilar'},{n:819,name:'Javier Juarez'},
+  {n:820,name:'Edith Santos Lopez'},{n:821,name:'Servando Valenzuela Flores'},{n:822,name:'Carlos Casarrubias'},
+  {n:823,name:'Sidronio Pacheco'},{n:824,name:'Alberto Garcia'},{n:825,name:'Marco Alonzo Garcia'},
+  {n:826,name:'Miguel Angel Vazquez Castillo'},{n:827,name:'Alfredo Venegas'},{n:828,name:'Jose Miguel Miranda'},
+  {n:829,name:'Jairo Benjamin Carranza Copeno'},{n:830,name:'Sergio Gomes'},{n:831,name:'Argenis Gonzalez'},
+];
+
+function switchToEmployeeNames() {
+  activeTab = 'emp';
+  renderTabBar();
+  showPanel('emp');
+  renderEmpTable();
+}
+
+function renderEmpTable() {
+  const q = (document.getElementById('emp-search').value || '').toLowerCase().trim();
+  const rows = EMP_DB.filter(e =>
+    !q || String(e.n).includes(q) || e.name.toLowerCase().includes(q)
+  );
+  document.getElementById('emp-count').textContent = rows.length + ' of ' + EMP_DB.length + ' employees';
+  document.getElementById('emp-tbody').innerHTML = rows.map(e =>
+    `<tr><td style="font-family:monospace;text-align:center;">${e.n}</td><td>${eh(e.name)}</td></tr>`
+  ).join('') || '<tr><td colspan="2" style="text-align:center;padding:24px;color:var(--muted);">No results found.</td></tr>';
+}
+
 function renderLCTable() {
   const q=(document.getElementById('lc-search').value||'').toLowerCase();
   const canEdit=isAdmin()||isPM();
@@ -2403,8 +2702,8 @@ function exportLCCSV() {
 //  TAB ROUTING
 // ═══════════════════════════
 function showPanel(name) {
-  ['csv-content','payroll-content','budgets-content','lc-content','paysheet-content','accounting-content','co-content'].forEach(id => document.getElementById(id).style.display = 'none');
-  const map = { csv:'csv-content', payroll:'payroll-content', budgets:'budgets-content', lc:'lc-content', accounting:'accounting-content', co:'co-content' };
+  ['csv-content','payroll-content','budgets-content','lc-content','emp-content','paysheet-content','accounting-content','co-content'].forEach(id => document.getElementById(id).style.display = 'none');
+  const map = { csv:'csv-content', payroll:'payroll-content', budgets:'budgets-content', lc:'lc-content', emp:'emp-content', accounting:'accounting-content', co:'co-content' };
   if (map[name]) document.getElementById(map[name]).style.display = 'block';
   if (name === 'budgets') {
     const hasFiles = getSavedCSVFiles().length > 0;
@@ -2420,8 +2719,10 @@ function renderTabBar() {
   document.getElementById('lc-tab').classList.toggle('active',         activeTab === 'lc');
   document.getElementById('paysheet-tab').classList.toggle('active',   activeTab === 'paysheet');
   document.getElementById('accounting-tab').classList.toggle('active', activeTab === 'accounting');
-  const coTabEl = document.getElementById('co-tab');
+  const coTabEl  = document.getElementById('co-tab');
   if (coTabEl) coTabEl.classList.toggle('active', activeTab === 'co');
+  const empTabEl = document.getElementById('emp-tab');
+  if (empTabEl) empTabEl.classList.toggle('active', activeTab === 'emp');
 }
 
 function switchToPayroll() {
