@@ -752,6 +752,22 @@
 
   <!-- Employee Names content -->
   <div id="emp-content" style="display:none;">
+    <div id="emp-admin-form" style="display:none;">
+      <div class="lc-add-form">
+        <div class="field" style="margin:0;flex:0 0 130px;">
+          <label>Employee #</label>
+          <input type="number" id="emp-new-num" class="fi" placeholder="e.g. 832" min="1" step="1" />
+        </div>
+        <div class="field" style="margin:0;flex:1;min-width:200px;">
+          <label>Employee Name</label>
+          <input type="text" id="emp-new-name" class="fi" placeholder="e.g. Smith, John" onkeydown="if(event.key==='Enter')addEmployee()" />
+        </div>
+        <div class="field" style="margin:0;">
+          <label>&nbsp;</label>
+          <button class="pr-add-btn" onclick="addEmployee()">+ Add Employee</button>
+        </div>
+      </div>
+    </div>
     <div class="filters" style="margin-bottom:16px;">
       <input type="text" id="emp-search" class="fi" placeholder="Search by name or employee #…" oninput="renderEmpTable()" style="flex:1;min-width:180px;" />
       <span id="emp-count" style="font-size:.8rem;color:var(--muted);white-space:nowrap;align-self:center;"></span>
@@ -761,6 +777,7 @@
         <thead><tr>
           <th style="width:120px;">Employee #</th>
           <th>Employee Name</th>
+          <th style="width:80px;cursor:default;" id="emp-action-col"></th>
         </tr></thead>
         <tbody id="emp-tbody"></tbody>
       </table>
@@ -1383,16 +1400,17 @@ let _currentUserRole = null;
 let _currentUser     = null;
 
 // ─── In-memory data cache ───
-const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, paysheets: null, psFolders: null, psFolderMeta: {}, psFolderRequests: [], changeorders: [], corbudgets: [] };
+const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, employees: null, paysheets: null, psFolders: null, psFolderMeta: {}, psFolderRequests: [], changeorders: [], corbudgets: [] };
 
 async function loadAllData() {
   const loadMsg = document.getElementById('loading-msg');
   if (loadMsg) loadMsg.textContent = 'Loading data…';
-  const [jobsSnap, payrollSnap, woSnap, lcDoc, paysheetsSnap, psFoldersSnap, psFolderReqSnap, coSnap, corbSnap] = await Promise.all([
+  const [jobsSnap, payrollSnap, woSnap, lcDoc, empDoc, paysheetsSnap, psFoldersSnap, psFolderReqSnap, coSnap, corbSnap] = await Promise.all([
     db.collection('jobs').get(),
     db.collection('payroll').get(),
     db.collection('workorders').get(),
     db.collection('config').doc('laborcodes').get(),
+    db.collection('config').doc('employees').get(),
     db.collection('paysheets').get(),
     db.collection('psfolders').get(),
     db.collection('psfolderrequests').get(),
@@ -1410,6 +1428,7 @@ async function loadAllData() {
   _cache.payroll    = payrollSnap.docs.map(d => d.data());
   _cache.workorders = woSnap.docs.map(d => d.data());
   _cache.laborcodes = sortLaborCodes(lcDoc.exists ? (lcDoc.data().codes || []) : []);
+  _cache.employees  = empDoc.exists ? (empDoc.data().employees || null) : null;
   _cache.paysheets  = paysheetsSnap.docs.map(d => d.data());
   // Shared week-ending folders — Firestore-backed, visible to all roles
   _cache.psFolders    = psFoldersSnap.docs.map(d => d.data().weekEnding).filter(Boolean).sort((a,b) => b.localeCompare(a));
@@ -2317,7 +2336,9 @@ function switchToLaborCodes() {
 }
 
 // ── Employee Names ─────────────────────────────────────────────────────────
-const EMP_DB = [
+let _empEditingNum = null; // tracks which employee row is in edit mode
+
+const EMP_DB_DEFAULT = [
   {n:1,name:'Espino, Belinda'},{n:2,name:'Millan, Omar'},{n:3,name:'Gomez Rueda, Epifanio'},
   {n:4,name:'Serafin Melgarejo, Alejandro'},{n:5,name:'Jimenez Ramos, Juan M'},{n:6,name:'Apeldoorn, Guadalupe'},
   {n:20,name:'Camacho, Alejandro'},{n:26,name:'Gomez, Manuel'},{n:27,name:'Ramirez Arcos, Misael'},
@@ -2577,22 +2598,107 @@ const EMP_DB = [
   {n:829,name:'Jairo Benjamin Carranza Copeno'},{n:830,name:'Sergio Gomes'},{n:831,name:'Argenis Gonzalez'},
 ];
 
+function getEmployees() {
+  return Array.isArray(_cache.employees) && _cache.employees.length ? _cache.employees : EMP_DB_DEFAULT;
+}
+
+function saveEmployees(list) {
+  _cache.employees = list;
+  db.collection('config').doc('employees').set({ employees: list }).catch(e => console.error('employees write:', e));
+}
+
+function sortEmployees(list) {
+  return list.slice().sort((a, b) => a.n - b.n);
+}
+
 function switchToEmployeeNames() {
+  _empEditingNum = null;
   activeTab = 'emp';
   renderTabBar();
   showPanel('emp');
+  const canEdit = isAdmin() || isAccounting();
+  document.getElementById('emp-admin-form').style.display = canEdit ? 'block' : 'none';
+  document.getElementById('emp-action-col').textContent   = canEdit ? 'Action' : '';
   renderEmpTable();
 }
 
 function renderEmpTable() {
-  const q = (document.getElementById('emp-search').value || '').toLowerCase().trim();
-  const rows = EMP_DB.filter(e =>
-    !q || String(e.n).includes(q) || e.name.toLowerCase().includes(q)
-  );
-  document.getElementById('emp-count').textContent = rows.length + ' of ' + EMP_DB.length + ' employees';
-  document.getElementById('emp-tbody').innerHTML = rows.map(e =>
-    `<tr><td style="font-family:monospace;text-align:center;">${e.n}</td><td>${eh(e.name)}</td></tr>`
-  ).join('') || '<tr><td colspan="2" style="text-align:center;padding:24px;color:var(--muted);">No results found.</td></tr>';
+  const q       = (document.getElementById('emp-search').value || '').toLowerCase().trim();
+  const canEdit = isAdmin() || isAccounting();
+  const all     = getEmployees();
+  const rows    = all.filter(e => !q || String(e.n).includes(q) || e.name.toLowerCase().includes(q));
+  document.getElementById('emp-count').textContent = rows.length + ' of ' + all.length + ' employees';
+
+  const pencilSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>`;
+
+  document.getElementById('emp-tbody').innerHTML = rows.map(e => {
+    if (_empEditingNum === e.n) {
+      return `<tr id="emp-edit-row">
+        <td><input type="number" id="emp-edit-num" value="${e.n}" style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-family:monospace;font-size:.85rem;" /></td>
+        <td><input type="text" id="emp-edit-name" value="${eh(e.name)}" style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:.85rem;" /></td>
+        <td style="text-align:center;white-space:nowrap;">
+          <button class="btn-sm" onclick="saveEmployeeEdit(${e.n})" style="margin-right:4px;">Save</button>
+          <button class="btn-sm btn-danger" onclick="cancelEmployeeEdit()">Cancel</button>
+        </td>
+      </tr>`;
+    }
+    return `<tr>
+      <td style="font-family:monospace;text-align:center;">${e.n}</td>
+      <td>${eh(e.name)}</td>
+      <td style="text-align:center;white-space:nowrap;">
+        ${canEdit ? `<button class="btn-sm" onclick="editEmployee(${e.n})" style="margin-right:4px;padding:3px 7px;" title="Edit">${pencilSVG}</button>` : ''}
+        ${canEdit ? `<button class="btn-sm btn-danger" onclick="deleteEmployee(${e.n},'${ea(e.name)}')">✕</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="3" style="text-align:center;padding:24px;color:var(--muted);">No results found.</td></tr>`;
+}
+
+function addEmployee() {
+  const numRaw = document.getElementById('emp-new-num').value.trim();
+  const name   = document.getElementById('emp-new-name').value.trim();
+  if (!numRaw || !name) { alert('Please enter both an employee number and a name.'); return; }
+  const n = parseInt(numRaw, 10);
+  if (isNaN(n) || n < 1) { alert('Employee number must be a positive integer.'); return; }
+  const list = getEmployees();
+  if (list.some(e => e.n === n)) { alert(`Employee #${n} already exists.`); return; }
+  const updated = sortEmployees([...list, { n, name }]);
+  saveEmployees(updated);
+  document.getElementById('emp-new-num').value  = '';
+  document.getElementById('emp-new-name').value = '';
+  renderEmpTable();
+}
+
+function editEmployee(num) {
+  _empEditingNum = num;
+  renderEmpTable();
+  const nameEl = document.getElementById('emp-edit-name');
+  if (nameEl) nameEl.focus();
+}
+
+function saveEmployeeEdit(origNum) {
+  const numRaw = (document.getElementById('emp-edit-num').value || '').trim();
+  const name   = (document.getElementById('emp-edit-name').value || '').trim();
+  if (!numRaw || !name) { alert('Employee number and name cannot be empty.'); return; }
+  const n = parseInt(numRaw, 10);
+  if (isNaN(n) || n < 1) { alert('Employee number must be a positive integer.'); return; }
+  const list = getEmployees();
+  if (n !== origNum && list.some(e => e.n === n)) { alert(`Employee #${n} already exists.`); return; }
+  const updated = sortEmployees(list.map(e => e.n === origNum ? { n, name } : e));
+  saveEmployees(updated);
+  _empEditingNum = null;
+  renderEmpTable();
+}
+
+function cancelEmployeeEdit() {
+  _empEditingNum = null;
+  renderEmpTable();
+}
+
+function deleteEmployee(num, name) {
+  if (!confirm(`Delete employee #${num} — ${name}? This cannot be undone.`)) return;
+  const updated = getEmployees().filter(e => e.n !== num);
+  saveEmployees(updated);
+  renderEmpTable();
 }
 
 function renderLCTable() {
