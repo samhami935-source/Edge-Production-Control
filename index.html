@@ -6955,6 +6955,7 @@ function psSplitPctChanged(i, val) {
   _ps().splits[i].amount = amount;
   const amtEl = document.getElementById('ps-split-amt-' + i);
   if (amtEl) amtEl.value = amount;
+  _psUpdateSplitTotalsDisplay();
   psScheduleAnyAutoSave();
 }
 
@@ -6967,6 +6968,22 @@ function _psRecalcSplitAmounts(total) {
     const amtEl  = document.getElementById('ps-split-amt-' + i);
     if (amtEl) amtEl.value = s.amount;
   });
+  _psUpdateSplitTotalsDisplay();
+}
+
+function _psUpdateSplitTotalsDisplay() {
+  const splits = _ps().splits;
+  const totalPct = splits.reduce((sum, s) => sum + (parseFloat(s.pctSplit) || 0), 0);
+  const totalAmt = splits.reduce((sum, s) => sum + (parseFloat(s.amount)   || 0), 0);
+  const pctEl = document.getElementById('ps-split-total-pct');
+  const amtEl = document.getElementById('ps-split-total-amt');
+  if (pctEl) {
+    const pctDisplay = totalPct % 1 === 0 ? totalPct.toFixed(0) : totalPct.toFixed(1);
+    pctEl.textContent = pctDisplay + '%';
+  }
+  if (amtEl) {
+    amtEl.textContent = '$' + totalAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
 }
 
 function psRenderCrewTable() {
@@ -7065,9 +7082,27 @@ function psRenderCrewTable() {
        </div>`
     : '';
 
+  // Totals footer for weekly splits
+  let tfoot = '';
+  if (!isDaily) {
+    const totalPct = splits.reduce((sum, s) => sum + (parseFloat(s.pctSplit) || 0), 0);
+    const totalAmt = splits.reduce((sum, s) => sum + (parseFloat(s.amount)   || 0), 0);
+    const pctDisplay = totalPct % 1 === 0 ? totalPct.toFixed(0) : totalPct.toFixed(1);
+    const amtDisplay = '$' + totalAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    tfoot = `<tfoot>
+      <tr style="background:#d9d9d9;font-weight:700;">
+        <td style="border:1px solid #000;padding:5px 8px;font-size:12px;text-align:center;" colspan="2">TOTAL</td>
+        <td style="border:1px solid #000;padding:5px 8px;font-size:12px;text-align:center;" id="ps-split-total-pct">${pctDisplay}%</td>
+        <td style="border:1px solid #000;padding:5px 8px;font-size:12px;text-align:right;" id="ps-split-total-amt">${amtDisplay}</td>
+        <td style="border:1px solid #000;padding:5px 8px;"></td>
+      </tr>
+    </tfoot>`;
+  }
+
   section.innerHTML = addSplitBtn + `<table style="width:100%;border-collapse:collapse;">
     <thead>${thead}</thead>
     <tbody>${rows}</tbody>
+    ${tfoot}
   </table>`;
 }
 
@@ -7084,6 +7119,7 @@ function psSplitAmtChanged(i, val) {
   _ps().splits[i].pctSplit = pct;
   const pctEl = document.getElementById('ps-split-pct-' + i);
   if (pctEl) pctEl.value = pct;
+  _psUpdateSplitTotalsDisplay();
   psScheduleAnyAutoSave();
 }
 
