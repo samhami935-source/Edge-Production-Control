@@ -2618,6 +2618,10 @@ function switchToEmployeeNames() {
   const canEdit = isAdmin() || isAccounting();
   document.getElementById('emp-admin-form').style.display = canEdit ? 'block' : 'none';
   document.getElementById('emp-action-col').textContent   = canEdit ? 'Action' : '';
+  if (canEdit) {
+    const maxN = getEmployees().reduce((m, e) => Math.max(m, e.n || 0), 0);
+    document.getElementById('emp-new-num').placeholder = 'e.g. ' + (maxN + 1);
+  }
   renderEmpTable();
 }
 
