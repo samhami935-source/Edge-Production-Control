@@ -8082,17 +8082,26 @@ async function psCreateFolder() {
   if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can create week-ending folders.'); return; }
   const d = document.getElementById('ps-new-folder-date').value;
   if (!d) { alert('Please select a week ending date.'); return; }
-  if (!(_cache.psFolders || []).includes(d)) {
-    try {
-      await db.collection('psfolders').doc(d).set({
-        weekEnding: d,
-        createdBy:  _currentUser ? _currentUser.email : 'unknown',
-        createdAt:  new Date().toISOString(),
-      });
-      if (!_cache.psFolders) _cache.psFolders = [];
-      _cache.psFolders.push(d);
-      _cache.psFolders.sort((a, b) => b.localeCompare(a));
-    } catch(e) { alert('Failed to create folder: ' + e.message); return; }
+  if ((_cache.psFolders || []).includes(d)) {
+    alert('A folder for ' + _fmtWeekDate(d) + ' already exists.');
+    return;
+  }
+  try {
+    const folderData = {
+      weekEnding: d,
+      createdBy:  _currentUser ? _currentUser.email : 'unknown',
+      createdAt:  new Date().toISOString(),
+    };
+    await db.collection('psfolders').doc(d).set(folderData);
+    if (!_cache.psFolders) _cache.psFolders = [];
+    _cache.psFolders.push(d);
+    _cache.psFolders.sort((a, b) => b.localeCompare(a));
+    if (!_cache.psFolderMeta) _cache.psFolderMeta = {};
+    _cache.psFolderMeta[d] = folderData;
+  } catch(e) {
+    console.error('psCreateFolder:', e);
+    alert('Failed to create folder: ' + e.message);
+    return;
   }
   _psLoadOpenFolders.add(d);
   document.getElementById('ps-new-folder-form').style.display = 'none';
