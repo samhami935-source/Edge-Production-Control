@@ -8435,14 +8435,7 @@ function renderPSLoadList() {
         const weekly = sheets.filter(p => p.type !== 'daily');
         folderBody = `
           <div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Inputs (${diInputsHere.length})</div>
-          ${diInputsHere.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(d => `
-            <div style="display:flex;align-items:center;gap:10px;padding:8px 14px 8px 36px;border-top:1px solid var(--border);flex-wrap:wrap;">
-              <span style="font-size:.72rem;background:rgba(201,168,76,.15);color:var(--accent);border:1px solid rgba(201,168,76,.3);padding:1px 6px;border-radius:4px;font-weight:700;">INPUT · ${_fmtWeekDate(d.date||'')}</span>
-              <span style="font-size:.82rem;flex:1;">${eh(d.job||'')}</span>
-              <span style="font-size:.75rem;color:var(--muted);">${(d.crews||[]).map(c=>(c.crewLeadName||`Crew ${c.crewNum}`)).join(', ')}</span>
-              <span style="font-size:.75rem;color:var(--muted);">${new Set((d.crews||[]).flatMap(c=>(c.entries||[]).map(e=>(e.employee||'').trim()).filter(Boolean))).size} emp</span>
-              <span style="font-size:.75rem;color:var(--muted);">${eh(d.submittedBy||'')}</span>
-            </div>`).join('')}
+          ${diInputsHere.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(d => _diLoadRow(d)).join('')}
           <div style="padding:8px 14px 10px 36px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap;">
             ${canCompilePaysheet() && activeJob ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">
               📋 Compile into Weekly Paysheet
@@ -8462,14 +8455,7 @@ function renderPSLoadList() {
       const diInputsHere = (_cache.dailyInputs||[]).filter(d => d.weekEnding === we && (!activeJob || d.job === activeJob));
       folderBody = `
         ${diInputsHere.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Inputs (${diInputsHere.length})</div>
-          ${diInputsHere.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(d => `
-            <div style="display:flex;align-items:center;gap:10px;padding:8px 14px 8px 36px;border-top:1px solid var(--border);flex-wrap:wrap;">
-              <span style="font-size:.72rem;background:rgba(201,168,76,.15);color:var(--accent);border:1px solid rgba(201,168,76,.3);padding:1px 6px;border-radius:4px;font-weight:700;">INPUT · ${_fmtWeekDate(d.date||'')}</span>
-              <span style="font-size:.82rem;flex:1;">${eh(d.job||'')}</span>
-              <span style="font-size:.75rem;color:var(--muted);">${(d.crews||[]).map(c=>(c.crewLeadName||`Crew ${c.crewNum}`)).join(', ')}</span>
-              <span style="font-size:.75rem;color:var(--muted);">${new Set((d.crews||[]).flatMap(c=>(c.entries||[]).map(e=>(e.employee||'').trim()).filter(Boolean))).size} emp</span>
-              <span style="font-size:.75rem;color:var(--muted);">${eh(d.submittedBy||'')}</span>
-            </div>`).join('')}` : ''}
+          ${diInputsHere.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(d => _diLoadRow(d)).join('')}` : ''}
         ${daily.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Legacy Daily Paysheets (${daily.length})</div>
           ${daily.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(p => _psLoadRow(p, we)).join('')}` : ''}
         ${weekly.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--green);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">★ Weekly Summary</div>
@@ -8509,6 +8495,55 @@ function renderPSLoadList() {
       </div>
     </div>`;
   }).join('');
+}
+
+function _diLoadRow(d) {
+  const allWE = [...new Set([...(_cache.psFolders||[]), ...(_cache.dailyInputs||[]).map(x=>x.weekEnding).filter(Boolean)])].sort((a,b)=>b.localeCompare(a));
+  const moveOpts = canManagePSFolders()
+    ? allWE.filter(f => f !== d.weekEnding).map(f => `<option value="${f}">${_fmtWeekDate(f)}</option>`).join('')
+    : '';
+  const safeId = (d.id||'').replace(/'/g,"\\'");
+  const empCount = new Set((d.crews||[]).flatMap(c=>(c.entries||[]).map(e=>(e.employee||'').trim()).filter(Boolean))).size;
+  const crewNames = (d.crews||[]).map(c=>(c.crewLeadName||`Crew ${c.crewNum}`)).join(', ');
+  return `<div style="display:flex;align-items:center;gap:8px;padding:8px 14px 8px 36px;border-top:1px solid var(--border);flex-wrap:wrap;">
+    <span style="font-size:.72rem;background:rgba(201,168,76,.15);color:var(--accent);border:1px solid rgba(201,168,76,.3);padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;">INPUT · ${_fmtWeekDate(d.date||'')}</span>
+    <span style="font-size:.82rem;flex:1;min-width:80px;">${eh(d.job||'')}</span>
+    <span style="font-size:.75rem;color:var(--muted);">${eh(crewNames)}</span>
+    <span style="font-size:.75rem;color:var(--muted);">${empCount} emp</span>
+    <span style="font-size:.75rem;color:var(--muted);">${eh(d.submittedBy||'')}</span>
+    ${moveOpts ? `<select class="fi" style="font-size:.75rem;padding:4px 8px;height:30px;margin-top:0;" title="Move to another folder" onchange="psMoveDailyTo('${safeId}',this.value,this)">
+      <option value="">Move to…</option>${moveOpts}
+    </select>` : ''}
+  </div>`;
+}
+
+async function psMoveDailyTo(docId, newWeekEnding, selectEl) {
+  if (!newWeekEnding) return;
+  selectEl.value = '';
+  if (!confirm(`Move this daily input to "Week Ending: ${_fmtWeekDate(newWeekEnding)}"?`)) return;
+  const di = (_cache.dailyInputs||[]).find(x => x.id === docId);
+  if (!di) { alert('Daily input not found.'); return; }
+  try {
+    await db.collection('dailyinput').doc(docId).update({ weekEnding: newWeekEnding });
+    const idx = (_cache.dailyInputs||[]).findIndex(x => x.id === docId);
+    if (idx !== -1) _cache.dailyInputs[idx] = Object.assign({}, _cache.dailyInputs[idx], { weekEnding: newWeekEnding });
+    // Ensure destination folder exists
+    if (!(_cache.psFolders||[]).includes(newWeekEnding)) {
+      try {
+        await db.collection('psfolders').doc(newWeekEnding).set({
+          weekEnding: newWeekEnding, createdBy: _currentUser ? _currentUser.email : 'unknown',
+          createdAt: new Date().toISOString(), autoCreated: true,
+        });
+        if (!_cache.psFolders) _cache.psFolders = [];
+        _cache.psFolders.push(newWeekEnding);
+        _cache.psFolders.sort((a,b) => b.localeCompare(a));
+        if (!_cache.psFolderMeta) _cache.psFolderMeta = {};
+        _cache.psFolderMeta[newWeekEnding] = { weekEnding: newWeekEnding };
+      } catch(e) { /* non-fatal */ }
+    }
+    _psLoadOpenFolders.add(newWeekEnding);
+    renderPSLoadList();
+  } catch(e) { alert('Move failed: ' + e.message); }
 }
 
 function _psLoadRow(p, currentFolder) {
