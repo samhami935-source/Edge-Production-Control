@@ -8608,17 +8608,12 @@ async function psMovePaysheetTo(docId, newWeekEnding, selectEl) {
   const ps = (_cache.paysheets||[]).find(p => p.id === docId);
   if (!ps) { alert('Paysheet not found.'); return; }
 
-  const newDocId = ((ps.job||'') + '_' + newWeekEnding).replace(/[^\w-]/g, '_');
-  const newDoc = Object.assign({}, ps, { id: newDocId, weekEnding: newWeekEnding });
-
   try {
-    await db.collection('paysheets').doc(newDocId).set(newDoc);
-    await db.collection('paysheets').doc(docId).delete();
-    if (_cache.paysheets) {
-      _cache.paysheets = _cache.paysheets.filter(p => p.id !== docId);
-      const existing = _cache.paysheets.findIndex(p => p.id === newDocId);
-      if (existing !== -1) _cache.paysheets[existing] = newDoc; else _cache.paysheets.push(newDoc);
-    }
+    // Use .update() — keeps the same doc ID, just changes weekEnding.
+    // (Avoids delete+recreate which could cause ID collisions and data loss.)
+    await db.collection('paysheets').doc(docId).update({ weekEnding: newWeekEnding });
+    const idx = (_cache.paysheets||[]).findIndex(p => p.id === docId);
+    if (idx !== -1) _cache.paysheets[idx] = Object.assign({}, _cache.paysheets[idx], { weekEnding: newWeekEnding });
     // Ensure the destination folder exists in Firestore so all users see it
     if (!(_cache.psFolders||[]).includes(newWeekEnding)) {
       try {
@@ -8635,8 +8630,6 @@ async function psMovePaysheetTo(docId, newWeekEnding, selectEl) {
     }
     _psLoadOpenFolders.add(newWeekEnding);
     renderPSLoadList();
-    // Load and preview the moved paysheet
-    await loadPaysheetFromCloud(newDocId);
   } catch(e) { alert('Move failed: ' + e.message); }
 }
 
