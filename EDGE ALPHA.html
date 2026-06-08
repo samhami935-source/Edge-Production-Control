@@ -3805,13 +3805,16 @@ function diDeleteCrew(crewNum) {
 async function diSaveCrewSet() {
   const lead = (_diCrewLeadNames[_diActiveCrew] || '').trim();
   if (!lead) { alert('Enter a Crew Lead name before saving.'); return; }
-  const employees = (_diData[_diActiveCrew] || [])
-    .map(r => (r.employee || '').trim()).filter(Boolean);
+  const employeeData = (_diData[_diActiveCrew] || [])
+    .filter(r => (r.employee || '').trim())
+    .map(r => ({ empNum: (r.empNum || '').trim(), name: (r.employee || '').trim() }));
+  const employees = employeeData.map(e => e.name); // backward compat
   const id  = ('crewset_' + ((_currentUser ? _currentUser.uid : 'anon') + '_' + Date.now())).replace(/[^\w-]/g, '_');
   const doc = {
     id,
     name:         lead,
     employees,
+    employeeData,
     createdBy:    _currentUser ? _currentUser.email : 'unknown',
     createdByUid: _currentUser ? _currentUser.uid   : 'anon',
     createdAt:    new Date().toISOString(),
@@ -3839,7 +3842,7 @@ async function diOpenCrewSetsModal() {
       <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;gap:10px;">
         <div>
           <div style="font-weight:700;font-size:.9rem;color:var(--accent);">${eh(s.name)}</div>
-          <div style="font-size:.78rem;color:var(--muted);margin-top:2px;">${(s.employees||[]).length} employees · ${s.employees && s.employees.length ? eh(s.employees.slice(0,4).join(', ')) + (s.employees.length>4?' …':'') : '—'}</div>
+          <div style="font-size:.78rem;color:var(--muted);margin-top:2px;">${(s.employeeData||s.employees||[]).length} employees · ${(() => { const list = s.employeeData ? s.employeeData.map(e => (e.empNum ? e.empNum + ' ' : '') + e.name) : (s.employees||[]); return list.length ? eh(list.slice(0,4).join(', ')) + (list.length>4?' …':'') : '—'; })()}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;">
           <button class="btn-sm" style="border-color:var(--accent);color:var(--accent);font-weight:700;" onclick="diLoadCrewSet('${eh(s.id)}')">Load</button>
@@ -3868,13 +3871,18 @@ async function diLoadCrewSet(id) {
       _diAllData[jn].__crewLeadNames[_diActiveCrew] = s.name;
     }
     // Fill employee rows from saved crew set
-    const emps = (s.employees || []);
+    // Prefer employeeData (has empNum) — fall back to plain employees array for old saves
+    const hasEmpData = Array.isArray(s.employeeData) && s.employeeData.length;
+    const emps = hasEmpData ? s.employeeData : (s.employees || []).map(n => ({ empNum: '', name: n }));
     const existingRows = _diData[_diActiveCrew] || [];
     // Extend rows if needed
     while (existingRows.length < emps.length) {
       existingRows.push({empNum:'', employee:'', area:'', costCode:'', description:''});
     }
-    emps.forEach((emp, i) => { existingRows[i].employee = emp; });
+    emps.forEach((emp, i) => {
+      existingRows[i].employee = emp.name || '';
+      existingRows[i].empNum   = emp.empNum || '';
+    });
     _diData[_diActiveCrew] = existingRows;
     if (jn && _diAllData[jn]) _diAllData[jn][_diActiveCrew] = existingRows;
     // Sync paysheet crew name
