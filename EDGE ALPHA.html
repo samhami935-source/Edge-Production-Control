@@ -3978,7 +3978,7 @@ function diRenderCrewTable() {
         if (!firstEmp || firstEmp === prevLead) {
           rows[0].employee = val.trim();
           // Update DOM directly — avoids full table re-render which would reset this input
-          const firstEmpInput = document.querySelector('#di-employees-list input[data-emp-idx="0"]');
+          const firstEmpInput = document.getElementById('di-emp-name-' + _diActiveCrew + '-0');
           if (firstEmpInput) firstEmpInput.value = val.trim();
         }
       }
