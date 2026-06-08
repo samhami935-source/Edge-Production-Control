@@ -5054,7 +5054,7 @@ async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
       if (!e.employee || seenEmp.has(e.employee) || si >= PS_SPLIT_ROWS) return;
       seenEmp.add(e.employee);
       state.splits[si].employee = e.employee;
-      state.splits[si].empNum   = e.empNum || '';
+      state.splits[si].empNum   = _resolveEmpNum(e.empNum || '', e.employee);
       si++;
     });
 
@@ -5467,6 +5467,18 @@ function diDeleteRow(crew, i) {
   diAutoSaveDraft();
 }
 
+// ── Employee # resolver ───────────────────────────────────────────────────────
+// Returns the empNum if already set; otherwise falls back to a name-lookup in
+// the Employee Names tab. This makes old data (saved before empNum existed)
+// display the correct number without any manual re-entry.
+function _resolveEmpNum(empNum, employeeName) {
+  if (empNum) return empNum;
+  if (!employeeName) return '';
+  const q = (employeeName || '').trim().toLowerCase();
+  const match = getEmployees().find(e => e.name.toLowerCase() === q);
+  return match ? String(match.n) : '';
+}
+
 // ── Employee # ↔ Name auto-fill ──────────────────────────────────────────────
 // Called onblur from the employee # input. Looks up the number in the Employee
 // Names tab and fills the name field if a match is found (free entry is allowed).
@@ -5619,7 +5631,7 @@ function psAutoFillFromDaily() {
       if (!r.employee || seenEmp.has(r.employee) || si >= PS_SPLIT_ROWS) return;
       seenEmp.add(r.employee);
       state.splits[si].employee = r.employee;
-      state.splits[si].empNum   = r.empNum || '';
+      state.splits[si].empNum   = _resolveEmpNum(r.empNum || '', r.employee);
       si++;
     });
 
@@ -5667,7 +5679,7 @@ function diAutoFillFromLog(id) {
         if (!e.employee || seenEmp.has(e.employee) || si >= PS_SPLIT_ROWS) return;
         seenEmp.add(e.employee);
         state.splits[si].employee = e.employee;
-        state.splits[si].empNum   = e.empNum || '';
+        state.splits[si].empNum   = _resolveEmpNum(e.empNum || '', e.employee);
         si++;
       });
 
@@ -9521,9 +9533,9 @@ function acctGetData(weekEnding, jobFilter) {
           if (empMap.has(key)) {
             const entry = empMap.get(key);
             entry.amount += amount;
-            if (!entry.empNum && s.empNum) entry.empNum = (s.empNum || '').trim();
+            if (!entry.empNum) entry.empNum = _resolveEmpNum((s.empNum || '').trim(), name);
           } else {
-            empMap.set(key, { displayName: name, empNum: (s.empNum || '').trim(), amount });
+            empMap.set(key, { displayName: name, empNum: _resolveEmpNum((s.empNum || '').trim(), name), amount });
           }
         });
       });
