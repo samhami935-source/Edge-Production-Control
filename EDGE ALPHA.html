@@ -5619,6 +5619,7 @@ function psAutoFillFromDaily() {
       if (!r.employee || seenEmp.has(r.employee) || si >= PS_SPLIT_ROWS) return;
       seenEmp.add(r.employee);
       state.splits[si].employee = r.employee;
+      state.splits[si].empNum   = r.empNum || '';
       si++;
     });
 
@@ -5666,6 +5667,7 @@ function diAutoFillFromLog(id) {
         if (!e.employee || seenEmp.has(e.employee) || si >= PS_SPLIT_ROWS) return;
         seenEmp.add(e.employee);
         state.splits[si].employee = e.employee;
+        state.splits[si].empNum   = e.empNum || '';
         si++;
       });
 
@@ -5892,6 +5894,7 @@ function psAutoFillCrewFromDaily(crewNum) {
     if (!r.employee || seenEmp.has(r.employee) || si >= PS_SPLIT_ROWS) return;
     seenEmp.add(r.employee);
     state.splits[si].employee = r.employee;
+    state.splits[si].empNum   = r.empNum || '';
     si++;
   });
 
@@ -9516,9 +9519,11 @@ function acctGetData(weekEnding, jobFilter) {
           if (!name) return;
           const key = name.toLowerCase();
           if (empMap.has(key)) {
-            empMap.get(key).amount += amount;
+            const entry = empMap.get(key);
+            entry.amount += amount;
+            if (!entry.empNum && s.empNum) entry.empNum = (s.empNum || '').trim();
           } else {
-            empMap.set(key, { displayName: name, amount });
+            empMap.set(key, { displayName: name, empNum: (s.empNum || '').trim(), amount });
           }
         });
       });
@@ -9555,6 +9560,7 @@ function _acctBuildJobCard(jobData, weekEnding) {
   const rowsHtml = rows.map((r, i) => `
     <tr style="${i % 2 === 1 ? 'background:#f9f9f9;' : ''}">
       <td style="${td}text-align:center;color:#888;font-size:.78rem;">${i + 1}</td>
+      <td style="${td}text-align:center;font-family:monospace;font-size:.82rem;color:#444;">${eh(r.empNum || '—')}</td>
       <td style="${td}font-weight:600;">${eh(r.displayName)}</td>
       <td style="${tdR}font-weight:700;color:#1a56db;">$${r.amount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
     </tr>`).join('');
@@ -9582,6 +9588,7 @@ function _acctBuildJobCard(jobData, weekEnding) {
           <thead>
             <tr style="background:#f0f4ff;">
               <th style="${th}width:40px;text-align:center;">#</th>
+              <th style="${th}width:80px;text-align:center;">Employee #</th>
               <th style="${th}">Employee Name</th>
               <th style="${thR}">Amount</th>
             </tr>
@@ -9589,7 +9596,7 @@ function _acctBuildJobCard(jobData, weekEnding) {
           <tbody>${rowsHtml}</tbody>
           <tfoot>
             <tr style="background:#f0f4ff;border-top:2px solid #1a56db;">
-              <td style="${td}font-weight:700;text-align:right;" colspan="2">
+              <td style="${td}font-weight:700;text-align:right;" colspan="3">
                 Total — <span style="color:#555;font-size:.82rem;font-weight:600;">${employeeCount} employee${employeeCount !== 1 ? 's' : ''}</span>
               </td>
               <td style="${tdR}font-weight:900;font-size:1.05rem;color:#1a56db;">$${totalAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
@@ -9763,15 +9770,16 @@ function acctExportPDF() {
     y += 20;
 
     // ── Table ──
-    const numW=32, amtW=132, nameW=CW-numW-amtW;
+    const numW=32, empNumW=60, amtW=132, nameW=CW-numW-empNumW-amtW;
 
     // Column header row
     pdf.setFillColor(...C_LBLUE); pdf.rect(M, y, CW, 20, 'F');
     pdf.setDrawColor(...C_BLK); pdf.setLineWidth(1.5); pdf.line(M, y+20, M+CW, y+20);
     pdf.setFont('helvetica','bold'); pdf.setFontSize(8); pdf.setTextColor(...C_BLK);
-    pdf.text('#',              M + numW/2,              y+13, {align:'center'});
-    pdf.text('EMPLOYEE NAME', M + numW + 4,             y+13);
-    pdf.text('AMOUNT',        M + numW + nameW + amtW - 4, y+13, {align:'right'});
+    pdf.text('#',              M + numW/2,                        y+13, {align:'center'});
+    pdf.text('EMPLOYEE #',    M + numW + empNumW/2,               y+13, {align:'center'});
+    pdf.text('EMPLOYEE NAME', M + numW + empNumW + 4,             y+13);
+    pdf.text('AMOUNT',        M + numW + empNumW + nameW + amtW - 4, y+13, {align:'right'});
     y += 20;
 
     // Data rows
@@ -9784,12 +9792,15 @@ function acctExportPDF() {
       // Row #
       pdf.setFont('helvetica','normal'); pdf.setFontSize(8); pdf.setTextColor(136,136,136);
       pdf.text(String(i+1), M + numW/2, y+13, {align:'center'});
+      // Employee #
+      pdf.setFontSize(9); pdf.setTextColor(68,68,68);
+      pdf.text(r.empNum || '\u2014', M + numW + empNumW/2, y+13, {align:'center'});
       // Name
-      pdf.setFontSize(9); pdf.setFont('helvetica','bold'); pdf.setTextColor(...C_BLK);
-      pdf.text(r.displayName, M + numW + 4, y+13);
+      pdf.setFont('helvetica','bold'); pdf.setTextColor(...C_BLK);
+      pdf.text(r.displayName, M + numW + empNumW + 4, y+13);
       // Amount
       pdf.setTextColor(...C_BLUE);
-      pdf.text(fmtAmt(r.amount), M + numW + nameW + amtW - 4, y+13, {align:'right'});
+      pdf.text(fmtAmt(r.amount), M + numW + empNumW + nameW + amtW - 4, y+13, {align:'right'});
       y += rowH;
     }
 
@@ -9797,9 +9808,9 @@ function acctExportPDF() {
     pdf.setLineWidth(1.5); pdf.setDrawColor(...C_BLUE); pdf.line(M, y, M+CW, y);
     pdf.setFillColor(...C_LBLUE); pdf.rect(M, y, CW, 24, 'F');
     pdf.setFont('helvetica','bold'); pdf.setFontSize(9); pdf.setTextColor(...C_BLK);
-    pdf.text(`Total \u2014 ${employeeCount} employee${employeeCount!==1?'s':''}`, M + numW + 4, y+15);
+    pdf.text(`Total \u2014 ${employeeCount} employee${employeeCount!==1?'s':''}`, M + numW + empNumW + 4, y+15);
     pdf.setFontSize(11); pdf.setTextColor(...C_BLUE);
-    pdf.text(fmtAmt(totalAmount), M + numW + nameW + amtW - 4, y+15, {align:'right'});
+    pdf.text(fmtAmt(totalAmount), M + numW + empNumW + nameW + amtW - 4, y+15, {align:'right'});
   }
 
   const safeWeek = weekEnding.replace(/[^a-zA-Z0-9_-]/g,'_');
@@ -9829,19 +9840,19 @@ function acctExportExcel() {
       ['Generated:', new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })],
       ['Approved by:', approvedBy],
       [],
-      ['#', 'Employee Name', 'Amount'],
-      ...rows.map((r, i) => [i + 1, r.displayName, r.amount]),
+      ['#', 'Employee #', 'Employee Name', 'Amount'],
+      ...rows.map((r, i) => [i + 1, r.empNum || '', r.displayName, r.amount]),
       [],
-      ['', `Total (${employeeCount} employee${employeeCount !== 1 ? 's' : ''})`, totalAmount],
+      ['', '', `Total (${employeeCount} employee${employeeCount !== 1 ? 's' : ''})`, totalAmount],
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
 
     // Column widths
-    ws['!cols'] = [{ wch: 4 }, { wch: 30 }, { wch: 14 }];
+    ws['!cols'] = [{ wch: 4 }, { wch: 12 }, { wch: 30 }, { wch: 14 }];
 
     // Format Amount column as currency (rows 9 through 9+rows.length-1, then the total row)
-    const amtColIdx = 2; // column C (0-indexed)
+    const amtColIdx = 3; // column D (0-indexed)
     const dataStartRow = 8; // 0-indexed: header row is row index 7, data starts at 8
     for (let ri = dataStartRow; ri < dataStartRow + rows.length + 2; ri++) {
       const cellAddr = XLSX.utils.encode_cell({ r: ri, c: amtColIdx });
