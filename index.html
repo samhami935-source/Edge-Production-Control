@@ -3621,7 +3621,7 @@ let _diLockCheckInterval = null;
 function _diEmptyCrewData() {
   const d = {};
   for (let c=1; c<=_diCrewCount; c++) {
-    d[c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]}));
+    d[c] = Array.from({length: DI_EMP_ROWS}, () => ({empNum:'', employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]}));
   }
   return d;
 }
@@ -3641,7 +3641,7 @@ function diSwitchJobData(jobName) {
   _diCrewCount = _diAllData[jobName].__crewCount || 10;
   for (let c=1; c<=_diCrewCount; c++) {
     if (!_diAllData[jobName][c]) {
-      _diAllData[jobName][c] = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]}));
+      _diAllData[jobName][c] = Array.from({length: DI_EMP_ROWS}, () => ({empNum:'', employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]}));
     }
     _diData[c] = _diAllData[jobName][c];
     _diEmpRowCount[c] = (_diAllData[jobName].__empRowCounts && _diAllData[jobName].__empRowCounts[c] != null)
@@ -3742,7 +3742,7 @@ function diRenderCrewTabs() {
 function diAddCrew() {
   _diCrewCount++;
   const jobName = document.getElementById('ps-job-select').value;
-  const newRows = Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:''}));
+  const newRows = Array.from({length: DI_EMP_ROWS}, () => ({empNum:'', employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:''}));
   _diData[_diCrewCount] = newRows;
   _diCrewLeadNames[_diCrewCount] = '';
   if (jobName) {
@@ -3872,7 +3872,7 @@ async function diLoadCrewSet(id) {
     const existingRows = _diData[_diActiveCrew] || [];
     // Extend rows if needed
     while (existingRows.length < emps.length) {
-      existingRows.push({employee:'', area:'', costCode:'', description:''});
+      existingRows.push({empNum:'', employee:'', area:'', costCode:'', description:''});
     }
     emps.forEach((emp, i) => { existingRows[i].employee = emp; });
     _diData[_diActiveCrew] = existingRows;
@@ -4005,8 +4005,12 @@ function diRenderCrewTable() {
     const empCount = Math.min(_diEmpRowCount[_diActiveCrew] || DI_EMP_ROWS, rows.length);
     empList.innerHTML = rows.slice(0, empCount).map((row, i) => `
       <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
-        <input class="fi" data-emp-idx="${i}" style="flex:1;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
-          oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft()" />
+        <input class="fi" id="di-emp-num-${_diActiveCrew}-${i}" data-emp-idx="${i}" style="width:64px;flex-shrink:0;padding:6px 8px;font-size:.85rem;text-align:center;" value="${eh(row.empNum||'')}" placeholder="#"
+          oninput="_diData[${_diActiveCrew}][${i}].empNum=this.value"
+          onblur="_diEmpNumBlur(${_diActiveCrew},${i},this.value)" />
+        <input class="fi" id="di-emp-name-${_diActiveCrew}-${i}" data-emp-idx="${i}" style="flex:1;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
+          oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft()"
+          onblur="_diEmpNameBlur(${_diActiveCrew},${i},this.value)" />
         <button onclick="diDeleteRow(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;flex-shrink:0;" title="Remove employee">✕</button>
       </div>`).join('');
   }
@@ -4216,7 +4220,7 @@ function diApplyFilter(type) {
     // Fill existing rows; if there aren't enough, add new blank rows automatically
     checked.forEach((area, i) => {
       if (i >= _diData[crew].length) {
-        _diData[crew].push({ employee: '', area: '', costCode: '', description: '', corBudgetId: '', corNumber: '', extraEntries: [] });
+        _diData[crew].push({ empNum: '', employee: '', area: '', costCode: '', description: '', corBudgetId: '', corNumber: '', extraEntries: [] });
       }
       _diData[crew][i].area = area;
       if (isSpecialArea(area)) {
@@ -4599,6 +4603,7 @@ async function diConfirmSaveDraft() {
   const crewData = {};
   for (let c = 1; c <= _diCrewCount; c++) {
     crewData[String(c)] = (_diData[c] || []).map(r => ({
+      empNum:       r.empNum       || '',
       employee:     r.employee     || '',
       area:         r.area         || '',
       costCode:     r.costCode     || '',
@@ -4669,6 +4674,7 @@ function diAutoSaveDraft() {
     const autoCrewData = {};
     for (let c = 1; c <= _diCrewCount; c++) {
       autoCrewData[String(c)] = (_diData[c] || []).map(r => ({
+        empNum:       r.empNum       || '',
         employee:     r.employee     || '',
         area:         r.area         || '',
         costCode:     r.costCode     || '',
@@ -4820,13 +4826,14 @@ async function diLoadDraftById(docId) {
         const crewRows = d.data && (d.data[String(c)] || d.data[c]);
         _diAllData[jobName][c] = Array.isArray(crewRows) && crewRows.length
           ? crewRows.map(r => ({
+              empNum:       r.empNum       || '',
               employee:     r.employee     || '',
               area:         r.area         || '',
               costCode:     r.costCode     || '',
               description:  r.description  || '',
               extraEntries: (r.extraEntries || []).map(e => ({area: e.area||'', costCode: e.costCode||'', description: e.description||'', corBudgetId: e.corBudgetId||'', corNumber: e.corNumber||''}))
             }))
-          : Array.from({length: DI_EMP_ROWS}, () => ({employee:'', area:'', costCode:'', description:'', extraEntries:[]}));
+          : Array.from({length: DI_EMP_ROWS}, () => ({empNum:'', employee:'', area:'', costCode:'', description:'', extraEntries:[]}));
       }
       // Restore employee row counts (new drafts have __empRowCounts; old drafts: infer from last named row)
       const savedEmpCounts = (d.data && d.data.__empRowCounts) || {};
@@ -5047,6 +5054,7 @@ async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
       if (!e.employee || seenEmp.has(e.employee) || si >= PS_SPLIT_ROWS) return;
       seenEmp.add(e.employee);
       state.splits[si].employee = e.employee;
+      state.splits[si].empNum   = e.empNum || '';
       si++;
     });
 
@@ -5443,7 +5451,7 @@ function _diPersistEmpRowCount(crew) {
 function diAddRow() {
   const empCount = _diEmpRowCount[_diActiveCrew] || DI_EMP_ROWS;
   // Insert new row right after the last employee-visible row so it appears in both sections
-  _diData[_diActiveCrew].splice(empCount, 0, {employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]});
+  _diData[_diActiveCrew].splice(empCount, 0, {empNum:'', employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]});
   _diEmpRowCount[_diActiveCrew] = empCount + 1;
   _diPersistEmpRowCount(_diActiveCrew);
   diRenderCrewTable();
@@ -5454,8 +5462,41 @@ function diDeleteRow(crew, i) {
   _diData[crew].splice(i, 1);
   _diEmpRowCount[crew] = Math.max(1, (_diEmpRowCount[crew] || DI_EMP_ROWS) - 1);
   _diPersistEmpRowCount(crew);
-  if (_diData[crew].length === 0) _diData[crew].push({employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]});
+  if (_diData[crew].length === 0) _diData[crew].push({empNum:'', employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]});
   diRenderCrewTable();
+  diAutoSaveDraft();
+}
+
+// ── Employee # ↔ Name auto-fill ──────────────────────────────────────────────
+// Called onblur from the employee # input. Looks up the number in the Employee
+// Names tab and fills the name field if a match is found (free entry is allowed).
+function _diEmpNumBlur(crew, i, val) {
+  _diData[crew][i].empNum = val;
+  const n = parseInt(val, 10);
+  if (!isNaN(n) && val.trim()) {
+    const match = getEmployees().find(e => e.n === n);
+    if (match && !(_diData[crew][i].employee || '').trim()) {
+      _diData[crew][i].employee = match.name;
+      const nameEl = document.getElementById('di-emp-name-' + crew + '-' + i);
+      if (nameEl) nameEl.value = match.name;
+    }
+  }
+  diAutoSaveDraft();
+}
+
+// Called onblur from the employee name input. Looks up the name in the Employee
+// Names tab and fills the # field if an exact match is found.
+function _diEmpNameBlur(crew, i, val) {
+  _diData[crew][i].employee = val;
+  if (val.trim()) {
+    const q = val.trim().toLowerCase();
+    const match = getEmployees().find(e => e.name.toLowerCase() === q);
+    if (match) {
+      _diData[crew][i].empNum = String(match.n);
+      const numEl = document.getElementById('di-emp-num-' + crew + '-' + i);
+      if (numEl) numEl.value = String(match.n);
+    }
+  }
   diAutoSaveDraft();
 }
 
