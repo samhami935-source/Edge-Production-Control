@@ -8847,7 +8847,12 @@ async function loadPaysheetFromCloud(docId) {
         if (_seenSplitNames.has(norm)) return false;
         _seenSplitNames.add(norm);
         return true;
-      }).map(s => Object.assign(_psEmptySplit(), s));
+      }).map(s => {
+        const split = Object.assign(_psEmptySplit(), s);
+        // Retroactively fill empNum for paysheets saved before the empNum feature existed
+        split.empNum = _resolveEmpNum(split.empNum, split.employee);
+        return split;
+      });
       while (_psState[c].splits.length < PS_SPLIT_ROWS) _psState[c].splits.push(_psEmptySplit());
       // Sync _diCrewLeadNames from the saved header so crew tab labels always
       // reflect the paysheet's crew name rather than stale daily-input names.
