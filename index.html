@@ -4008,6 +4008,12 @@ function diRenderCrewTable() {
   const csvFile = getSavedCSVFiles().find(x => x.name === jobName);
 
   // ── Section 1: Employee name list ──
+  // Keep datalist in sync with Employee Names tab so inputs show a dropdown
+  (function() {
+    let dl = document.getElementById('di-emp-names-datalist');
+    if (!dl) { dl = document.createElement('datalist'); dl.id = 'di-emp-names-datalist'; document.body.appendChild(dl); }
+    dl.innerHTML = getEmployees().map(e => `<option value="${eh(e.name)}">`).join('');
+  })();
   const empList = document.getElementById('di-employees-list');
   if (empList) {
     const empCount = Math.min(_diEmpRowCount[_diActiveCrew] || DI_EMP_ROWS, rows.length);
@@ -4016,7 +4022,7 @@ function diRenderCrewTable() {
         <input class="fi" id="di-emp-num-${_diActiveCrew}-${i}" data-emp-idx="${i}" style="width:64px;flex-shrink:0;padding:6px 8px;font-size:.85rem;text-align:center;" value="${eh(row.empNum||'')}" placeholder="#"
           oninput="_diData[${_diActiveCrew}][${i}].empNum=this.value"
           onblur="_diEmpNumBlur(${_diActiveCrew},${i},this.value)" />
-        <input class="fi" id="di-emp-name-${_diActiveCrew}-${i}" data-emp-idx="${i}" style="flex:1;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
+        <input class="fi" id="di-emp-name-${_diActiveCrew}-${i}" data-emp-idx="${i}" list="di-emp-names-datalist" style="flex:1;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
           oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft()"
           onblur="_diEmpNameBlur(${_diActiveCrew},${i},this.value)" />
         <button onclick="diDeleteRow(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;flex-shrink:0;" title="Remove employee">✕</button>
