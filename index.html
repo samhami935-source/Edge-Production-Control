@@ -1093,7 +1093,7 @@
     <table id="co-log-table">
       <thead>
         <tr>
-          <th>WO #</th>
+          <th id="co-log-th-first">Labor Code</th>
           <th>Job</th>
           <th>Submitted By</th>
           <th>Date</th>
@@ -10223,7 +10223,7 @@ function renderCOLog() {
     const dateStr    = co.submittedAt ? new Date(co.submittedAt).toLocaleDateString() : '—';
     const photoCount = (co.photoUrls || []).length;
     return `<tr>
-      <td style="font-weight:600;">${co.workOrderNumber === '503 - Burn' ? `Burn#${co.burnNumber || '?'}` : eh(co.workOrderNumber || '—')}</td>
+      <td style="font-weight:600;">${co.workOrderNumber === '503 - Burn' ? `Burn#${co.burnNumber || '?'}` : eh(co.laborCode || '—')}</td>
       <td>${eh(co.jobId || '—')}</td>
       <td style="font-size:.8rem;">${eh(co.submittedByEmail || '—')}</td>
       <td style="font-size:.8rem;white-space:nowrap;">${dateStr}</td>
@@ -10258,6 +10258,8 @@ function coSetSubTab(tab) {
   if (title)       title.textContent       = tab === 'burn' ? '🔥 Burns (503)'     : '📋 Change Orders';
   if (submitBtn)     submitBtn.style.display     = tab === 'burn' ? 'none' : '';
   if (submitBurnBtn) submitBurnBtn.style.display = tab === 'burn' ? ''     : 'none';
+  const thFirst = document.getElementById('co-log-th-first');
+  if (thFirst) thFirst.textContent = tab === 'burn' ? 'Burn #' : 'Labor Code';
   renderCOLog();
 }
 
@@ -10267,7 +10269,11 @@ function coOpenSubmitModal(burnMode) {
   const sel = document.getElementById('co-submit-job');
   sel.innerHTML = '<option value="">— Select Job —</option>' +
     getSavedCSVFiles().map(f => f.name).sort().map(j => `<option value="${eh(j)}">${eh(j)}</option>`).join('');
-  document.getElementById('co-submit-wo').selectedIndex = 0;
+  // Populate labor code dropdown from Labor Codes tab
+  const lcSel = document.getElementById('co-submit-lc');
+  lcSel.innerHTML = '<option value="">— Select Labor Code —</option>' +
+    sortLaborCodes(getLaborCodes()).map(lc => `<option value="${eh(lc.code)}">${eh(lc.code)} — ${eh(lc.description)}</option>`).join('');
+  lcSel.selectedIndex = 0;
   document.getElementById('co-submit-desc').value = '';
   document.getElementById('co-submit-photos').value = '';
   document.getElementById('co-photo-preview').innerHTML = '';
@@ -10464,11 +10470,12 @@ async function _coCompressImage(file) {
 
 async function coSubmit() {
   if (!canSubmitCO()) return;
-  const jobId = document.getElementById('co-submit-job').value.trim();
-  const wo    = _coBurnMode ? '503 - Burn' : document.getElementById('co-submit-wo').value.trim();
-  const desc  = document.getElementById('co-submit-desc').value.trim();
-  if (!jobId) { alert('Please select a job.'); return; }
-  if (!wo)    { alert('Please select a Work Order type.'); return; }
+  const jobId      = document.getElementById('co-submit-job').value.trim();
+  const wo         = _coBurnMode ? '503 - Burn' : '502 - Change Orders';
+  const laborCode  = _coBurnMode ? '' : document.getElementById('co-submit-lc').value.trim();
+  const desc       = document.getElementById('co-submit-desc').value.trim();
+  if (!jobId)      { alert('Please select a job.'); return; }
+  if (!_coBurnMode && !laborCode) { alert('Please select a labor code.'); return; }
   const burnAreas = _coBurnMode ? [..._coBurnSelectedAreas] : [];
   const burnArea  = burnAreas[0] || '';
   const burnCode  = _coBurnMode ? document.getElementById('co-burn-code').value.trim()  : '';
@@ -10496,7 +10503,7 @@ async function coSubmit() {
     }
     prog.textContent = 'Saving change order…';
     const doc = {
-      id, jobId, workOrderNumber: wo, description: desc, photoUrls,
+      id, jobId, workOrderNumber: wo, laborCode: laborCode || null, description: desc, photoUrls,
       ...(wo === '503 - Burn' ? { burnArea, burnAreas, burnLaborCode: burnCode, burnHours, burnNumber } : {}),
       submittedByEmail: _currentUser.email, submittedByUid: _currentUser.uid,
       submittedByRole: _currentUserRole, submittedAt: new Date().toISOString(),
@@ -10889,10 +10896,9 @@ function computeCorPaid(corb) {
         </div>
       </div>
       <div id="co-submit-wo-row">
-        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Work Order Number <span style="color:#ef4444;">*</span></label>
-        <select id="co-submit-wo" class="fi" style="width:100%;">
-          <option value="">— Select Work Order —</option>
-          <option value="502 - Change Orders">502 - Change Orders</option>
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Labor Code <span style="color:#ef4444;">*</span></label>
+        <select id="co-submit-lc" class="fi" style="width:100%;">
+          <option value="">— Select Labor Code —</option>
         </select>
       </div>
       <div>
