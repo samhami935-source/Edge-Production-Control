@@ -6218,7 +6218,9 @@ function renderPSAreaBudgetTable() {
 function corbAreaKey(b) {
   return b.isBurn
     ? `[Burn#${b.burnNumber || '?'}] ${b.description || b.burnArea || ''}`
-    : `[COR] ${b.corNumber} \u2013 ${b.description}`;
+    : b.area
+      ? `[COR] ${b.corNumber} \u2013 ${b.area}`
+      : `[COR] ${b.corNumber} \u2013 ${b.description}`;
 }
 function isSpecialArea(area) {
   return !!(area && (area.startsWith('[COR]') || area.startsWith('[BURN]') || area.startsWith('[Burn#')));
@@ -10704,7 +10706,8 @@ function coOpenDetail(coId) {
   const co = (_cache.changeorders || []).find(c => c.id === coId);
   if (!co) return;
   if (canReviewCO()) coMarkNotificationsRead(coId);
-  const corb = (_cache.corbudgets || []).find(b => b.changeOrderId === coId);
+  const corbs = (_cache.corbudgets || []).filter(b => b.changeOrderId === coId);
+  const corb  = corbs[0] || null; // kept for backward-compat references below
   const dateStr    = co.submittedAt ? new Date(co.submittedAt).toLocaleString() : '—';
   const reviewedStr = co.reviewedAt ? new Date(co.reviewedAt).toLocaleString() : '—';
 
@@ -10714,28 +10717,33 @@ function coOpenDetail(coId) {
       ).join('')}</div>`
     : '<span style="color:var(--muted);font-size:.83rem;">No photos attached.</span>';
 
-  const budgetSection = corb ? (() => {
-    const fAmt = corbForemanAmount(corb);
-    const iAmt = corbInternalAmount(corb);
-    const ptd  = computeCorPaid(corb);
+  const budgetSection = corbs.length ? corbs.map(c => {
+    const fAmt = corbForemanAmount(c);
+    const iAmt = corbInternalAmount(c);
+    const ptd  = computeCorPaid(c);
     const rem  = fAmt - ptd;
     const rc   = rem < 0 ? 'color:var(--red)' : rem === 0 ? 'color:var(--yellow)' : 'color:var(--green)';
     const internalRow = !isForeman()
       ? `<div><span style="color:var(--muted);">Internal COR Amount</span><br/><strong style="color:var(--accent);">${fm(iAmt)}</strong></div>`
       : '';
+    const areaRow = c.area
+      ? `<div><span style="color:var(--muted);">Area</span><br/><strong>${eh(c.area)}</strong></div>`
+      : '';
+    const title = corbs.length > 1 ? `COR Budget — ${eh(c.area || c.description)}` : 'COR Budget';
     return `
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;">
-      <div style="font-size:.78rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">COR Budget</div>
+      <div style="font-size:.78rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">${title}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:.83rem;">
-        <div><span style="color:var(--muted);">Labor Code</span><br/><strong>${eh(corb.laborCode)}</strong></div>
+        ${areaRow}
+        <div><span style="color:var(--muted);">Labor Code</span><br/><strong>${eh(c.laborCode)}</strong></div>
         ${internalRow}
         <div><span style="color:var(--muted);">Foreman Budget</span><br/><strong>${fm(fAmt)}</strong></div>
         <div><span style="color:var(--muted);">Used (PTD)</span><br/><strong>${fm(ptd)}</strong></div>
         <div><span style="color:var(--muted);">Remaining</span><br/><strong style="${rc}">${rem < 0 ? '-' : ''}${fm(Math.abs(rem))}</strong></div>
-        <div style="grid-column:span 2"><span style="color:var(--muted);">Description</span><br/><strong>${eh(corb.description)}</strong></div>
+        <div style="grid-column:span 2"><span style="color:var(--muted);">Description</span><br/><strong>${eh(c.description)}</strong></div>
       </div>
     </div>`;
-  })() : '';
+  }).join('') : '';
 
   const _isBurn = co.workOrderNumber === '503 - Burn';
 
@@ -10770,8 +10778,6 @@ function coOpenDetail(coId) {
   const _burnAreaList = _isBurn
     ? ((co.burnAreas && co.burnAreas.length) ? co.burnAreas : (co.burnArea ? [co.burnArea] : []))
     : [];
-  const _corbAreaKey = (!_isBurn && corb) ? corbAreaKey(corb) : '';
-
   document.getElementById('co-detail-body').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:.83rem;">
       <div><span style="color:var(--muted);">Job</span><br/><strong>${eh(co.jobId)}</strong></div>
@@ -10784,7 +10790,6 @@ function coOpenDetail(coId) {
       ${!_isBurn && co.coHours != null ? `<div><span style="color:var(--muted);">Hours</span><br/><strong>${co.coHours}</strong></div>` : ''}
       ${_isBurn && co.burnLaborCode ? `<div><span style="color:var(--muted);">Labor Code</span><br/><strong>${eh(co.burnLaborCode)}</strong></div>` : ''}
       ${_isBurn && co.burnHours != null ? `<div><span style="color:var(--muted);">Hours</span><br/><strong>${co.burnHours}</strong></div>` : ''}
-      ${_corbAreaKey ? `<div style="grid-column:span 2"><span style="color:var(--muted);">Area (Budget Key)</span><br/><strong style="font-size:.82rem;">${eh(_corbAreaKey)}</strong></div>` : ''}
       ${co.reviewerEmail ? `<div><span style="color:var(--muted);">Reviewed By</span><br/><strong>${eh(co.reviewerEmail)}</strong></div>` : ''}
       ${co.reviewedAt    ? `<div><span style="color:var(--muted);">Reviewed At</span><br/><strong>${reviewedStr}</strong></div>` : ''}
       ${co.corNumber     ? `<div><span style="color:var(--muted);">COR #</span><br/><strong>${eh(co.corNumber)}</strong></div>` : ''}
@@ -10973,24 +10978,36 @@ async function coConfirmBudget() {
   if (!co) { alert('Change order not found.'); btn.disabled = false; prog.style.display = 'none'; return; }
 
   try {
-    const corbId = `corb_${Date.now()}`;
-    const corb = {
-      id: corbId, jobId: co.jobId, changeOrderId: coId,
+    // Build one corb per area (or one entry if no areas selected)
+    const _corbAreaList = isBurn
+      ? ((co.burnAreas && co.burnAreas.length) ? co.burnAreas : (co.burnArea ? [co.burnArea] : [null]))
+      : ((co.coAreas && co.coAreas.length) ? co.coAreas : [null]);
+    const _now = Date.now();
+    const corbDocs = _corbAreaList.map((area, idx) => ({
+      id: `corb_${_now}_${idx}`,
+      jobId: co.jobId, changeOrderId: coId,
       corNumber: _coPendingCorNumber, laborCode: lc, description: desc,
-      amount: foremanAmt,                   // amount always equals foremanTrackingAmount for all tracking code
+      amount: foremanAmt,
       foremanTrackingAmount: foremanAmt,
       internalCorAmount: internalAmt,
-      ...(isBurn ? { isBurn: true, burnHours, burnArea: co.burnArea || '', burnNumber: co.burnNumber || null } : { coHours }),
+      ...(area ? { area } : {}),
+      ...(isBurn
+        ? { isBurn: true, burnHours, burnArea: area || '', burnNumber: co.burnNumber || null }
+        : { coHours }),
       createdAt: new Date().toISOString(), createdByEmail: _currentUser.email, createdByUid: _currentUser.uid,
-    };
-    await db.collection('corbudgets').doc(corbId).set(corb);
+    }));
+    for (const corbDoc of corbDocs) {
+      await db.collection('corbudgets').doc(corbDoc.id).set(corbDoc);
+    }
     const coUpdate = {
       status: 'approved', corNumber: _coPendingCorNumber, corPdfUrl: null,
-      linkedCorBudgetId: corbId, reviewerEmail: _currentUser.email,
+      linkedCorBudgetId: corbDocs[0].id,
+      linkedCorBudgetIds: corbDocs.map(c => c.id),
+      reviewerEmail: _currentUser.email,
       reviewerUid: _currentUser.uid, reviewedAt: new Date().toISOString(),
     };
     await db.collection('changeorders').doc(coId).update(coUpdate);
-    _cache.corbudgets = [...(_cache.corbudgets || []), corb];
+    _cache.corbudgets = [...(_cache.corbudgets || []), ...corbDocs];
     const idx = (_cache.changeorders || []).findIndex(c => c.id === coId);
     if (idx !== -1) Object.assign(_cache.changeorders[idx], coUpdate);
     coCloseBudgetModal();
