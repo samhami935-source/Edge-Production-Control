@@ -11280,7 +11280,7 @@ function computeCorPaid(corb) {
      COR BUDGET ENTRY MODAL (VP approval step)
 ══════════════════════════════════════════ -->
 <div class="modal-overlay" id="co-budget-modal" onclick="if(event.target===this)coCloseBudgetModal()">
-  <div class="modal" style="width:480px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column;">
+  <div class="modal" style="width:600px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column;">
     <!-- Sticky header -->
     <div style="flex-shrink:0;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
@@ -11339,9 +11339,9 @@ function computeCorPaid(corb) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
           <label style="font-size:.83rem;color:var(--muted);margin:0;">Foreman Budget per Area / Labor Code <span style="color:#ef4444;">*</span></label>
           <div style="display:flex;gap:6px;align-items:center;">
-            <div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;transition:border-color .15s;width:120px;" onfocusin="this.style.borderColor='var(--accent)'" onfocusout="this.style.borderColor='var(--border)'">
+            <div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;transition:border-color .15s;width:180px;" onfocusin="this.style.borderColor='var(--accent)'" onfocusout="this.style.borderColor='var(--border)'">
               <span style="color:var(--muted);font-size:.875rem;flex-shrink:0;">$</span>
-              <input id="co-budget-dist-total-input" type="text" inputmode="decimal" style="background:transparent;border:none;outline:none;color:var(--text);font-size:.875rem;width:100%;padding:0;" placeholder="Total" oninput="corbFormatDollarInput(this)" onkeydown="if(event.key==='Enter')corbDistributeEvenly()" />
+              <input id="co-budget-dist-total-input" type="text" inputmode="decimal" style="background:transparent;border:none;outline:none;color:var(--text);font-size:.875rem;width:100%;padding:0;" placeholder="Total amount" oninput="corbFormatDollarInput(this)" onkeydown="if(event.key==='Enter')corbDistributeEvenly()" />
             </div>
             <button class="btn btn-outline" style="margin:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;" onclick="corbDistributeEvenly()">÷ Evenly</button>
           </div>
