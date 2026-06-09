@@ -10029,6 +10029,16 @@ let _coPendingCorNumber = null;
 let _corbDistPairs = [];
 let _coSnapshotReady = false; // true once changeorders snapshot has fired at least once // [{area, laborCode}] — one entry per area×lc combo for budget modal
 
+// Format a text input as a comma-separated dollar amount while the user types
+function corbFormatDollarInput(el) {
+  const raw = el.value.replace(/[^0-9.]/g, '');
+  const parts = raw.split('.');
+  const intPart = (parts[0] || '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  el.value = parts.length > 1 ? intPart + '.' + parts[1] : intPart;
+}
+// Parse a potentially comma-formatted dollar string to a float
+function corbParseDollar(str) { return parseFloat((str || '').replace(/,/g, '')) || 0; }
+
 function corbUpdateDistSum() {
   let total = 0;
   document.querySelectorAll('.co-budget-dist-input').forEach(inp => { total += parseFloat(inp.value) || 0; });
@@ -10038,7 +10048,7 @@ function corbUpdateDistSum() {
 
 function corbDistributeEvenly() {
   const totalInput = document.getElementById('co-budget-dist-total-input');
-  const total = parseFloat(totalInput ? totalInput.value : 0) || 0;
+  const total = corbParseDollar(totalInput ? totalInput.value : '0');
   const inputs = [...document.querySelectorAll('.co-budget-dist-input')];
   if (!inputs.length) return;
   const each = Math.round((total / inputs.length) * 100) / 100;
@@ -11037,7 +11047,7 @@ async function coConfirmBudget() {
 
   const lc          = document.getElementById('co-budget-lc').value;
   const desc        = document.getElementById('co-budget-desc').value.trim();
-  const internalAmt = parseFloat(document.getElementById('co-budget-internal-amount').value);
+  const internalAmt = corbParseDollar(document.getElementById('co-budget-internal-amount').value);
   const burnHours   = isBurn ? (parseFloat(document.getElementById('co-budget-hours').value) || 0) : null;
   const coHours     = !isBurn ? (parseFloat(document.getElementById('co-budget-co-hours').value) || null) : null;
   const _isMultiDist = _corbDistPairs.length > 1;
@@ -11045,7 +11055,7 @@ async function coConfirmBudget() {
   const _distAmounts = _isMultiDist
     ? [...document.querySelectorAll('.co-budget-dist-input')].map(inp => parseFloat(inp.value) || 0)
     : null;
-  const foremanAmt = _isMultiDist ? 0 : parseFloat(document.getElementById('co-budget-foreman-amount').value);
+  const foremanAmt = _isMultiDist ? 0 : corbParseDollar(document.getElementById('co-budget-foreman-amount').value);
 
   if (!desc)                             { alert('Please enter a description.'); return; }
   if (isBurn && burnHours <= 0)          { alert('Please enter hours greater than 0.'); return; }
@@ -11311,7 +11321,7 @@ function computeCorPaid(corb) {
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Internal COR Amount <span style="color:#ef4444;">*</span></label>
         <div style="position:relative;">
           <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.9rem;pointer-events:none;">$</span>
-          <input id="co-budget-internal-amount" class="fi" type="number" min="0" step="0.01" style="width:100%;padding-left:24px;" placeholder="0.00" />
+          <input id="co-budget-internal-amount" class="fi" type="text" inputmode="decimal" style="width:100%;padding-left:24px;" placeholder="0.00" oninput="corbFormatDollarInput(this)" />
         </div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Management-only amount. Not shown to Foreman.</div>
       </div>
@@ -11320,7 +11330,7 @@ function computeCorPaid(corb) {
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Foreman Tracking Amount <span style="color:#ef4444;">*</span></label>
         <div style="position:relative;">
           <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.9rem;pointer-events:none;">$</span>
-          <input id="co-budget-foreman-amount" class="fi" type="number" min="0" step="0.01" style="width:100%;padding-left:24px;" placeholder="0.00" />
+          <input id="co-budget-foreman-amount" class="fi" type="text" inputmode="decimal" style="width:100%;padding-left:24px;" placeholder="0.00" oninput="corbFormatDollarInput(this)" />
         </div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Shown to Foreman and used for Daily Input / Weekly Summary tracking.</div>
       </div>
@@ -11331,7 +11341,7 @@ function computeCorPaid(corb) {
           <div style="display:flex;gap:6px;align-items:center;">
             <div style="position:relative;">
               <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.9rem;pointer-events:none;">$</span>
-              <input id="co-budget-dist-total-input" class="fi" type="number" min="0" step="0.01" style="width:100px;padding:5px 8px 5px 20px;" placeholder="Total" />
+              <input id="co-budget-dist-total-input" class="fi" type="text" inputmode="decimal" style="width:100px;padding:5px 8px 5px 20px;" placeholder="Total" oninput="corbFormatDollarInput(this)" />
             </div>
             <button class="btn btn-outline" style="margin:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;" onclick="corbDistributeEvenly()">÷ Evenly</button>
           </div>
