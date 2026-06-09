@@ -11319,18 +11319,18 @@ function computeCorPaid(corb) {
       </div>
       <div>
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Internal COR Amount <span style="color:#ef4444;">*</span></label>
-        <div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;transition:border-color .15s;" onfocusin="this.style.borderColor='var(--accent)'" onfocusout="this.style.borderColor='var(--border)'">
-          <span style="color:var(--muted);font-size:.875rem;flex-shrink:0;">$</span>
-          <input id="co-budget-internal-amount" type="text" inputmode="decimal" style="background:transparent;border:none;outline:none;color:var(--text);font-size:.875rem;width:100%;padding:0;" placeholder="0.00" oninput="corbFormatDollarInput(this)" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
+        <div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;transition:border-color .15s;" onfocusin="this.style.borderColor='var(--accent)'" onfocusout="this.style.borderColor='var(--border)'">
+          <span style="color:var(--muted);font-size:.83rem;flex-shrink:0;">$</span>
+          <input id="co-budget-internal-amount" type="text" inputmode="decimal" style="background:transparent;border:none;outline:none;color:var(--text);font-size:.83rem;width:100%;padding:0;" placeholder="0.00" oninput="corbFormatDollarInput(this)" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
         </div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Management-only amount. Not shown to Foreman.</div>
       </div>
       <!-- Single entry mode -->
       <div id="co-budget-foreman-single">
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Foreman Tracking Amount <span style="color:#ef4444;">*</span></label>
-        <div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;transition:border-color .15s;" onfocusin="this.style.borderColor='var(--accent)'" onfocusout="this.style.borderColor='var(--border)'">
-          <span style="color:var(--muted);font-size:.875rem;flex-shrink:0;">$</span>
-          <input id="co-budget-foreman-amount" type="text" inputmode="decimal" style="background:transparent;border:none;outline:none;color:var(--text);font-size:.875rem;width:100%;padding:0;" placeholder="0.00" oninput="corbFormatDollarInput(this)" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
+        <div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;transition:border-color .15s;" onfocusin="this.style.borderColor='var(--accent)'" onfocusout="this.style.borderColor='var(--border)'">
+          <span style="color:var(--muted);font-size:.83rem;flex-shrink:0;">$</span>
+          <input id="co-budget-foreman-amount" type="text" inputmode="decimal" style="background:transparent;border:none;outline:none;color:var(--text);font-size:.83rem;width:100%;padding:0;" placeholder="0.00" oninput="corbFormatDollarInput(this)" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
         </div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Shown to Foreman and used for Daily Input / Weekly Summary tracking.</div>
       </div>
@@ -11339,9 +11339,9 @@ function computeCorPaid(corb) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
           <label style="font-size:.83rem;color:var(--muted);margin:0;">Foreman Budget per Area / Labor Code <span style="color:#ef4444;">*</span></label>
           <div style="display:flex;gap:6px;align-items:center;">
-            <div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;transition:border-color .15s;width:180px;" onfocusin="this.style.borderColor='var(--accent)'" onfocusout="this.style.borderColor='var(--border)'">
-              <span style="color:var(--muted);font-size:.875rem;flex-shrink:0;">$</span>
-              <input id="co-budget-dist-total-input" type="text" inputmode="decimal" style="background:transparent;border:none;outline:none;color:var(--text);font-size:.875rem;width:100%;padding:0;" placeholder="Total amount" oninput="corbFormatDollarInput(this)" onkeydown="if(event.key==='Enter')corbDistributeEvenly()" />
+            <div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;transition:border-color .15s;width:140px;" onfocusin="this.style.borderColor='var(--accent)'" onfocusout="this.style.borderColor='var(--border)'">
+              <span style="color:var(--muted);font-size:.83rem;flex-shrink:0;">$</span>
+              <input id="co-budget-dist-total-input" type="text" inputmode="decimal" style="background:transparent;border:none;outline:none;color:var(--text);font-size:.83rem;width:100%;padding:0;" placeholder="Total amount" oninput="corbFormatDollarInput(this)" onkeydown="if(event.key==='Enter')corbDistributeEvenly()" />
             </div>
             <button class="btn btn-outline" style="margin:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;" onclick="corbDistributeEvenly()">÷ Evenly</button>
           </div>
