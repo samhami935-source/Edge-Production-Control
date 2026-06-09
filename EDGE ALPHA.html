@@ -10839,16 +10839,19 @@ async function coDelete(coId) {
   const co = (_cache.changeorders || []).find(c => c.id === coId);
   if (!co) return;
   const _deleteLabel = co.workOrderNumber === '503 - Burn' ? `Burn#${co.burnNumber || '?'}` : `WO# ${co.workOrderNumber}`;
-  if (!confirm(`Delete ${_deleteLabel} for ${co.jobId}?\n\nThis cannot be undone. Any linked COR budget will also be deleted.`)) return;
+  const _linkedCorbs = (_cache.corbudgets || []).filter(b => b.changeOrderId === coId);
+  const _corbCountMsg = _linkedCorbs.length > 0 ? ` (${_linkedCorbs.length} COR budget entr${_linkedCorbs.length === 1 ? 'y' : 'ies'} will also be deleted)` : '';
+  if (!confirm(`Delete ${_deleteLabel} for ${co.jobId}?\n\nThis cannot be undone.${_corbCountMsg}`)) return;
   try {
     const batch = db.batch();
     batch.delete(db.collection('changeorders').doc(coId));
-    // Also delete any linked COR budget
-    const corb = (_cache.corbudgets || []).find(b => b.changeOrderId === coId);
-    if (corb) batch.delete(db.collection('corbudgets').doc(corb.id));
+    // Delete all linked COR budget entries (may be multiple — one per area × labor code)
+    for (const corb of _linkedCorbs) {
+      batch.delete(db.collection('corbudgets').doc(corb.id));
+    }
     await batch.commit();
     _cache.changeorders = (_cache.changeorders || []).filter(c => c.id !== coId);
-    if (corb) _cache.corbudgets = (_cache.corbudgets || []).filter(b => b.id !== corb.id);
+    _cache.corbudgets   = (_cache.corbudgets || []).filter(b => b.changeOrderId !== coId);
     coCloseDetail();
     renderCOLog();
   } catch(e) {
