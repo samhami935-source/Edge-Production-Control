@@ -11308,14 +11308,20 @@ function computeCorPaid(corb) {
         <input id="co-budget-desc" class="fi" style="width:100%;" placeholder="e.g. Change Order framing work" />
       </div>
       <div>
-        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Internal COR Amount ($) <span style="color:#ef4444;">*</span></label>
-        <input id="co-budget-internal-amount" class="fi" type="number" min="0" step="0.01" style="width:100%;" placeholder="0.00" />
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Internal COR Amount <span style="color:#ef4444;">*</span></label>
+        <div style="position:relative;">
+          <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.9rem;pointer-events:none;">$</span>
+          <input id="co-budget-internal-amount" class="fi" type="number" min="0" step="0.01" style="width:100%;padding-left:24px;" placeholder="0.00" />
+        </div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Management-only amount. Not shown to Foreman.</div>
       </div>
       <!-- Single entry mode -->
       <div id="co-budget-foreman-single">
-        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Foreman Tracking Amount ($) <span style="color:#ef4444;">*</span></label>
-        <input id="co-budget-foreman-amount" class="fi" type="number" min="0" step="0.01" style="width:100%;" placeholder="0.00" />
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Foreman Tracking Amount <span style="color:#ef4444;">*</span></label>
+        <div style="position:relative;">
+          <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.9rem;pointer-events:none;">$</span>
+          <input id="co-budget-foreman-amount" class="fi" type="number" min="0" step="0.01" style="width:100%;padding-left:24px;" placeholder="0.00" />
+        </div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Shown to Foreman and used for Daily Input / Weekly Summary tracking.</div>
       </div>
       <!-- Distribution mode (multiple area × labor code pairs) -->
@@ -11323,7 +11329,10 @@ function computeCorPaid(corb) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
           <label style="font-size:.83rem;color:var(--muted);margin:0;">Foreman Budget per Area / Labor Code <span style="color:#ef4444;">*</span></label>
           <div style="display:flex;gap:6px;align-items:center;">
-            <input id="co-budget-dist-total-input" class="fi" type="number" min="0" step="0.01" style="width:100px;padding:5px 8px;" placeholder="Total $" />
+            <div style="position:relative;">
+              <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.9rem;pointer-events:none;">$</span>
+              <input id="co-budget-dist-total-input" class="fi" type="number" min="0" step="0.01" style="width:100px;padding:5px 8px 5px 20px;" placeholder="Total" />
+            </div>
             <button class="btn btn-outline" style="margin:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;" onclick="corbDistributeEvenly()">÷ Evenly</button>
           </div>
         </div>
