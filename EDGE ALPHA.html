@@ -10288,6 +10288,7 @@ function coOpenSubmitModal(burnMode) {
   if (lcSearch)   lcSearch.value = '';
   if (lcDropdown) lcDropdown.style.display = 'none';
   document.getElementById('co-submit-desc').value = '';
+  document.getElementById('co-submit-hours').value = '';
   document.getElementById('co-submit-photos').value = '';
   document.getElementById('co-photo-preview').innerHTML = '';
   document.getElementById('co-submit-progress').style.display = 'none';
@@ -10677,6 +10678,7 @@ async function coSubmit() {
       laborCode: _coBurnMode ? null : (_coSelectedLaborCodes[0] || null),
       laborCodes: _coBurnMode ? [] : [..._coSelectedLaborCodes],
       coAreas: _coBurnMode ? [] : [..._coSelectedAreas],
+      coHours: _coBurnMode ? null : (parseFloat(document.getElementById('co-submit-hours').value) || null),
       description: desc, photoUrls,
       ...(wo === '503 - Burn' ? { burnArea, burnAreas, burnLaborCode: burnCode, burnHours, burnNumber } : {}),
       submittedByEmail: _currentUser.email, submittedByUid: _currentUser.uid,
@@ -10779,6 +10781,7 @@ function coOpenDetail(coId) {
       ${_burnAreaList.length ? `<div style="grid-column:span 2"><span style="color:var(--muted);">Areas</span><br/><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${_burnAreaList.map(a => `<span style="display:inline-block;padding:2px 9px;background:rgba(201,168,76,.13);border:1px solid rgba(201,168,76,.35);border-radius:10px;font-size:.8rem;color:var(--accent);">${eh(a)}</span>`).join('')}</div></div>` : ''}
       ${!_isBurn && co.coAreas && co.coAreas.length ? `<div style="grid-column:span 2"><span style="color:var(--muted);">Areas</span><br/><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${co.coAreas.map(a => `<span style="display:inline-block;padding:2px 9px;background:rgba(201,168,76,.13);border:1px solid rgba(201,168,76,.35);border-radius:10px;font-size:.8rem;color:var(--accent);">${eh(a)}</span>`).join('')}</div></div>` : ''}
       ${!_isBurn ? (() => { const codes = (co.laborCodes && co.laborCodes.length) ? co.laborCodes : (co.laborCode ? [co.laborCode] : []); return codes.length ? `<div style="grid-column:span 2"><span style="color:var(--muted);">Labor Codes</span><br/><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${codes.map(c => `<span style="display:inline-block;padding:2px 9px;background:rgba(201,168,76,.13);border:1px solid rgba(201,168,76,.35);border-radius:10px;font-size:.8rem;color:var(--accent);">${eh(c)}</span>`).join('')}</div></div>` : ''; })() : ''}
+      ${!_isBurn && co.coHours != null ? `<div><span style="color:var(--muted);">Hours</span><br/><strong>${co.coHours}</strong></div>` : ''}
       ${_isBurn && co.burnLaborCode ? `<div><span style="color:var(--muted);">Labor Code</span><br/><strong>${eh(co.burnLaborCode)}</strong></div>` : ''}
       ${_isBurn && co.burnHours != null ? `<div><span style="color:var(--muted);">Hours</span><br/><strong>${co.burnHours}</strong></div>` : ''}
       ${_corbAreaKey ? `<div style="grid-column:span 2"><span style="color:var(--muted);">Area (Budget Key)</span><br/><strong style="font-size:.82rem;">${eh(_corbAreaKey)}</strong></div>` : ''}
@@ -11116,6 +11119,11 @@ function computeCorPaid(corb) {
               oninput="coLcSearch(this.value)" />
             <div id="co-lc-dropdown" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.6);max-height:200px;overflow-y:auto;"></div>
           </div>
+        </div>
+        <!-- Hours (optional) -->
+        <div>
+          <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Hours <span style="color:var(--muted);font-style:italic;">(optional)</span></label>
+          <input type="number" id="co-submit-hours" class="fi" style="width:100%;" placeholder="0.0" min="0" step="0.5" />
         </div>
       </div>
       <div>
