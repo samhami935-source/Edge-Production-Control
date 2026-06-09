@@ -10902,7 +10902,7 @@ function coOpenBudgetModal(coId) {
     lcHidden.value = coLcs[0] || '';
   }
 
-  document.getElementById('co-budget-desc').value = '';
+  document.getElementById('co-budget-desc').value = (co && co.description) ? co.description : '';
   document.getElementById('co-budget-co-hours').value = '';
   document.getElementById('co-budget-internal-amount').value = '';
   document.getElementById('co-budget-foreman-amount').value = '';
