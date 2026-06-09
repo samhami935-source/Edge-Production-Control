@@ -4209,7 +4209,8 @@ function diOpenFilter(type, btn) {
   } else {
     const groups = PAYROLL_GROUPS.filter(g => isForemanAllowedCode(g.code))
       .map(g => ({value: g.code, label: `${g.code} \u2013 ${g.description}`}));
-    const corCodes = [...new Set((_cache.corbudgets || []).filter(b => b.jobId === jobName).map(b => b.laborCode).filter(Boolean))]
+    const _liveCOIds = new Set((_cache.changeorders || []).map(c => c.id));
+    const corCodes = [...new Set((_cache.corbudgets || []).filter(b => b.jobId === jobName && _liveCOIds.has(b.changeOrderId)).map(b => b.laborCode).filter(Boolean))]
       .map(c => ({value: c, label: c}));
     // Merge, deduplicate by value
     const seen = new Set(groups.map(g => g.value));
@@ -6243,9 +6244,10 @@ function psGetAreas(jobName) {
   const csvAreas = f ? [...new Set(f.rows.map(r => r.area).filter(a => a && a !== '—'))] : [];
   const prAreas  = getPayrollEntries().filter(e => e.csvFile === jobName).map(e => e.area).filter(Boolean);
   // Approved COR areas prepended so they appear at top of any area dropdown.
-  // Paid-out CORs (remainingBalance <= 0) are excluded from active selection.
+  // Only include corbs whose parent CO still exists; paid-out CORs are excluded.
+  const _activeCOIds = new Set((_cache.changeorders || []).map(c => c.id));
   const corAreas = (_cache.corbudgets || [])
-    .filter(b => b.jobId === jobName && (b.amount - computeCorPaid(b)) > 0)
+    .filter(b => b.jobId === jobName && _activeCOIds.has(b.changeOrderId) && (b.amount - computeCorPaid(b)) > 0)
     .map(corbAreaKey);
   const regular = [...new Set([...csvAreas, ...prAreas])].sort();
   return [...new Set([...corAreas, ...regular])];
@@ -10129,8 +10131,10 @@ function renderCODashboard() {
   if (!jobName) { container.style.display = 'none'; return; }
   container.style.display = 'block';
 
-  const corbs = (_cache.corbudgets || []).filter(b => b.jobId === jobName);
   const cos   = (_cache.changeorders || []).filter(c => c.jobId === jobName);
+  const _coIdSet = new Set(cos.map(c => c.id));
+  // Only show corbs whose parent change order still exists (guard against orphans from deleted COs)
+  const corbs = (_cache.corbudgets || []).filter(b => b.jobId === jobName && _coIdSet.has(b.changeOrderId));
 
   let totalBudget = 0, totalPtd = 0;
   const rows = corbs.map(corb => {
