@@ -10026,7 +10026,8 @@ let _coUnsub       = null;
 let _coNotifUnsub  = null;
 let _coPendingCoId = null;
 let _coPendingCorNumber = null;
-let _corbDistPairs = []; // [{area, laborCode}] — one entry per area×lc combo for budget modal
+let _corbDistPairs = [];
+let _coSnapshotReady = false; // true once changeorders snapshot has fired at least once // [{area, laborCode}] — one entry per area×lc combo for budget modal
 
 function corbUpdateDistSum() {
   let total = 0;
@@ -10065,6 +10066,7 @@ function coInit() {
     .orderBy('submittedAt', 'desc')
     .onSnapshot(snap => {
       _cache.changeorders = snap.docs.map(d => d.data());
+      _coSnapshotReady = true;
       renderCOLog();
     }, () => {});
 
@@ -10077,6 +10079,18 @@ function coInit() {
         if (co && co.burnNumber != null) b.burnNumber = co.burnNumber;
       }
     });
+    // Silently purge any corb entries whose parent change order no longer exists.
+    // Only runs after changeorders snapshot has fired (flag guards against race where
+    // corbudgets loads first and _cache.changeorders is still empty).
+    if (_coSnapshotReady && isAdmin()) {
+      const _liveCoIds = new Set((_cache.changeorders || []).map(c => c.id));
+      const _orphans   = _cache.corbudgets.filter(b => b.changeOrderId && !_liveCoIds.has(b.changeOrderId));
+      if (_orphans.length > 0) {
+        const _cleanBatch = db.batch();
+        _orphans.forEach(b => _cleanBatch.delete(db.collection('corbudgets').doc(b.id)));
+        _cleanBatch.commit().catch(() => {});
+      }
+    }
     renderCOLog();
   }, () => {});
 
