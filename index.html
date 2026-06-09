@@ -10281,14 +10281,12 @@ function coOpenSubmitModal(burnMode) {
   if (areaSearch)   areaSearch.value  = '';
   if (areaTags)     { areaTags.innerHTML = ''; areaTags.style.marginBottom = '0'; }
   if (areaDropdown) areaDropdown.style.display = 'none';
-  const lcTags = document.getElementById('co-lc-tags');
-  if (lcTags) lcTags.innerHTML = '';
-  const lcSel = document.getElementById('co-submit-lc');
-  if (lcSel) {
-    lcSel.innerHTML = '<option value="">— Select Labor Code —</option>' +
-      sortLaborCodes(getLaborCodes()).map(lc => `<option value="${eh(lc.code)}">${eh(lc.code)} — ${eh(lc.description)}</option>`).join('');
-    lcSel.selectedIndex = 0;
-  }
+  const lcTags     = document.getElementById('co-lc-tags');
+  const lcSearch   = document.getElementById('co-lc-search');
+  const lcDropdown = document.getElementById('co-lc-dropdown');
+  if (lcTags)     { lcTags.innerHTML = ''; lcTags.style.marginBottom = '0'; }
+  if (lcSearch)   lcSearch.value = '';
+  if (lcDropdown) lcDropdown.style.display = 'none';
   document.getElementById('co-submit-desc').value = '';
   document.getElementById('co-submit-photos').value = '';
   document.getElementById('co-photo-preview').innerHTML = '';
@@ -10510,29 +10508,77 @@ function _coAreaRenderTags() {
   ).join('');
 }
 
-// ── CO labor code multi-add ───────────────────────────────────────────
-function coLcAdd() {
-  const sel = document.getElementById('co-submit-lc');
-  const code = sel ? sel.value.trim() : '';
-  if (!code) return;
-  if (!_coSelectedLaborCodes.includes(code)) {
-    _coSelectedLaborCodes.push(code);
-    _coLcRenderTags();
+// ── CO labor code multi-select (same pattern as area) ────────────────
+let _coLcClickHandler = null;
+
+function coLcOpen() {
+  if (_coBurnMode) return;
+  _coLcRenderDropdown('');
+  if (_coLcClickHandler) document.removeEventListener('mousedown', _coLcClickHandler, true);
+  _coLcClickHandler = e => {
+    const wrap = document.getElementById('co-lc-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+      const dd = document.getElementById('co-lc-dropdown');
+      if (dd) dd.style.display = 'none';
+      document.removeEventListener('mousedown', _coLcClickHandler, true);
+      _coLcClickHandler = null;
+    }
+  };
+  document.addEventListener('mousedown', _coLcClickHandler, true);
+}
+
+function coLcSearch(q) { _coLcRenderDropdown(q); }
+
+function _coLcRenderDropdown(filter) {
+  const dd = document.getElementById('co-lc-dropdown');
+  if (!dd) return;
+  const all = sortLaborCodes(getLaborCodes());
+  const q = filter.trim().toLowerCase();
+  const filtered = q ? all.filter(lc => lc.code.toLowerCase().includes(q) || lc.description.toLowerCase().includes(q)) : all;
+  if (!filtered.length) {
+    dd.innerHTML = '<p style="padding:10px 12px;color:var(--muted);font-size:.82rem;margin:0;">No labor codes found.</p>';
+    dd.style.display = 'block';
+    return;
   }
-  sel.value = '';
+  dd.innerHTML = filtered.map(lc => {
+    const checked = _coSelectedLaborCodes.includes(lc.code);
+    return `<label style="display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:.83rem;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);">
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="coLcToggle('${ea(lc.code)}',this)" style="cursor:pointer;flex-shrink:0;width:14px;height:14px;" />
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${eh(lc.code)} — ${eh(lc.description)}</span>
+    </label>`;
+  }).join('') +
+  `<div style="padding:8px 10px;border-top:1px solid rgba(255,255,255,.08);position:sticky;bottom:0;background:var(--surface);">
+    <button type="button" onclick="coLcApply()" style="width:100%;padding:8px;background:var(--accent);color:#000;font-weight:700;font-size:.83rem;border:none;border-radius:6px;cursor:pointer;">Apply</button>
+  </div>`;
+  dd.style.display = 'block';
+}
+
+function coLcToggle(code, cb) {
+  if (cb.checked) { if (!_coSelectedLaborCodes.includes(code)) _coSelectedLaborCodes.push(code); }
+  else { _coSelectedLaborCodes = _coSelectedLaborCodes.filter(c => c !== code); }
+  _coLcRenderTags();
+}
+
+function coLcApply() {
+  const dd = document.getElementById('co-lc-dropdown');
+  if (dd) dd.style.display = 'none';
+  if (_coLcClickHandler) { document.removeEventListener('mousedown', _coLcClickHandler, true); _coLcClickHandler = null; }
 }
 
 function coLcRemove(code) {
   _coSelectedLaborCodes = _coSelectedLaborCodes.filter(c => c !== code);
   _coLcRenderTags();
+  const search = document.getElementById('co-lc-search');
+  _coLcRenderDropdown(search ? search.value.trim() : '');
 }
 
 function _coLcRenderTags() {
   const wrap = document.getElementById('co-lc-tags');
   if (!wrap) return;
-  const codes = getLaborCodes();
+  const allCodes = getLaborCodes();
+  wrap.style.marginBottom = _coSelectedLaborCodes.length ? '6px' : '0';
   wrap.innerHTML = _coSelectedLaborCodes.map(code => {
-    const lc = codes.find(l => l.code === code);
+    const lc = allCodes.find(l => l.code === code);
     const label = lc ? `${code} — ${lc.description}` : code;
     return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px 2px 9px;background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.35);border-radius:12px;font-size:.78rem;color:var(--accent);">
       ${eh(label)}
@@ -11036,13 +11082,16 @@ function computeCorPaid(corb) {
             <div id="co-area-dropdown" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.6);max-height:200px;overflow-y:auto;"></div>
           </div>
         </div>
-        <!-- Labor Codes multi-add (required) -->
+        <!-- Labor Codes multi-select (required) -->
         <div>
           <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Labor Codes <span style="color:#ef4444;">*</span></label>
-          <div id="co-lc-tags" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;"></div>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <select id="co-submit-lc" class="fi" style="flex:1;"></select>
-            <button type="button" class="btn btn-outline" style="margin:0;padding:7px 14px;font-size:.82rem;white-space:nowrap;" onclick="coLcAdd()">+ Add</button>
+          <div id="co-lc-wrap" style="position:relative;">
+            <div id="co-lc-tags" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:0;"></div>
+            <input id="co-lc-search" class="fi" style="width:100%;box-sizing:border-box;"
+              placeholder="Search labor codes…" autocomplete="off"
+              onfocus="coLcOpen()"
+              oninput="coLcSearch(this.value)" />
+            <div id="co-lc-dropdown" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.6);max-height:200px;overflow-y:auto;"></div>
           </div>
         </div>
       </div>
