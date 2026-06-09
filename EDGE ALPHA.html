@@ -3601,6 +3601,8 @@ let _diData = {};
 let _diAllData = {};
 // Crew lead names: maps crewNum (int) → lead name string; drives crew tab labels
 let _diCrewLeadNames = {};
+// Crew lead employee numbers: maps crewNum (int) → empNum string
+let _diCrewLeadNums = {};
 // Employee row count per crew — how many rows the employee names section shows.
 // Grows via Add Row, shrinks via Delete. Filter-added entry rows don't affect this.
 let _diEmpRowCount = {};
@@ -3634,6 +3636,7 @@ function diSwitchJobData(jobName) {
     const blank = _diEmptyCrewData();
     for (let c=1; c<=_diCrewCount; c++) _diData[c] = blank[c];
     _diCrewLeadNames = {};
+    _diCrewLeadNums  = {};
     return;
   }
   if (!_diAllData[jobName]) _diAllData[jobName] = _diEmptyCrewData();
@@ -3648,8 +3651,15 @@ function diSwitchJobData(jobName) {
       ? _diAllData[jobName].__empRowCounts[c]
       : DI_EMP_ROWS;
   }
-  // Restore crew lead names for this job
+  // Restore crew lead names and numbers for this job
   _diCrewLeadNames = Object.assign({}, _diAllData[jobName].__crewLeadNames || {});
+  _diCrewLeadNums  = Object.assign({}, _diAllData[jobName].__crewLeadNums  || {});
+  // Retroactively resolve any missing crew lead numbers from the employee list
+  for (let c = 1; c <= _diCrewCount; c++) {
+    if (!_diCrewLeadNums[c] && _diCrewLeadNames[c]) {
+      _diCrewLeadNums[c] = _resolveEmpNum('', _diCrewLeadNames[c]);
+    }
+  }
 }
 
 // Initialize with empty data for no job selected
@@ -3750,7 +3760,9 @@ function diAddCrew() {
     _diAllData[jobName][_diCrewCount] = newRows;
     _diAllData[jobName].__crewCount = _diCrewCount;
     if (!_diAllData[jobName].__crewLeadNames) _diAllData[jobName].__crewLeadNames = {};
+    if (!_diAllData[jobName].__crewLeadNums)  _diAllData[jobName].__crewLeadNums  = {};
     _diAllData[jobName].__crewLeadNames[_diCrewCount] = '';
+    _diAllData[jobName].__crewLeadNums[_diCrewCount]  = '';
   }
   // Keep paysheet state in sync
   _psEnsureCrew(_diCrewCount);
@@ -3791,6 +3803,7 @@ function diDeleteCrew(crewNum) {
     delete _diAllData[jobName][_diCrewCount + 1];
     _diAllData[jobName].__crewCount     = _diCrewCount;
     _diAllData[jobName].__crewLeadNames = Object.assign({}, _diCrewLeadNames);
+    _diAllData[jobName].__crewLeadNums  = Object.assign({}, _diCrewLeadNums);
   }
 
   diRenderCrewTabs();
@@ -3803,8 +3816,9 @@ function diDeleteCrew(crewNum) {
 // ═══════════════════════════════
 
 async function diSaveCrewSet() {
-  const lead = (_diCrewLeadNames[_diActiveCrew] || '').trim();
+  const lead       = (_diCrewLeadNames[_diActiveCrew] || '').trim();
   if (!lead) { alert('Enter a Crew Lead name before saving.'); return; }
+  const leadEmpNum = (_diCrewLeadNums[_diActiveCrew] || '').trim() || _resolveEmpNum('', lead);
   const employeeData = (_diData[_diActiveCrew] || [])
     .filter(r => (r.employee || '').trim())
     .map(r => ({ empNum: (r.empNum || '').trim(), name: (r.employee || '').trim() }));
@@ -3813,6 +3827,7 @@ async function diSaveCrewSet() {
   const doc = {
     id,
     name:         lead,
+    leadEmpNum,
     employees,
     employeeData,
     createdBy:    _currentUser ? _currentUser.email : 'unknown',
@@ -3861,14 +3876,18 @@ async function diLoadCrewSet(id) {
     const snap = await db.collection('crewsets').doc(id).get();
     if (!snap.exists) { alert('Crew set not found.'); return; }
     const s = snap.data();
-    // Set crew lead name
+    // Set crew lead name and number
     const prevLead = (_diCrewLeadNames[_diActiveCrew] || '').trim();
+    const leadNum  = (s.leadEmpNum || '') || _resolveEmpNum('', s.name);
     _diCrewLeadNames[_diActiveCrew] = s.name;
+    _diCrewLeadNums[_diActiveCrew]  = leadNum;
     const jn = document.getElementById('ps-job-select').value;
     if (jn) {
       if (!_diAllData[jn]) _diAllData[jn] = {};
       if (!_diAllData[jn].__crewLeadNames) _diAllData[jn].__crewLeadNames = {};
+      if (!_diAllData[jn].__crewLeadNums)  _diAllData[jn].__crewLeadNums  = {};
       _diAllData[jn].__crewLeadNames[_diActiveCrew] = s.name;
+      _diAllData[jn].__crewLeadNums[_diActiveCrew]  = leadNum;
     }
     // Fill employee rows from saved crew set
     // Prefer employeeData (has empNum) — fall back to plain employees array for old saves
@@ -3956,28 +3975,44 @@ function diRenderCrewTable() {
   // Render crew lead input above the table
   const leadWrap = document.getElementById('di-crew-lead-wrap');
   if (leadWrap) {
-    const curLead = (_diCrewLeadNames[_diActiveCrew] || '');
+    const curLead    = (_diCrewLeadNames[_diActiveCrew] || '');
+    const curLeadNum = (_diCrewLeadNums[_diActiveCrew]  || '') || _resolveEmpNum('', curLead);
     leadWrap.innerHTML =
       `<label style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px;">Crew Lead</label>` +
       `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">` +
-        `<input id="di-crew-lead-input" class="fi" value="${eh(curLead)}" placeholder="Enter crew lead name…" ` +
-        `style="width:240px;max-width:100%;padding:6px 10px;font-size:.88rem;" />` +
+        `<input id="di-crew-lead-num" class="fi" value="${eh(curLeadNum)}" placeholder="#" ` +
+        `style="width:64px;flex-shrink:0;padding:6px 8px;font-size:.88rem;text-align:center;" />` +
+        `<input id="di-crew-lead-input" class="fi" list="di-emp-names-datalist" value="${eh(curLead)}" placeholder="Enter crew lead name…" ` +
+        `style="width:220px;max-width:100%;padding:6px 10px;font-size:.88rem;" />` +
         `<button class="btn-sm" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);font-weight:700;" onclick="diSaveCrewSet()">💾 Save Crew</button>` +
         `<button class="btn-sm btn-outline" style="white-space:nowrap;" onclick="diOpenCrewSetsModal()">📋 Load Crew</button>` +
       `</div>`;
-    const leadInput = document.getElementById('di-crew-lead-input');
-    leadInput.addEventListener('input', function() {
-      const val      = this.value;
-      const prevLead = (_diCrewLeadNames[_diActiveCrew] || '').trim();
 
-      // Update lead name in state
-      _diCrewLeadNames[_diActiveCrew] = val;
+    // Name input — auto-fills # when name matches an employee
+    const leadInput  = document.getElementById('di-crew-lead-input');
+    const leadNumEl  = document.getElementById('di-crew-lead-num');
+
+    function _syncLeadState(name, num) {
+      _diCrewLeadNames[_diActiveCrew] = name;
+      _diCrewLeadNums[_diActiveCrew]  = num;
       const jn = document.getElementById('ps-job-select').value;
       if (jn) {
         if (!_diAllData[jn]) _diAllData[jn] = {};
         if (!_diAllData[jn].__crewLeadNames) _diAllData[jn].__crewLeadNames = {};
-        _diAllData[jn].__crewLeadNames[_diActiveCrew] = val;
+        if (!_diAllData[jn].__crewLeadNums)  _diAllData[jn].__crewLeadNums  = {};
+        _diAllData[jn].__crewLeadNames[_diActiveCrew] = name;
+        _diAllData[jn].__crewLeadNums[_diActiveCrew]  = num;
       }
+    }
+
+    leadInput.addEventListener('input', function() {
+      const val      = this.value;
+      const prevLead = (_diCrewLeadNames[_diActiveCrew] || '').trim();
+
+      // Auto-fill # from employee list when name matches
+      const resolved = _resolveEmpNum('', val.trim());
+      if (resolved) { leadNumEl.value = resolved; _diCrewLeadNums[_diActiveCrew] = resolved; }
+      _syncLeadState(val, leadNumEl.value);
 
       // Auto-fill row 0 employee with crew lead name if that slot is blank or was the old lead
       const rows = _diData[_diActiveCrew];
@@ -3985,7 +4020,6 @@ function diRenderCrewTable() {
         const firstEmp = (rows[0].employee || '').trim();
         if (!firstEmp || firstEmp === prevLead) {
           rows[0].employee = val.trim();
-          // Update DOM directly — avoids full table re-render which would reset this input
           const firstEmpInput = document.getElementById('di-emp-name-' + _diActiveCrew + '-0');
           if (firstEmpInput) firstEmpInput.value = val.trim();
         }
@@ -4001,6 +4035,26 @@ function diRenderCrewTable() {
       }
 
       diRenderCrewTabs();
+      diAutoSaveDraft();
+    });
+
+    // # input — auto-fills name when number matches an employee
+    leadNumEl.addEventListener('input', function() {
+      const numVal = this.value.trim();
+      _diCrewLeadNums[_diActiveCrew] = numVal;
+      const n = parseInt(numVal, 10);
+      if (!isNaN(n) && numVal) {
+        const match = getEmployees().find(e => e.n === n);
+        if (match) {
+          leadInput.value = match.name;
+          _syncLeadState(match.name, numVal);
+          diRenderCrewTabs();
+        } else {
+          _syncLeadState(leadInput.value, numVal);
+        }
+      } else {
+        _syncLeadState(leadInput.value, numVal);
+      }
       diAutoSaveDraft();
     });
   }
@@ -4627,6 +4681,7 @@ async function diConfirmSaveDraft() {
   }
   crewData.__crewCount     = _diCrewCount;
   crewData.__crewLeadNames = Object.assign({}, _diCrewLeadNames);
+  crewData.__crewLeadNums  = Object.assign({}, _diCrewLeadNums);
   crewData.__empRowCounts  = Object.assign({}, _diEmpRowCount);
   const doc = {
     id: docId,
@@ -4698,6 +4753,7 @@ function diAutoSaveDraft() {
     }
     autoCrewData.__crewCount     = _diCrewCount;
     autoCrewData.__crewLeadNames = Object.assign({}, _diCrewLeadNames);
+    autoCrewData.__crewLeadNums  = Object.assign({}, _diCrewLeadNums);
     autoCrewData.__empRowCounts  = Object.assign({}, _diEmpRowCount);
     const doc = {
       id: docId, date, job: jobName,
@@ -4831,11 +4887,14 @@ async function diLoadDraftById(docId) {
       const savedCrewNums = Object.keys(d.data || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
       const savedMax = savedCrewNums.length ? Math.max(...savedCrewNums) : 10;
       _diCrewCount = Math.max(10, savedMax);
-      // Restore crew lead names from draft (coerce keys to int to match runtime)
+      // Restore crew lead names and numbers from draft (coerce keys to int to match runtime)
       const rawLeadNames = (d.data && d.data.__crewLeadNames) || {};
       const restoredLeadNames = {};
       Object.keys(rawLeadNames).forEach(k => { restoredLeadNames[parseInt(k)] = rawLeadNames[k]; });
-      _diAllData[jobName] = { __crewCount: _diCrewCount, __crewLeadNames: restoredLeadNames };
+      const rawLeadNums = (d.data && d.data.__crewLeadNums) || {};
+      const restoredLeadNums = {};
+      Object.keys(rawLeadNums).forEach(k => { restoredLeadNums[parseInt(k)] = rawLeadNums[k]; });
+      _diAllData[jobName] = { __crewCount: _diCrewCount, __crewLeadNames: restoredLeadNames, __crewLeadNums: restoredLeadNums };
       for (let c = 1; c <= _diCrewCount; c++) {
         const crewRows = d.data && (d.data[String(c)] || d.data[c]);
         _diAllData[jobName][c] = Array.isArray(crewRows) && crewRows.length
