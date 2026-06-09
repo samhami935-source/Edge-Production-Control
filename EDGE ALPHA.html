@@ -10877,11 +10877,22 @@ function coOpenBudgetModal(coId) {
   const co = (_cache.changeorders || []).find(c => c.id === coId);
   const isBurn = co && co.workOrderNumber === '503 - Burn';
 
-  const lcSel = document.getElementById('co-budget-lc');
-  lcSel.innerHTML = getLaborCodes().map(lc =>
-    `<option value="${eh(lc.code)}">${lc.code} – ${eh(lc.description)}</option>`
-  ).join('');
-  if (isBurn && co.burnLaborCode) lcSel.value = co.burnLaborCode;
+  // Populate labor code display and hidden input from the CO doc
+  const lcDisplay = document.getElementById('co-budget-lc-display');
+  const lcHidden  = document.getElementById('co-budget-lc');
+  if (isBurn) {
+    const burnLc = co.burnLaborCode || '';
+    lcDisplay.innerHTML = burnLc
+      ? `<span style="display:inline-block;padding:2px 9px;background:rgba(201,168,76,.13);border:1px solid rgba(201,168,76,.35);border-radius:10px;font-size:.8rem;color:var(--accent);">${eh(burnLc)}</span>`
+      : '<span style="color:var(--muted);font-size:.83rem;">—</span>';
+    lcHidden.value = burnLc;
+  } else {
+    const coLcs = (co.laborCodes && co.laborCodes.length) ? co.laborCodes : (co.laborCode ? [co.laborCode] : []);
+    lcDisplay.innerHTML = coLcs.length
+      ? coLcs.map(c => `<span style="display:inline-block;padding:2px 9px;background:rgba(201,168,76,.13);border:1px solid rgba(201,168,76,.35);border-radius:10px;font-size:.8rem;color:var(--accent);">${eh(c)}</span>`).join('')
+      : '<span style="color:var(--muted);font-size:.83rem;">—</span>';
+    lcHidden.value = coLcs[0] || '';
+  }
 
   document.getElementById('co-budget-desc').value = '';
   document.getElementById('co-budget-internal-amount').value = '';
@@ -10896,11 +10907,13 @@ function coOpenBudgetModal(coId) {
     : 'Enter the budget details for this approved Change Order. This will appear in Daily Input tracking.';
   document.getElementById('co-budget-confirm-btn').textContent = isBurn ? '✓ Add to Budget' : '✓ Approve & Create Budget';
 
-  const areaRow  = document.getElementById('co-budget-burn-area-row');
-  const hoursRow = document.getElementById('co-budget-hours-row');
+  const areaRow   = document.getElementById('co-budget-burn-area-row');
+  const coAreaRow = document.getElementById('co-budget-co-area-row');
+  const hoursRow  = document.getElementById('co-budget-hours-row');
   if (isBurn) {
-    areaRow.style.display  = '';
-    hoursRow.style.display = '';
+    areaRow.style.display   = '';
+    coAreaRow.style.display = 'none';
+    hoursRow.style.display  = '';
     const _burnAreas = (co.burnAreas && co.burnAreas.length) ? co.burnAreas : (co.burnArea ? [co.burnArea] : []);
     document.getElementById('co-budget-burn-area-val').textContent = _burnAreas.length ? _burnAreas.join(', ') : '—';
     document.getElementById('co-budget-hours').value = co.burnHours != null ? co.burnHours : '';
@@ -10908,6 +10921,15 @@ function coOpenBudgetModal(coId) {
     areaRow.style.display  = 'none';
     hoursRow.style.display = 'none';
     document.getElementById('co-budget-hours').value = '';
+    const coAreas = (co.coAreas && co.coAreas.length) ? co.coAreas : [];
+    if (coAreas.length) {
+      coAreaRow.style.display = '';
+      document.getElementById('co-budget-co-area-val').innerHTML = coAreas.map(a =>
+        `<span style="display:inline-block;padding:2px 9px;background:rgba(201,168,76,.13);border:1px solid rgba(201,168,76,.35);border-radius:10px;font-size:.8rem;color:var(--accent);">${eh(a)}</span>`
+      ).join('');
+    } else {
+      coAreaRow.style.display = 'none';
+    }
   }
 
   document.getElementById('co-budget-modal').classList.add('open');
@@ -10929,7 +10951,6 @@ async function coConfirmBudget() {
   const foremanAmt  = parseFloat(document.getElementById('co-budget-foreman-amount').value);
   const burnHours   = isBurn ? (parseFloat(document.getElementById('co-budget-hours').value) || 0) : null;
 
-  if (!lc)                               { alert('Please select a labor code.'); return; }
   if (!desc)                             { alert('Please enter a description.'); return; }
   if (isBurn && burnHours <= 0)          { alert('Please enter hours greater than 0.'); return; }
   if (isNaN(internalAmt) || internalAmt < 0) { alert('Please enter a valid Internal COR Amount.'); return; }
@@ -11142,13 +11163,18 @@ function computeCorPaid(corb) {
     </div>
     <p id="co-budget-subtitle" style="font-size:.83rem;color:var(--muted);margin-bottom:16px;">Enter the budget details for this approved Change Order. This will appear in Daily Input tracking.</p>
     <div style="display:flex;flex-direction:column;gap:12px;">
+      <div id="co-budget-co-area-row" style="display:none;">
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Areas</label>
+        <div id="co-budget-co-area-val" style="display:flex;flex-wrap:wrap;gap:4px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;"></div>
+      </div>
       <div id="co-budget-burn-area-row" style="display:none;">
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Area</label>
         <div id="co-budget-burn-area-val" style="padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:.9rem;font-weight:600;"></div>
       </div>
       <div>
-        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Labor Code <span style="color:#ef4444;">*</span></label>
-        <select id="co-budget-lc" class="fi" style="width:100%;"></select>
+        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Labor Code</label>
+        <div id="co-budget-lc-display" style="display:flex;flex-wrap:wrap;gap:4px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;"></div>
+        <input type="hidden" id="co-budget-lc" />
       </div>
       <div id="co-budget-hours-row" style="display:none;">
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Hours <span style="color:#ef4444;">*</span></label>
