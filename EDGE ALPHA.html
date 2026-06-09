@@ -11270,12 +11270,17 @@ function computeCorPaid(corb) {
      COR BUDGET ENTRY MODAL (VP approval step)
 ══════════════════════════════════════════ -->
 <div class="modal-overlay" id="co-budget-modal" onclick="if(event.target===this)coCloseBudgetModal()">
-  <div class="modal" style="width:480px;max-width:96vw;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-      <h2 id="co-budget-title" style="margin:0;font-size:1.1rem;">💰 Create COR Budget</h2>
-      <button onclick="coCloseBudgetModal()" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:4px;">×</button>
+  <div class="modal" style="width:480px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column;">
+    <!-- Sticky header -->
+    <div style="flex-shrink:0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h2 id="co-budget-title" style="margin:0;font-size:1.1rem;">💰 Create COR Budget</h2>
+        <button onclick="coCloseBudgetModal()" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:4px;">×</button>
+      </div>
+      <p id="co-budget-subtitle" style="font-size:.83rem;color:var(--muted);margin-bottom:16px;">Enter the budget details for this approved Change Order. This will appear in Daily Input tracking.</p>
     </div>
-    <p id="co-budget-subtitle" style="font-size:.83rem;color:var(--muted);margin-bottom:16px;">Enter the budget details for this approved Change Order. This will appear in Daily Input tracking.</p>
+    <!-- Scrollable form body -->
+    <div style="flex:1;overflow-y:auto;min-height:0;padding-right:4px;">
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div id="co-budget-co-area-row" style="display:none;">
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Areas</label>
@@ -11336,7 +11341,9 @@ function computeCorPaid(corb) {
       </div>
       <div id="co-budget-progress" style="display:none;padding:10px;background:var(--surface2);border-radius:8px;font-size:.83rem;color:var(--muted);text-align:center;">Creating budget…</div>
     </div>
-    <div style="display:flex;gap:10px;margin-top:18px;">
+    </div><!-- end scrollable body -->
+    <!-- Sticky footer buttons -->
+    <div style="flex-shrink:0;display:flex;gap:10px;margin-top:18px;">
       <button class="btn btn-outline" style="flex:1;margin:0;" onclick="coCloseBudgetModal()">Cancel</button>
       <button class="btn" id="co-budget-confirm-btn" style="flex:1;margin:0;background:#22c55e;border-color:#22c55e;" onclick="coConfirmBudget()">✓ Approve &amp; Create Budget</button>
     </div>
