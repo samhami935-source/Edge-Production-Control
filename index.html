@@ -10024,6 +10024,28 @@ let _coUnsub       = null;
 let _coNotifUnsub  = null;
 let _coPendingCoId = null;
 let _coPendingCorNumber = null;
+let _corbDistPairs = []; // [{area, laborCode}] — one entry per area×lc combo for budget modal
+
+function corbUpdateDistSum() {
+  let total = 0;
+  document.querySelectorAll('.co-budget-dist-input').forEach(inp => { total += parseFloat(inp.value) || 0; });
+  const el = document.getElementById('co-budget-dist-sum');
+  if (el) el.textContent = fm(total);
+}
+
+function corbDistributeEvenly() {
+  const totalInput = document.getElementById('co-budget-dist-total-input');
+  const total = parseFloat(totalInput ? totalInput.value : 0) || 0;
+  const inputs = [...document.querySelectorAll('.co-budget-dist-input')];
+  if (!inputs.length) return;
+  const each = Math.round((total / inputs.length) * 100) / 100;
+  let distributed = 0;
+  inputs.forEach((inp, idx) => {
+    if (idx < inputs.length - 1) { inp.value = each.toFixed(2); distributed += each; }
+    else { inp.value = (Math.round((total - distributed) * 100) / 100).toFixed(2); }
+  });
+  corbUpdateDistSum();
+}
 let _coPendingCorPdfUrl = null;
 
 function switchToCO() {
@@ -10944,6 +10966,41 @@ function coOpenBudgetModal(coId) {
     }
   }
 
+  // Build _corbDistPairs: one entry per (area × laborCode) combo
+  if (isBurn) {
+    const _bAreas = (co.burnAreas && co.burnAreas.length) ? co.burnAreas : (co.burnArea ? [co.burnArea] : [null]);
+    const _bLc = co.burnLaborCode || '';
+    _corbDistPairs = _bAreas.map(a => ({ area: a, laborCode: _bLc }));
+  } else {
+    const _cAreas = (co.coAreas && co.coAreas.length) ? co.coAreas : [null];
+    const _cLcs   = (co.laborCodes && co.laborCodes.length) ? co.laborCodes : (co.laborCode ? [co.laborCode] : ['']);
+    _corbDistPairs = [];
+    for (const area of _cAreas) {
+      for (const lc of _cLcs) {
+        _corbDistPairs.push({ area, laborCode: lc });
+      }
+    }
+  }
+
+  // Show distribution table or single input depending on pair count
+  const _isMultiDist = _corbDistPairs.length > 1;
+  document.getElementById('co-budget-foreman-single').style.display = _isMultiDist ? 'none' : '';
+  document.getElementById('co-budget-foreman-dist').style.display   = _isMultiDist ? '' : 'none';
+  if (_isMultiDist) {
+    document.getElementById('co-budget-dist-total-input').value = '';
+    document.getElementById('co-budget-dist-sum').textContent   = fm(0);
+    document.getElementById('co-budget-dist-rows').innerHTML = _corbDistPairs.map((p) =>
+      `<div style="display:grid;grid-template-columns:1fr 72px 100px;gap:6px;align-items:center;">
+        <span style="font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${ea(p.area || '—')}">${eh(p.area || '—')}</span>
+        <span style="font-size:.8rem;color:var(--accent);font-weight:600;">${eh(p.laborCode || '—')}</span>
+        <input type="number" class="fi co-budget-dist-input" min="0" step="0.01" placeholder="0.00"
+          style="width:100%;text-align:right;padding:5px 8px;" oninput="corbUpdateDistSum()" />
+      </div>`
+    ).join('');
+  } else {
+    document.getElementById('co-budget-foreman-amount').value = '';
+  }
+
   document.getElementById('co-budget-modal').classList.add('open');
 }
 
@@ -10960,14 +11017,19 @@ async function coConfirmBudget() {
   const lc          = document.getElementById('co-budget-lc').value;
   const desc        = document.getElementById('co-budget-desc').value.trim();
   const internalAmt = parseFloat(document.getElementById('co-budget-internal-amount').value);
-  const foremanAmt  = parseFloat(document.getElementById('co-budget-foreman-amount').value);
   const burnHours   = isBurn ? (parseFloat(document.getElementById('co-budget-hours').value) || 0) : null;
   const coHours     = !isBurn ? (parseFloat(document.getElementById('co-budget-co-hours').value) || null) : null;
+  const _isMultiDist = _corbDistPairs.length > 1;
+  // In distribution mode, read per-row amounts; in single mode, read the single input
+  const _distAmounts = _isMultiDist
+    ? [...document.querySelectorAll('.co-budget-dist-input')].map(inp => parseFloat(inp.value) || 0)
+    : null;
+  const foremanAmt = _isMultiDist ? 0 : parseFloat(document.getElementById('co-budget-foreman-amount').value);
 
   if (!desc)                             { alert('Please enter a description.'); return; }
   if (isBurn && burnHours <= 0)          { alert('Please enter hours greater than 0.'); return; }
   if (isNaN(internalAmt) || internalAmt < 0) { alert('Please enter a valid Internal COR Amount.'); return; }
-  if (isNaN(foremanAmt)  || foremanAmt  < 0) { alert('Please enter a valid Foreman Tracking Amount.'); return; }
+  if (!_isMultiDist && (isNaN(foremanAmt) || foremanAmt < 0)) { alert('Please enter a valid Foreman Tracking Amount.'); return; }
 
   const btn  = document.getElementById('co-budget-confirm-btn');
   const prog = document.getElementById('co-budget-progress');
@@ -10978,24 +11040,25 @@ async function coConfirmBudget() {
   if (!co) { alert('Change order not found.'); btn.disabled = false; prog.style.display = 'none'; return; }
 
   try {
-    // Build one corb per area (or one entry if no areas selected)
-    const _corbAreaList = isBurn
-      ? ((co.burnAreas && co.burnAreas.length) ? co.burnAreas : (co.burnArea ? [co.burnArea] : [null]))
-      : ((co.coAreas && co.coAreas.length) ? co.coAreas : [null]);
+    // Use _corbDistPairs (built in coOpenBudgetModal): one entry per area×laborCode combo
+    const _pairs = _corbDistPairs.length ? _corbDistPairs : [{ area: null, laborCode: lc }];
     const _now = Date.now();
-    const corbDocs = _corbAreaList.map((area, idx) => ({
-      id: `corb_${_now}_${idx}`,
-      jobId: co.jobId, changeOrderId: coId,
-      corNumber: _coPendingCorNumber, laborCode: lc, description: desc,
-      amount: foremanAmt,
-      foremanTrackingAmount: foremanAmt,
-      internalCorAmount: internalAmt,
-      ...(area ? { area } : {}),
-      ...(isBurn
-        ? { isBurn: true, burnHours, burnArea: area || '', burnNumber: co.burnNumber || null }
-        : { coHours }),
-      createdAt: new Date().toISOString(), createdByEmail: _currentUser.email, createdByUid: _currentUser.uid,
-    }));
+    const corbDocs = _pairs.map((pair, idx) => {
+      const pairAmt = _isMultiDist ? (_distAmounts[idx] || 0) : foremanAmt;
+      return {
+        id: `corb_${_now}_${idx}`,
+        jobId: co.jobId, changeOrderId: coId,
+        corNumber: _coPendingCorNumber, laborCode: pair.laborCode || lc, description: desc,
+        amount: pairAmt,
+        foremanTrackingAmount: pairAmt,
+        internalCorAmount: internalAmt,
+        ...(pair.area ? { area: pair.area } : {}),
+        ...(isBurn
+          ? { isBurn: true, burnHours, burnArea: pair.area || '', burnNumber: co.burnNumber || null }
+          : { coHours }),
+        createdAt: new Date().toISOString(), createdByEmail: _currentUser.email, createdByUid: _currentUser.uid,
+      };
+    });
     for (const corbDoc of corbDocs) {
       await db.collection('corbudgets').doc(corbDoc.id).set(corbDoc);
     }
@@ -11223,9 +11286,31 @@ function computeCorPaid(corb) {
         <input id="co-budget-internal-amount" class="fi" type="number" min="0" step="0.01" style="width:100%;" placeholder="0.00" />
         <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Management-only amount. Not shown to Foreman.</div>
       </div>
-      <div>
+      <!-- Single entry mode -->
+      <div id="co-budget-foreman-single">
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Foreman Tracking Amount ($) <span style="color:#ef4444;">*</span></label>
         <input id="co-budget-foreman-amount" class="fi" type="number" min="0" step="0.01" style="width:100%;" placeholder="0.00" />
+        <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Shown to Foreman and used for Daily Input / Weekly Summary tracking.</div>
+      </div>
+      <!-- Distribution mode (multiple area × labor code pairs) -->
+      <div id="co-budget-foreman-dist" style="display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <label style="font-size:.83rem;color:var(--muted);margin:0;">Foreman Budget per Area / Labor Code <span style="color:#ef4444;">*</span></label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input id="co-budget-dist-total-input" class="fi" type="number" min="0" step="0.01" style="width:100px;padding:5px 8px;" placeholder="Total $" />
+            <button class="btn btn-outline" style="margin:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;" onclick="corbDistributeEvenly()">÷ Evenly</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 72px 100px;gap:6px;padding:0 2px;margin-bottom:4px;">
+          <span style="font-size:.75rem;color:var(--muted);">Area</span>
+          <span style="font-size:.75rem;color:var(--muted);">Labor Code</span>
+          <span style="font-size:.75rem;color:var(--muted);text-align:right;">Amount ($)</span>
+        </div>
+        <div id="co-budget-dist-rows" style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;"></div>
+        <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;margin-top:8px;font-size:.83rem;border-top:1px solid var(--border);padding-top:8px;">
+          <span style="color:var(--muted);">Total:</span>
+          <strong id="co-budget-dist-sum">$0.00</strong>
+        </div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Shown to Foreman and used for Daily Input / Weekly Summary tracking.</div>
       </div>
       <div id="co-budget-progress" style="display:none;padding:10px;background:var(--surface2);border-radius:8px;font-size:.83rem;color:var(--muted);text-align:center;">Creating budget…</div>
