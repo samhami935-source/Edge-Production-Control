@@ -2927,6 +2927,14 @@ document.getElementById('budgets-content').addEventListener('drop', e => { e.pre
 fileInput.addEventListener('change', () => { if (fileInput.files.length) guardedProcessFiles(fileInput.files); fileInput.value = ''; });
 document.getElementById('load-demo-btn').addEventListener('click', () => { if (canEdit()) loadDemo(); });
 
+// Global: pressing Enter in any text/number input blurs the field (saves value, no form submit)
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+    e.preventDefault();
+    e.target.blur();
+  }
+});
+
 function guardedFileClick() { if (!canEdit()) { alert('Admin or Project Manager access required.'); return; } fileInput.click(); }
 function guardedProcessFiles(list) { if (!canEdit()) { alert('Admin or Project Manager access required.'); return; } processFiles(list); }
 
@@ -11025,7 +11033,7 @@ function coOpenBudgetModal(coId) {
         <span style="font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${ea(p.area || '—')}">${eh(p.area || '—')}</span>
         <span style="font-size:.8rem;color:var(--accent);font-weight:600;">${eh(p.laborCode || '—')}</span>
         <input type="number" class="fi co-budget-dist-input" min="0" step="0.01" placeholder="0.00"
-          style="width:100%;text-align:right;padding:5px 8px;" oninput="corbUpdateDistSum()" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
+          style="width:100%;text-align:right;padding:5px 8px;" oninput="corbUpdateDistSum()" />
       </div>`
     ).join('');
   } else {
@@ -11307,25 +11315,25 @@ function computeCorPaid(corb) {
       </div>
       <div id="co-budget-hours-row" style="display:none;">
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Hours <span style="color:#ef4444;">*</span></label>
-        <input id="co-budget-hours" class="fi" type="number" min="0" step="0.5" style="width:100%;" placeholder="0.0" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
+        <input id="co-budget-hours" class="fi" type="number" min="0" step="0.5" style="width:100%;" placeholder="0.0" />
       </div>
       <div id="co-budget-co-hours-row" style="display:none;">
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Hours <span style="color:var(--muted);font-style:italic;">(optional)</span></label>
-        <input type="number" id="co-budget-co-hours" class="fi" style="width:100%;" placeholder="0.0" min="0" step="0.5" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
+        <input type="number" id="co-budget-co-hours" class="fi" style="width:100%;" placeholder="0.0" min="0" step="0.5" />
       </div>
       <div>
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Description <span style="color:#ef4444;">*</span></label>
-        <input id="co-budget-desc" class="fi" style="width:100%;" placeholder="e.g. Change Order framing work" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
+        <input id="co-budget-desc" class="fi" style="width:100%;" placeholder="e.g. Change Order framing work" />
       </div>
       <div>
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Internal COR Amount <span style="color:#ef4444;">*</span></label>
-        <input id="co-budget-internal-amount" class="fi" type="text" inputmode="decimal" style="width:100%;padding:5px 10px;font-size:.83rem;text-align:right;" placeholder="0.00" oninput="corbFormatDollarInput(this)" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
+        <input id="co-budget-internal-amount" class="fi" type="text" inputmode="decimal" style="width:100%;padding:5px 10px;font-size:.83rem;text-align:right;" placeholder="0.00" oninput="corbFormatDollarInput(this)" />
         <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Management-only amount. Not shown to Foreman.</div>
       </div>
       <!-- Single entry mode -->
       <div id="co-budget-foreman-single">
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Foreman Tracking Amount <span style="color:#ef4444;">*</span></label>
-        <input id="co-budget-foreman-amount" class="fi" type="text" inputmode="decimal" style="width:100%;padding:5px 10px;font-size:.83rem;text-align:right;" placeholder="0.00" oninput="corbFormatDollarInput(this)" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
+        <input id="co-budget-foreman-amount" class="fi" type="text" inputmode="decimal" style="width:100%;padding:5px 10px;font-size:.83rem;text-align:right;" placeholder="0.00" oninput="corbFormatDollarInput(this)" />
         <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Shown to Foreman and used for Daily Input / Weekly Summary tracking.</div>
       </div>
       <!-- Distribution mode (multiple area × labor code pairs) -->
@@ -11333,7 +11341,7 @@ function computeCorPaid(corb) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
           <label style="font-size:.83rem;color:var(--muted);margin:0;">Foreman Budget per Area / Labor Code <span style="color:#ef4444;">*</span></label>
           <div style="display:flex;gap:6px;align-items:center;">
-            <input id="co-budget-dist-total-input" class="fi" type="text" inputmode="decimal" style="width:120px;padding:5px 10px;font-size:.83rem;text-align:right;" placeholder="Total" oninput="corbFormatDollarInput(this)" onkeydown="if(event.key==='Enter')corbDistributeEvenly()" />
+            <input id="co-budget-dist-total-input" class="fi" type="text" inputmode="decimal" style="width:120px;padding:5px 10px;font-size:.83rem;text-align:right;" placeholder="Total" oninput="corbFormatDollarInput(this)" />
             <button class="btn btn-outline" style="margin:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;" onclick="corbDistributeEvenly()">÷ Evenly</button>
           </div>
         </div>
