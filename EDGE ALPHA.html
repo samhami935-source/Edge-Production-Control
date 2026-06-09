@@ -4014,7 +4014,7 @@ function diRenderCrewTable() {
       if (resolved) { leadNumEl.value = resolved; _diCrewLeadNums[_diActiveCrew] = resolved; }
       _syncLeadState(val, leadNumEl.value);
 
-      // Auto-fill row 0 employee with crew lead name if that slot is blank or was the old lead
+      // Auto-fill row 0 employee name + # if that slot is blank or was the old lead
       const rows = _diData[_diActiveCrew];
       if (rows && rows.length > 0) {
         const firstEmp = (rows[0].employee || '').trim();
@@ -4022,6 +4022,13 @@ function diRenderCrewTable() {
           rows[0].employee = val.trim();
           const firstEmpInput = document.getElementById('di-emp-name-' + _diActiveCrew + '-0');
           if (firstEmpInput) firstEmpInput.value = val.trim();
+          // Also sync the # field for row 0
+          const resolvedNum = leadNumEl.value || _resolveEmpNum('', val.trim());
+          if (resolvedNum) {
+            rows[0].empNum = resolvedNum;
+            const firstNumInput = document.getElementById('di-emp-num-' + _diActiveCrew + '-0');
+            if (firstNumInput) firstNumInput.value = resolvedNum;
+          }
         }
       }
 
@@ -5565,6 +5572,16 @@ function _diEmpNumBlur(crew, i, val) {
       const nameEl = document.getElementById('di-emp-name-' + crew + '-' + i);
       if (nameEl) nameEl.value = match.name;
     }
+    // Row 0 drives the crew lead fields
+    if (i === 0) {
+      const name = _diData[crew][0].employee || '';
+      _diCrewLeadNames[crew] = name;
+      _diCrewLeadNums[crew]  = val;
+      const leadNameEl = document.getElementById('di-crew-lead-input');
+      const leadNumEl  = document.getElementById('di-crew-lead-num');
+      if (leadNameEl && crew === _diActiveCrew) leadNameEl.value = name;
+      if (leadNumEl  && crew === _diActiveCrew) leadNumEl.value  = val;
+    }
   }
   diAutoSaveDraft();
 }
@@ -5581,6 +5598,25 @@ function _diEmpNameBlur(crew, i, val) {
       const numEl = document.getElementById('di-emp-num-' + crew + '-' + i);
       if (numEl) numEl.value = String(match.n);
     }
+  }
+  // Row 0 drives the crew lead fields
+  if (i === 0) {
+    const resolvedNum = _diData[crew][0].empNum || _resolveEmpNum('', val.trim());
+    _diCrewLeadNames[crew] = val;
+    _diCrewLeadNums[crew]  = resolvedNum;
+    const leadNameEl = document.getElementById('di-crew-lead-input');
+    const leadNumEl  = document.getElementById('di-crew-lead-num');
+    if (leadNameEl && crew === _diActiveCrew) leadNameEl.value = val;
+    if (leadNumEl  && crew === _diActiveCrew) leadNumEl.value  = resolvedNum;
+    // Also sync paysheet crew header
+    if (_psState && _psState[crew]) {
+      _psState[crew].header.crewName = val.trim();
+      if (_psActiveCrew === crew) {
+        const psCrewEl = document.getElementById('ps-crew');
+        if (psCrewEl) psCrewEl.value = val.trim();
+      }
+    }
+    diRenderCrewTabs();
   }
   diAutoSaveDraft();
 }
