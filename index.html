@@ -10786,7 +10786,7 @@ function coOpenDetail(coId) {
       ${co.reviewedAt    ? `<div><span style="color:var(--muted);">Reviewed At</span><br/><strong>${reviewedStr}</strong></div>` : ''}
       ${co.corNumber     ? `<div><span style="color:var(--muted);">COR #</span><br/><strong>${eh(co.corNumber)}</strong></div>` : ''}
     </div>
-    ${co.description ? `<div><span style="font-size:.78rem;color:var(--muted);font-weight:700;text-transform:uppercase;">Description</span><p style="margin-top:6px;font-size:.85rem;">${eh(co.description)}</p></div>` : ''}
+    ${co.description ? `<div><span style="color:var(--muted);">Description</span><br/><strong>${eh(co.description)}</strong></div>` : ''}
     <div>
       <div style="font-size:.78rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Photos</div>
       ${photos}
