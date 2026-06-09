@@ -4064,6 +4064,8 @@ function diRenderCrewTable() {
       }
       diAutoSaveDraft();
     });
+    leadInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') this.blur(); });
+    leadNumEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') this.blur(); });
   }
 
   const csvFile = getSavedCSVFiles().find(x => x.name === jobName);
@@ -4082,10 +4084,12 @@ function diRenderCrewTable() {
       <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
         <input class="fi" id="di-emp-num-${_diActiveCrew}-${i}" data-emp-idx="${i}" style="width:64px;flex-shrink:0;padding:6px 8px;font-size:.85rem;text-align:center;" value="${eh(row.empNum||'')}" placeholder="#"
           oninput="_diData[${_diActiveCrew}][${i}].empNum=this.value"
-          onblur="_diEmpNumBlur(${_diActiveCrew},${i},this.value)" />
+          onblur="_diEmpNumBlur(${_diActiveCrew},${i},this.value)"
+          onkeydown="if(event.key==='Enter')this.blur()" />
         <input class="fi" id="di-emp-name-${_diActiveCrew}-${i}" data-emp-idx="${i}" list="di-emp-names-datalist" style="flex:1;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
           oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft()"
-          onblur="_diEmpNameBlur(${_diActiveCrew},${i},this.value)" />
+          onblur="_diEmpNameBlur(${_diActiveCrew},${i},this.value)"
+          onkeydown="if(event.key==='Enter')this.blur()" />
         <button onclick="diDeleteRow(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;flex-shrink:0;" title="Remove employee">✕</button>
       </div>`).join('');
   }
