@@ -11025,7 +11025,7 @@ function coOpenBudgetModal(coId) {
         <span style="font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${ea(p.area || '—')}">${eh(p.area || '—')}</span>
         <span style="font-size:.8rem;color:var(--accent);font-weight:600;">${eh(p.laborCode || '—')}</span>
         <input type="number" class="fi co-budget-dist-input" min="0" step="0.01" placeholder="0.00"
-          style="width:100%;text-align:right;padding:5px 8px;" oninput="corbUpdateDistSum()" />
+          style="width:100%;text-align:right;padding:5px 8px;" oninput="corbUpdateDistSum()" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
       </div>`
     ).join('');
   } else {
@@ -11307,15 +11307,15 @@ function computeCorPaid(corb) {
       </div>
       <div id="co-budget-hours-row" style="display:none;">
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Hours <span style="color:#ef4444;">*</span></label>
-        <input id="co-budget-hours" class="fi" type="number" min="0" step="0.5" style="width:100%;" placeholder="0.0" />
+        <input id="co-budget-hours" class="fi" type="number" min="0" step="0.5" style="width:100%;" placeholder="0.0" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
       </div>
       <div id="co-budget-co-hours-row" style="display:none;">
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Hours <span style="color:var(--muted);font-style:italic;">(optional)</span></label>
-        <input type="number" id="co-budget-co-hours" class="fi" style="width:100%;" placeholder="0.0" min="0" step="0.5" />
+        <input type="number" id="co-budget-co-hours" class="fi" style="width:100%;" placeholder="0.0" min="0" step="0.5" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
       </div>
       <div>
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Description <span style="color:#ef4444;">*</span></label>
-        <input id="co-budget-desc" class="fi" style="width:100%;" placeholder="e.g. Change Order framing work" />
+        <input id="co-budget-desc" class="fi" style="width:100%;" placeholder="e.g. Change Order framing work" onkeydown="if(event.key==='Enter')coConfirmBudget()" />
       </div>
       <div>
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Internal COR Amount <span style="color:#ef4444;">*</span></label>
