@@ -5584,10 +5584,25 @@ function _diLogDetailHTML(r) {
   if (!crews.length) return `<div style="padding:8px 16px 10px;color:var(--muted);font-size:.8rem;font-style:italic;">No entries recorded.</div>`;
   const thStyle = 'text-align:left;padding:3px 8px 3px 0;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
   const tdStyle = 'padding:4px 8px 4px 0;font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-  // Shared column widths — applied to every crew's table so all grids align uniformly
   const colGroup = `<colgroup>
-    <col style="width:22%"><col style="width:38%"><col style="width:14%"><col style="width:26%">
+    <col style="width:20%"><col style="width:28%"><col style="width:13%"><col style="width:17%"><col style="width:22%">
   </colgroup>`;
+  // Returns a formatted remaining budget cell for a given area+costCode in this submission's job.
+  function _remCell(area, costCode) {
+    if (!area || !r.job) return `<td style="${tdStyle}"></td>`;
+    let rem;
+    if (isSpecialArea(area)) {
+      rem = _diAreaRemainingBudget(r.job, area);
+    } else {
+      const d = psGetAreaCodeData(r.job, area, costCode||'');
+      rem = (d.budget || d.ptd) ? d.remaining : null;
+    }
+    if (rem === null) return `<td style="${tdStyle}"></td>`;
+    const color = rem < 0 ? '#ef4444' : rem === 0 ? '#9ca3af' : '#22c55e';
+    const fmtd  = '$\u202f' + Math.abs(rem).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const val   = rem < 0 ? `(${fmtd})` : fmtd;
+    return `<td style="${tdStyle}color:${color};text-align:right;font-weight:600;">${val}</td>`;
+  }
   return `<div style="padding:6px 14px 12px 42px;background:rgba(255,255,255,.025);border-top:1px solid rgba(255,255,255,.06);">
     ${crews.map(crew => {
       const label   = (crew.crewLeadName||'').trim() || `Crew ${crew.crewNum}`;
@@ -5600,12 +5615,14 @@ function _diLogDetailHTML(r) {
             <th style="${thStyle}">Employee</th>
             <th style="${thStyle}">Area</th>
             <th style="${thStyle}">Labor Code</th>
+            <th style="${thStyle}text-align:right;">Remaining</th>
             <th style="${thStyle}">Notes</th>
           </tr>
           ${entries.map(e => `<tr style="border-top:1px solid rgba(255,255,255,.04);">
             <td style="${tdStyle}">${eh(e.employee||'—')}</td>
             <td style="${tdStyle}color:var(--muted);">${_diAreaTagHTML(e)}</td>
             <td style="${tdStyle}color:var(--muted);text-align:center;">${eh(e.costCode||'—')}</td>
+            ${_remCell(e.area, e.costCode)}
             <td style="${tdStyle}color:var(--muted);font-style:${e.description?'normal':'italic'};">${eh(e.description||'')}</td>
           </tr>`).join('')}
         </table>
