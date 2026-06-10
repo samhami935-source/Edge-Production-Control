@@ -5588,14 +5588,21 @@ function _diLogDetailHTML(r) {
     <col style="width:20%"><col style="width:28%"><col style="width:13%"><col style="width:17%"><col style="width:22%">
   </colgroup>`;
   // Returns a formatted remaining budget cell for a given area+costCode in this submission's job.
+  // Primary: try cost-code-specific remaining; fall back to area-total remaining so existing
+  // submissions always show a value when any budget data exists for the area.
   function _remCell(area, costCode) {
     if (!area || !r.job) return `<td style="${tdStyle}"></td>`;
-    let rem;
+    let rem = null;
     if (isSpecialArea(area)) {
       rem = _diAreaRemainingBudget(r.job, area);
     } else {
       const d = psGetAreaCodeData(r.job, area, costCode||'');
-      rem = (d.budget || d.ptd) ? d.remaining : null;
+      if (d.budget || d.ptd) {
+        rem = d.remaining;
+      } else {
+        // Fall back to area-level total (same calculation the dropdown uses)
+        rem = _diAreaRemainingBudget(r.job, area);
+      }
     }
     if (rem === null) return `<td style="${tdStyle}"></td>`;
     const color = rem < 0 ? '#ef4444' : rem === 0 ? '#9ca3af' : '#22c55e';
