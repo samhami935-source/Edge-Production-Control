@@ -4165,6 +4165,14 @@ function diRenderCrewTable() {
             onkeydown="diAreaKey(event,this)" autocomplete="off" />
           <div class="di-area-dropdown"></div>
         </div>
+        ${(() => {
+          if (!row.area || !jobName) return '';
+          const _r = _diAreaRemainingBudget(jobName, row.area);
+          if (_r === null) return '';
+          const _c = _r < 0 ? '#ef4444' : _r === 0 ? '#9ca3af' : '#22c55e';
+          const _v = '$\u202f' + Math.abs(_r).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+          return `<div style="font-size:.68rem;color:${_c};font-weight:600;margin-top:2px;padding-left:2px;">${_r < 0 ? '('+_v+')' : _v} rem.</div>`;
+        })()}
       </td>
       <td style="padding:6px 8px;">
         <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value;diAutoSaveDraft()">
