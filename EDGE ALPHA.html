@@ -5585,7 +5585,7 @@ function _diLogDetailHTML(r) {
   const thStyle = 'text-align:left;padding:3px 8px 3px 0;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
   const tdStyle = 'padding:4px 8px 4px 0;font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
   const colGroup = `<colgroup>
-    <col style="width:16%"><col style="width:22%"><col style="width:17%"><col style="width:19%"><col style="width:26%">
+    <col style="width:auto"><col style="width:auto"><col style="width:auto"><col style="width:auto"><col style="width:100%">
   </colgroup>`;
   // Returns a formatted remaining budget cell for a given area+costCode in this submission's job.
   // Primary: try cost-code-specific remaining; fall back to area-total remaining so existing
@@ -5616,7 +5616,7 @@ function _diLogDetailHTML(r) {
       const entries = (crew.entries||[]).filter(e => e.employee||e.area||e.costCode||e.description);
       return `<div style="margin-top:8px;">
         <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">${eh(label)}</div>
-        <table style="border-collapse:collapse;width:100%;table-layout:fixed;">
+        <table style="border-collapse:collapse;width:100%;table-layout:auto;">
           ${colGroup}
           <tr>
             <th style="${thStyle}">Employee</th>
