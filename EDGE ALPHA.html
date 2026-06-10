@@ -4479,6 +4479,24 @@ function _diGetPortal() {
   return p;
 }
 
+// Returns total remaining budget for an area across all cost codes (regular or COR/BURN).
+function _diAreaRemainingBudget(jobName, area) {
+  if (!jobName || !area) return null;
+  if (isSpecialArea(area)) {
+    const corb = corbForArea(area, jobName);
+    if (!corb) return null;
+    const budget = corbForemanAmount(corb);
+    const paid   = computeCorPaid(corb);
+    return budget - paid;
+  }
+  const f       = getSavedCSVFiles().find(x => x.name === jobName);
+  const budget  = f ? f.rows.filter(r => r.area === area).reduce((s,r) => s + (r.amount || 0), 0) : 0;
+  const entries = getPayrollEntries().filter(e => e.csvFile === jobName);
+  const ptd     = entries.filter(e => e.area === area).reduce((s,e) => s + (e.price || 0), 0);
+  if (!budget && !ptd) return null;
+  return budget - ptd;
+}
+
 function _diAreaRenderDropdown(input, crew, rowIdx) {
   const q        = input.value.trim().toLowerCase();
   const dropdown = _diGetPortal();
@@ -4489,15 +4507,23 @@ function _diAreaRenderDropdown(input, crew, rowIdx) {
   const tagMap   = _diPsTagMap(jobName);
   dropdown.innerHTML = filtered.map(a => {
     const tag = tagMap[a];
-    let label;
+    let nameLabel;
     if (tag === 'added') {
-      label = `${eh(a)}&nbsp;<span style="color:#22c55e;font-size:.68rem;font-weight:700;">(Added)</span>`;
+      nameLabel = `${eh(a)}&nbsp;<span style="color:#22c55e;font-size:.68rem;font-weight:700;">(Added)</span>`;
     } else if (tag === 'removed') {
-      label = `<s>${eh(a)}</s>&nbsp;<span style="color:#ef4444;font-size:.68rem;font-weight:700;">(Removed)</span>`;
+      nameLabel = `<s>${eh(a)}</s>&nbsp;<span style="color:#ef4444;font-size:.68rem;font-weight:700;">(Removed)</span>`;
     } else {
-      label = eh(a);
+      nameLabel = eh(a);
     }
-    return `<div class="di-area-opt" data-area="${eh(a)}" data-crew="${crew}" data-row="${rowIdx}">${label}</div>`;
+    const rem = _diAreaRemainingBudget(jobName, a);
+    let remLabel = '';
+    if (rem !== null) {
+      const color = rem < 0 ? '#ef4444' : rem === 0 ? '#9ca3af' : '#22c55e';
+      const fmtd  = '$\u202f' + Math.abs(rem).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+      const val   = rem < 0 ? `(${fmtd})` : fmtd;
+      remLabel = `<span style="margin-left:auto;padding-left:8px;color:${color};font-size:.72rem;font-weight:600;flex-shrink:0;">${val}</span>`;
+    }
+    return `<div class="di-area-opt" style="display:flex;align-items:center;justify-content:space-between;" data-area="${eh(a)}" data-crew="${crew}" data-row="${rowIdx}">${nameLabel}${remLabel}</div>`;
   }).join('');
   // Attach listeners directly so special chars in area names don't break anything
   dropdown.querySelectorAll('.di-area-opt').forEach(el => {
