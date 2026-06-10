@@ -5585,7 +5585,7 @@ function _diLogDetailHTML(r) {
   const thStyle = 'text-align:left;padding:3px 8px 3px 0;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
   const tdStyle = 'padding:4px 8px 4px 0;font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
   const colGroup = `<colgroup>
-    <col style="width:20%"><col style="width:28%"><col style="width:13%"><col style="width:17%"><col style="width:22%">
+    <col style="width:16%"><col style="width:22%"><col style="width:12%"><col style="width:24%"><col style="width:26%">
   </colgroup>`;
   // Returns a formatted remaining budget cell for a given area+costCode in this submission's job.
   // Primary: try cost-code-specific remaining; fall back to area-total remaining so existing
@@ -5622,7 +5622,7 @@ function _diLogDetailHTML(r) {
             <th style="${thStyle}">Employee</th>
             <th style="${thStyle}">Area</th>
             <th style="${thStyle}">Labor Code</th>
-            <th style="${thStyle}text-align:right;">Remaining</th>
+            <th style="${thStyle}text-align:right;">Remaining Budget</th>
             <th style="${thStyle}">Notes</th>
           </tr>
           ${entries.map(e => `<tr style="border-top:1px solid rgba(255,255,255,.04);">
