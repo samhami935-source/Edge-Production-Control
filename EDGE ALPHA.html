@@ -5582,8 +5582,8 @@ function _diAreaTagHTML(e) {
 function _diLogDetailHTML(r) {
   const crews = (r.crews||[]).filter(crew => (crew.entries||[]).some(e => e.employee||e.area||e.costCode||e.description));
   if (!crews.length) return `<div style="padding:8px 16px 10px;color:var(--muted);font-size:.8rem;font-style:italic;">No entries recorded.</div>`;
-  const thStyle = 'text-align:left;padding:3px 8px 3px 0;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-  const tdStyle = 'padding:4px 8px 4px 0;font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  const thStyle = 'text-align:left;padding:3px 22px 3px 0;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  const tdStyle = 'padding:4px 22px 4px 0;font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
   const colGroup = `<colgroup>
     <col style="width:auto"><col style="width:auto"><col style="width:auto"><col style="width:auto"><col style="width:100%">
   </colgroup>`;
