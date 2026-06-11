@@ -6358,21 +6358,25 @@ function corbForArea(area, jobName) {
   return null;
 }
 // Returns ALL corb docs for an area key (dist mode creates one doc per labor code).
+// Deduplicates by laborCode to guard against accidental double-submissions in Firestore.
 function corbsForArea(area, jobName) {
+  let results = [];
   const exact = (_cache.corbudgets || []).filter(b => corbAreaKey(b) === area && b.jobId === jobName);
-  if (exact.length) return exact;
-  if (area && area.startsWith('[BURN]')) {
+  if (exact.length) {
+    results = exact;
+  } else if (area && area.startsWith('[BURN]')) {
     const oldArea = area.replace(/^\[BURN\]\s*[\u2013-]\s*/, '').trim();
-    return (_cache.corbudgets || []).filter(b => b.isBurn && b.burnArea === oldArea && b.jobId === jobName);
-  }
-  if (area && area.startsWith('[Burn#')) {
+    results = (_cache.corbudgets || []).filter(b => b.isBurn && b.burnArea === oldArea && b.jobId === jobName);
+  } else if (area && area.startsWith('[Burn#')) {
     const m = area.match(/^\[Burn#([^\]]*)\]\s*(.*)/);
     if (m) {
       const [, bNum, bDesc] = m;
-      return (_cache.corbudgets || []).filter(b => b.isBurn && String(b.burnNumber || '') === bNum && (b.description || '') === bDesc && b.jobId === jobName);
+      results = (_cache.corbudgets || []).filter(b => b.isBurn && String(b.burnNumber || '') === bNum && (b.description || '') === bDesc && b.jobId === jobName);
     }
   }
-  return [];
+  // Deduplicate by laborCode — only keep the first corb per labor code
+  const seen = new Set();
+  return results.filter(c => { const k = c.laborCode || ''; if (seen.has(k)) return false; seen.add(k); return true; });
 }
 
 // Get all areas for a job from both CSV rows and payroll entries
@@ -10894,7 +10898,10 @@ function coOpenDetail(coId) {
   const co = (_cache.changeorders || []).find(c => c.id === coId);
   if (!co) return;
   if (canReviewCO()) coMarkNotificationsRead(coId);
-  const corbs = (_cache.corbudgets || []).filter(b => b.changeOrderId === coId);
+  const _allCorbs = (_cache.corbudgets || []).filter(b => b.changeOrderId === coId);
+  // Deduplicate by area+laborCode to guard against accidental double-submissions
+  const _corbSeen = new Set();
+  const corbs = _allCorbs.filter(c => { const k = `${c.area||''}|${c.laborCode||''}`; if (_corbSeen.has(k)) return false; _corbSeen.add(k); return true; });
   const corb  = corbs[0] || null; // kept for backward-compat references below
   const dateStr    = co.submittedAt ? new Date(co.submittedAt).toLocaleString() : '—';
   const reviewedStr = co.reviewedAt ? new Date(co.reviewedAt).toLocaleString() : '—';
