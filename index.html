@@ -10277,7 +10277,8 @@ function renderCODashboard() {
   if (!jobName) { container.style.display = 'none'; return; }
   container.style.display = 'block';
 
-  const cos   = (_cache.changeorders || []).filter(c => c.jobId === jobName);
+  const _dashIsBurn = _coActiveSubTab === 'burn';
+  const cos   = (_cache.changeorders || []).filter(c => c.jobId === jobName && (_dashIsBurn ? c.workOrderNumber === '503 - Burn' : c.workOrderNumber !== '503 - Burn'));
   const _coIdSet = new Set(cos.map(c => c.id));
   // Only show corbs whose parent change order still exists (guard against orphans from deleted COs)
   const corbs = (_cache.corbudgets || []).filter(b => b.jobId === jobName && _coIdSet.has(b.changeOrderId));
@@ -10303,7 +10304,7 @@ function renderCODashboard() {
         const remColor2 = rem < 0 ? '#ef4444' : rem === 0 ? '#c9a84c' : '#22c55e';
         const statusBadge = co ? coStatusBadge(co.status) : '—';
         return `<tr style="border-top:1px solid var(--border);">
-          <td style="padding:8px 10px;font-weight:700;font-size:.83rem;">${eh(corb.corNumber)}</td>
+          <td style="padding:8px 10px;font-weight:700;font-size:.83rem;">${corb.isBurn ? `Burn${corb.burnNumber ? ' #' + corb.burnNumber : ''}` : eh(corb.corNumber)}</td>
           <td style="padding:8px 10px;font-size:.83rem;">${eh(corb.description)}</td>
           <td style="padding:8px 10px;font-size:.83rem;font-family:monospace;">${eh(corb.laborCode)}</td>
           ${showInternal ? `<td style="padding:8px 10px;text-align:right;font-size:.83rem;color:var(--muted);">${fm(iAmt2)}</td>` : ''}
@@ -10313,14 +10314,14 @@ function renderCODashboard() {
           <td style="padding:8px 10px;text-align:center;">${statusBadge}</td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="${showInternal ? 8 : 7}" style="padding:24px;text-align:center;color:var(--muted);">No approved COR budgets for this job yet.</td></tr>`;
+    : `<tr><td colspan="${showInternal ? 8 : 7}" style="padding:24px;text-align:center;color:var(--muted);">No approved ${_dashIsBurn ? 'Burn' : 'COR'} budgets for this job yet.</td></tr>`;
 
   const thStyle = 'padding:8px 10px;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);background:var(--surface2);';
   // Admin tip: prompt to re-approve paysheets so PTD syncs (only shown when there are COR budgets)
   const reApproveTip = (isAdmin() && corbs.length > 0)
     ? `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);border-radius:8px;font-size:.8rem;color:var(--accent);">
         <strong>Admin tip:</strong> PTD values include both Daily Input entries and approved Weekly Summary Paysheets.
-        If a COR row shows $0 PTD after you&rsquo;ve entered amounts on a paysheet, open that paysheet and click
+        If a ${_dashIsBurn ? 'Burn' : 'COR'} row shows $0 PTD after you&rsquo;ve entered amounts on a paysheet, open that paysheet and click
         <strong>✓ Approve for Accounting</strong> (or re-approve if already approved) to sync the W/E&nbsp;Earned amounts.
        </div>`
     : '';
@@ -10328,9 +10329,9 @@ function renderCODashboard() {
     ${reApproveTip}
     <div class="cards" style="margin-bottom:16px;">
       <div class="card">
-        <div class="label">Total COR Budget</div>
+        <div class="label">${_dashIsBurn ? 'Total Burn Budget' : 'Total COR Budget'}</div>
         <div class="value cg">${fm(totalBudget)}</div>
-        <div class="sub">${corbs.length} COR${corbs.length !== 1 ? 's' : ''} approved</div>
+        <div class="sub">${corbs.length} ${_dashIsBurn ? 'Burn' : 'COR'}${corbs.length !== 1 ? 's' : ''} approved</div>
       </div>
       <div class="card">
         <div class="label">Total Spent (PTD)</div>
@@ -10346,7 +10347,7 @@ function renderCODashboard() {
     <div style="overflow-x:auto;">
       <table style="width:100%;border-collapse:collapse;">
         <thead><tr>
-          <th style="${thStyle}text-align:left;">COR #</th>
+          <th style="${thStyle}text-align:left;">${_dashIsBurn ? 'Burn #' : 'COR #'}</th>
           <th style="${thStyle}text-align:left;">Description</th>
           <th style="${thStyle}text-align:left;">Labor Code</th>
           ${showInternal ? `<th style="${thStyle}text-align:right;">Internal Amt</th>` : ''}
