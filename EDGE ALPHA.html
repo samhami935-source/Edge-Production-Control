@@ -10386,7 +10386,7 @@ function renderCOLog() {
     const hasCorb  = allCorbs.length > 0;
     const paid     = allCorbs.reduce((s, c) => s + computeCorPaid(c), 0);
     const fAmt     = allCorbs.reduce((s, c) => s + corbForemanAmount(c), 0);
-    const iAmt     = allCorbs.reduce((s, c) => s + corbInternalAmount(c), 0);
+    const iAmt     = hasCorb ? corbInternalAmount(allCorbs[0]) : 0; // internalCorAmount is the total CO amount, same on every corb — don't sum
     const rem      = fAmt - paid;
     const remColor = rem < 0 ? '#ef4444' : rem === 0 ? '#c9a84c' : '#22c55e';
     const pct      = fAmt > 0 ? Math.min(100, Math.round(paid / fAmt * 100)) : 0;
