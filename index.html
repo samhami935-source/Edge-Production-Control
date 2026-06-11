@@ -3987,13 +3987,15 @@ async function diDeleteCrewSet(id, name) {
 function _diMakeCodeOpts(area, selectedCode, jobName, csvFile) {
   let codeOpts = '<option value=""></option>';
   if (isSpecialArea(area)) {
-    const corb = corbForArea(area, jobName);
-    if (corb) {
-      const paid = computeCorPaid(corb);
-      const rem  = corb.amount - paid;
-      const remStr = rem < 0 ? `-${fm(Math.abs(rem))}` : fm(rem);
-      const tag  = corb.isBurn ? 'Burn' : `COR ${eh(corb.corNumber)}`;
-      codeOpts = `<option value="${eh(corb.laborCode)}" ${selectedCode===corb.laborCode?'selected':''}>${corb.laborCode} \u2013 ${eh(corb.description)} | ${tag} | Rem: ${remStr}</option>`;
+    const allC = corbsForArea(area, jobName);
+    if (allC.length) {
+      codeOpts = allC.map(corb => {
+        const paid   = computeCorPaid(corb);
+        const rem    = corbForemanAmount(corb) - paid;
+        const remStr = rem < 0 ? `-${fm(Math.abs(rem))}` : fm(rem);
+        const tag    = corb.isBurn ? 'Burn' : `COR ${eh(corb.corNumber)}`;
+        return `<option value="${eh(corb.laborCode)}" ${selectedCode===corb.laborCode?'selected':''}>${corb.laborCode} \u2013 ${eh(corb.description)} | ${tag} | Rem: ${remStr}</option>`;
+      }).join('');
     }
   } else if (csvFile && area) {
     const areaRows    = csvFile.rows.filter(r => r.area === area);
@@ -4175,7 +4177,7 @@ function diRenderCrewTable() {
         })()}
       </td>
       <td style="padding:6px 8px;">
-        <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value;diAutoSaveDraft()">
+        <select class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" onchange="_diData[${_diActiveCrew}][${i}].costCode=this.value;_diSyncCorbId(${_diActiveCrew},${i},this.value);diAutoSaveDraft()">
           ${codeOpts}
         </select>
       </td>
@@ -4366,12 +4368,13 @@ function diApplyFilter(type) {
       }
       _diData[crew][i].area = area;
       if (isSpecialArea(area)) {
-        const corb = corbForArea(area, jobName);
-        if (corb) {
-          _diData[crew][i].costCode    = corb.laborCode;
-          _diData[crew][i].corBudgetId = corb.id;
-          _diData[crew][i].corNumber   = corb.corNumber;
+        const allC = corbsForArea(area, jobName);
+        if (allC.length === 1) {
+          _diData[crew][i].costCode    = allC[0].laborCode;
+          _diData[crew][i].corBudgetId = allC[0].id;
+          _diData[crew][i].corNumber   = allC[0].corNumber;
         } else {
+          // Multiple labor codes — clear so user picks from dropdown
           _diData[crew][i].costCode = _diData[crew][i].corBudgetId = _diData[crew][i].corNumber = '';
         }
       } else {
@@ -4491,11 +4494,9 @@ function _diGetPortal() {
 function _diAreaRemainingBudget(jobName, area) {
   if (!jobName || !area) return null;
   if (isSpecialArea(area)) {
-    const corb = corbForArea(area, jobName);
-    if (!corb) return null;
-    const budget = corbForemanAmount(corb);
-    const paid   = computeCorPaid(corb);
-    return budget - paid;
+    const allC = corbsForArea(area, jobName);
+    if (!allC.length) return null;
+    return allC.reduce((s, c) => s + corbForemanAmount(c) - computeCorPaid(c), 0);
   }
   const f       = getSavedCSVFiles().find(x => x.name === jobName);
   const budget  = f ? f.rows.filter(r => r.area === area).reduce((s,r) => s + (r.amount || 0), 0) : 0;
@@ -4600,12 +4601,13 @@ function diAreaPick(area, crew, rowIdx) {
   // by corBudgetId rather than fragile area-key string matching.
   if (isSpecialArea(area)) {
     const jobName = document.getElementById('ps-job-select').value || '';
-    const corb = corbForArea(area, jobName);
-    if (corb) {
-      _diData[crew][rowIdx].costCode    = corb.laborCode;
-      _diData[crew][rowIdx].corBudgetId = corb.id;
-      _diData[crew][rowIdx].corNumber   = corb.corNumber;
+    const allC = corbsForArea(area, jobName);
+    if (allC.length === 1) {
+      _diData[crew][rowIdx].costCode    = allC[0].laborCode;
+      _diData[crew][rowIdx].corBudgetId = allC[0].id;
+      _diData[crew][rowIdx].corNumber   = allC[0].corNumber;
     } else {
+      // Multiple labor codes — clear so user picks from dropdown
       _diData[crew][rowIdx].costCode    = '';
       _diData[crew][rowIdx].corBudgetId = '';
       _diData[crew][rowIdx].corNumber   = '';
@@ -4619,6 +4621,16 @@ function diAreaPick(area, crew, rowIdx) {
   document.querySelectorAll('.di-area-dropdown').forEach(d => d.style.display = 'none');
   diRenderCrewTable();
   diAutoSaveDraft();
+}
+
+// When a labor code is manually picked for a COR/Burn area, sync corBudgetId/corNumber to match.
+function _diSyncCorbId(crew, rowIdx, laborCode) {
+  const row = (_diData[crew] || [])[rowIdx];
+  if (!row || !isSpecialArea(row.area)) return;
+  const jobName = document.getElementById('ps-job-select').value || '';
+  const corb = corbsForArea(row.area, jobName).find(c => c.laborCode === laborCode);
+  row.corBudgetId = corb ? corb.id        : '';
+  row.corNumber   = corb ? corb.corNumber : '';
 }
 
 function diAreaKey(e, input) {
@@ -6337,6 +6349,16 @@ function corbForArea(area, jobName) {
   }
   return null;
 }
+// Returns ALL corb docs for an area key (dist mode creates one doc per labor code).
+function corbsForArea(area, jobName) {
+  const exact = (_cache.corbudgets || []).filter(b => corbAreaKey(b) === area && b.jobId === jobName);
+  if (exact.length) return exact;
+  if (area && area.startsWith('[BURN]')) {
+    const oldArea = area.replace(/^\[BURN\]\s*[\u2013-]\s*/, '').trim();
+    return (_cache.corbudgets || []).filter(b => b.isBurn && b.burnArea === oldArea && b.jobId === jobName);
+  }
+  return [];
+}
 
 // Get all areas for a job from both CSV rows and payroll entries
 function psGetAreas(jobName) {
@@ -6489,10 +6511,10 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
     ].join('');
     let codeOpts = '<option value=""></option>';
     if (isSpecialArea(row.area)) {
-      // COR/BURN rows: lock labor code to the corbudget's labor code
-      const corb2 = corbForArea(row.area, jobName);
-      if (corb2) {
-        codeOpts = `<option value="${eh(corb2.laborCode)}" selected>${eh(corb2.laborCode)} – ${eh(corb2.description)}</option>`;
+      // COR/BURN rows: show all labor codes for the area (dist mode can have multiple)
+      const allC2 = corbsForArea(row.area, jobName);
+      if (allC2.length) {
+        codeOpts = allC2.map(c => `<option value="${eh(c.laborCode)}" ${row.costCode===c.laborCode?'selected':''}>${eh(c.laborCode)} – ${eh(c.description)}</option>`).join('');
       }
     } else if (row.area) {
       const csvFile2 = jobName ? getSavedCSVFiles().find(x => x.name === jobName) : null;
