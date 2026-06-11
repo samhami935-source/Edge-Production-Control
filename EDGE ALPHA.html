@@ -1133,7 +1133,7 @@
           <th>Date</th>
           <th>Status</th>
           <th>Photos</th>
-          <th>COR #</th>
+          <th id="co-log-th-cor">COR #</th>
           <th class="co-mgmt-col">Internal Amount</th>
           <th>Foreman Amount</th>
           <th>PTD</th>
@@ -10405,7 +10405,7 @@ function renderCOLog() {
       <td style="font-size:.8rem;white-space:nowrap;">${dateStr}</td>
       <td>${coStatusBadge(co.status)}</td>
       <td style="text-align:center;">${photoCount > 0 ? `📷 ${photoCount}` : '—'}</td>
-      <td>${co.corNumber ? `<strong>${eh(co.corNumber)}</strong>` : '—'}</td>
+      <td class="co-cor-col">${co.corNumber ? `<strong>${eh(co.corNumber)}</strong>` : '—'}</td>
       <td class="co-mgmt-col" style="text-align:right;font-size:.82rem;">${hasCorb ? fm(iAmt) : '—'}</td>
       <td style="text-align:right;font-size:.82rem;">${hasCorb ? fm(fAmt) : '—'}</td>
       <td style="text-align:right;">${ptdCell}</td>
@@ -10415,6 +10415,8 @@ function renderCOLog() {
   }).join('');
   // Show/hide internal amount column based on role (foreman cannot see management-only data)
   document.querySelectorAll('.co-mgmt-col').forEach(el => { el.style.display = isForeman() ? 'none' : ''; });
+  // Hide COR # column when on burns sub-tab (burns never have a COR number)
+  document.querySelectorAll('.co-cor-col').forEach(el => { el.style.display = _coActiveSubTab === 'burn' ? 'none' : ''; });
 }
 
 let _coBurnMode = false;
@@ -10439,6 +10441,8 @@ function coSetSubTab(tab) {
   if (submitBurnBtn) submitBurnBtn.style.display = tab === 'burn' ? ''     : 'none';
   const thFirst = document.getElementById('co-log-th-first');
   if (thFirst) thFirst.textContent = tab === 'burn' ? 'Burn #' : 'Labor Code';
+  const thCor = document.getElementById('co-log-th-cor');
+  if (thCor) thCor.style.display = tab === 'burn' ? 'none' : '';
   renderCOLog();
 }
 
@@ -10891,19 +10895,22 @@ function coOpenDetail(coId) {
       ).join('')}</div>`
     : '<span style="color:var(--muted);font-size:.83rem;">No photos attached.</span>';
 
+  const _isBurn = co.workOrderNumber === '503 - Burn';
   const budgetSection = corbs.length ? corbs.map(c => {
     const fAmt = corbForemanAmount(c);
     const iAmt = corbInternalAmount(c);
     const ptd  = computeCorPaid(c);
     const rem  = fAmt - ptd;
     const rc   = rem < 0 ? 'color:var(--red)' : rem === 0 ? 'color:var(--yellow)' : 'color:var(--green)';
+    const internalLabel = _isBurn ? 'Internal Burn Amount' : 'Internal COR Amount';
     const internalRow = !isForeman()
-      ? `<div><span style="color:var(--muted);">Internal COR Amount</span><br/><strong style="color:var(--accent);">${fm(iAmt)}</strong></div>`
+      ? `<div><span style="color:var(--muted);">${internalLabel}</span><br/><strong style="color:var(--accent);">${fm(iAmt)}</strong></div>`
       : '';
     const areaRow = c.area
       ? `<div><span style="color:var(--muted);">Area</span><br/><strong>${eh(c.area)}</strong></div>`
       : '';
-    const title = corbs.length > 1 ? `COR Budget — ${eh(c.area || c.description)}` : 'COR Budget';
+    const budgetWord = _isBurn ? 'Burn' : 'COR';
+    const title = corbs.length > 1 ? `${budgetWord} Budget — ${eh(c.area || c.description)}` : `${budgetWord} Budget`;
     return `
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;">
       <div style="font-size:.78rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">${title}</div>
@@ -10918,8 +10925,6 @@ function coOpenDetail(coId) {
       </div>
     </div>`;
   }).join('') : '';
-
-  const _isBurn = co.workOrderNumber === '503 - Burn';
 
   let vpSection = '';
   if (canReviewCO() && co.status !== 'declined' && co.status !== 'approved') {
@@ -10976,7 +10981,7 @@ function coOpenDetail(coId) {
     ${budgetSection}
     ${vpSection}
     ${isAdmin() ? `<div style="border-top:1px solid var(--border);padding-top:12px;text-align:right;">
-      <button class="btn btn-danger btn-sm" style="font-size:.82rem;" onclick="coDelete('${ea(coId)}')">🗑 Delete Change Order</button>
+      <button class="btn btn-danger btn-sm" style="font-size:.82rem;" onclick="coDelete('${ea(coId)}')">${_isBurn ? '🗑 Delete Burn' : '🗑 Delete Change Order'}</button>
     </div>` : ''}
   `;
   document.getElementById('co-detail-modal').classList.add('open');
@@ -11046,7 +11051,9 @@ async function coApprove(coId) {
 
 async function coSetStatus(coId, status) {
   if (!canReviewCO()) return;
-  if (status === 'declined' && !confirm('Mark this Change Order as Declined? The foreman will not be able to proceed.')) return;
+  const _coForStatus = (_cache.changeorders || []).find(c => c.id === coId);
+  const _isBurnStatus = _coForStatus && _coForStatus.workOrderNumber === '503 - Burn';
+  if (status === 'declined' && !confirm(`Mark this ${_isBurnStatus ? 'Burn' : 'Change Order'} as Declined? The foreman will not be able to proceed.`)) return;
   try {
     const update = { status, reviewerEmail: _currentUser.email, reviewerUid: _currentUser.uid, reviewedAt: new Date().toISOString() };
     await db.collection('changeorders').doc(coId).update(update);
@@ -11087,11 +11094,13 @@ function coOpenBudgetModal(coId) {
   document.getElementById('co-budget-confirm-btn').disabled = false;
 
   // Burn-mode UI adjustments
-  document.getElementById('co-budget-title').textContent    = isBurn ? 'Add to Budget' : '💰 Create COR Budget';
+  document.getElementById('co-budget-title').textContent    = isBurn ? '🔥 Add Burn to Budget' : '💰 Create COR Budget';
   document.getElementById('co-budget-subtitle').textContent = isBurn
     ? 'Enter the budget details for this burn.'
     : 'Enter the budget details for this approved Change Order. This will appear in Daily Input tracking.';
   document.getElementById('co-budget-confirm-btn').textContent = isBurn ? '✓ Add to Budget' : '✓ Approve & Create Budget';
+  const _internalLabel = document.getElementById('co-budget-internal-label');
+  if (_internalLabel) _internalLabel.innerHTML = `${isBurn ? 'Internal Burn Amount' : 'Internal COR Amount'} <span style="color:#ef4444;">*</span>`;
 
   const areaRow   = document.getElementById('co-budget-burn-area-row');
   const coAreaRow = document.getElementById('co-budget-co-area-row');
@@ -11442,7 +11451,7 @@ function computeCorPaid(corb) {
         <input id="co-budget-desc" class="fi" style="width:100%;" placeholder="e.g. Change Order framing work" />
       </div>
       <div>
-        <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Internal COR Amount <span style="color:#ef4444;">*</span></label>
+        <label id="co-budget-internal-label" style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Internal COR Amount <span style="color:#ef4444;">*</span></label>
         <input id="co-budget-internal-amount" class="fi" type="text" inputmode="decimal" style="width:100%;padding:5px 10px;font-size:.83rem;text-align:right;" placeholder="0.00" oninput="corbFormatDollarInput(this)" />
         <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Management-only amount. Not shown to Foreman.</div>
       </div>
