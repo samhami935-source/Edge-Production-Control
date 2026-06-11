@@ -10384,8 +10384,10 @@ function renderCOLog() {
     // Sum across ALL corb docs for this CO — dist mode creates one doc per area×labor code pair
     const allCorbs = (_cache.corbudgets || []).filter(b => b.changeOrderId === co.id);
     const hasCorb  = allCorbs.length > 0;
+    const _isBurnCo = co.workOrderNumber === '503 - Burn';
     const paid     = allCorbs.reduce((s, c) => s + computeCorPaid(c), 0);
-    const fAmt     = allCorbs.reduce((s, c) => s + corbForemanAmount(c), 0);
+    // Burns store foremanTrackingAmount as the total on every corb (same as internalCorAmount) — don't sum
+    const fAmt     = hasCorb ? (_isBurnCo ? corbForemanAmount(allCorbs[0]) : allCorbs.reduce((s, c) => s + corbForemanAmount(c), 0)) : 0;
     const iAmt     = hasCorb ? corbInternalAmount(allCorbs[0]) : 0; // internalCorAmount is the total CO amount, same on every corb — don't sum
     const rem      = fAmt - paid;
     const remColor = rem < 0 ? '#ef4444' : rem === 0 ? '#c9a84c' : '#22c55e';
