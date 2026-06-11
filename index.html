@@ -430,6 +430,9 @@
 
   <!-- Tab bar -->
   <div class="tab-bar" id="tab-bar">
+    <div class="tab" id="dashboard-tab" onclick="switchToDashboard()">
+      <span>📊</span><span class="tab-name">Dashboard</span>
+    </div>
     <div class="tab tab-payroll" id="payroll-tab" onclick="switchToPayroll()">
       <span>🧾</span><span class="tab-name">Payroll</span>
     </div>
@@ -817,6 +820,80 @@
         </tr></thead>
         <tbody id="emp-tbody"></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- Dashboard content -->
+  <div id="dashboard-content" style="display:none;">
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h2 style="font-size:1.3rem;font-weight:700;margin:0;color:var(--text);">Project Dashboard</h2>
+        <div style="font-size:.8rem;color:var(--muted);margin-top:4px;">Financial overview by job</div>
+      </div>
+      <select id="dash-job-select" class="fi" style="min-width:220px;max-width:320px;" onchange="dashOnJobChange()">
+        <option value="">— Select Job —</option>
+      </select>
+    </div>
+
+    <!-- Summary cards (shown when job is selected) -->
+    <div class="cards" id="dash-cards" style="display:none;">
+      <div class="card">
+        <div class="label">Total Budget</div>
+        <div class="value" id="dash-card-budget">—</div>
+        <div class="sub">From project budget</div>
+      </div>
+      <div class="card">
+        <div class="label">Contract Amount</div>
+        <div class="value cy" id="dash-card-contract">—</div>
+        <div class="sub" id="dash-contract-updated">Not set</div>
+      </div>
+      <div class="card">
+        <div class="label">Margin ($)</div>
+        <div class="value" id="dash-card-margin">—</div>
+        <div class="sub">Contract − Budget</div>
+      </div>
+      <div class="card">
+        <div class="label">Margin %</div>
+        <div class="value" id="dash-card-margin-pct">—</div>
+        <div class="sub">Margin ÷ Contract</div>
+      </div>
+    </div>
+
+    <!-- Contract amount editor (admin/PM only, job must be selected) -->
+    <div id="dash-contract-edit" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:24px;">
+      <div style="font-size:.85rem;font-weight:600;margin-bottom:12px;color:var(--text);">Set Contract Amount</div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <input type="text" id="dash-contract-input" class="fi" style="width:200px;" inputmode="decimal" placeholder="$0.00" oninput="corbFormatDollarInput(this)" />
+        <button class="btn btn-sm" onclick="dashSaveContract()" style="padding:8px 18px;font-size:.82rem;">Save</button>
+      </div>
+    </div>
+
+    <!-- No job selected placeholder -->
+    <div id="dash-no-job" style="text-align:center;padding:60px 20px;color:var(--muted);">
+      <div style="font-size:2.5rem;margin-bottom:12px;">📊</div>
+      <div style="font-size:1rem;font-weight:600;">Select a job to view its financial summary</div>
+      <div style="font-size:.82rem;margin-top:6px;">All projects are listed in the table below</div>
+    </div>
+
+    <!-- All projects table -->
+    <div id="dash-table-wrap" style="display:none;">
+      <div style="font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">All Projects</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:.83rem;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border);">
+              <th style="text-align:left;padding:10px 12px;color:var(--muted);font-weight:600;">Job Name</th>
+              <th style="text-align:right;padding:10px 12px;color:var(--muted);font-weight:600;">Total Budget</th>
+              <th style="text-align:right;padding:10px 12px;color:var(--muted);font-weight:600;">Contract Amount</th>
+              <th style="text-align:right;padding:10px 12px;color:var(--muted);font-weight:600;">Margin ($)</th>
+              <th style="text-align:right;padding:10px 12px;color:var(--muted);font-weight:600;">Margin %</th>
+              <th style="text-align:right;padding:10px 12px;color:var(--muted);font-weight:600;">Last Updated</th>
+            </tr>
+          </thead>
+          <tbody id="dash-table-body"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -1448,12 +1525,12 @@ let _currentUserRole = null;
 let _currentUser     = null;
 
 // ─── In-memory data cache ───
-const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, employees: null, paysheets: null, psFolders: null, psFolderMeta: {}, psFolderRequests: [], changeorders: [], corbudgets: [] };
+const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, employees: null, paysheets: null, psFolders: null, psFolderMeta: {}, psFolderRequests: [], changeorders: [], corbudgets: [], jobcontracts: {} };
 
 async function loadAllData() {
   const loadMsg = document.getElementById('loading-msg');
   if (loadMsg) loadMsg.textContent = 'Loading data…';
-  const [jobsSnap, payrollSnap, woSnap, lcDoc, empDoc, paysheetsSnap, psFoldersSnap, psFolderReqSnap, coSnap, corbSnap] = await Promise.all([
+  const [jobsSnap, payrollSnap, woSnap, lcDoc, empDoc, paysheetsSnap, psFoldersSnap, psFolderReqSnap, coSnap, corbSnap, contractsSnap] = await Promise.all([
     db.collection('jobs').get(),
     db.collection('payroll').get(),
     db.collection('workorders').get(),
@@ -1464,6 +1541,7 @@ async function loadAllData() {
     db.collection('psfolderrequests').get(),
     db.collection('changeorders').get(),
     db.collection('corbudgets').get(),
+    db.collection('jobcontracts').get(),
   ]);
   _cache.jobs = jobsSnap.docs.map(d => {
     const data = d.data();
@@ -1485,6 +1563,8 @@ async function loadAllData() {
   _cache.psFolderRequests = psFolderReqSnap.docs.map(d => d.data());
   _cache.changeorders = coSnap.docs.map(d => d.data());
   _cache.corbudgets   = corbSnap.docs.map(d => d.data());
+  _cache.jobcontracts = {};
+  contractsSnap.docs.forEach(d => { const data = d.data(); if (data.jobName) _cache.jobcontracts[data.jobName] = data; });
   // Backfill burnNumber onto burn corbudgets that predate the field being stored at creation.
   // Runs in-memory only — no Firestore writes needed for display to work correctly.
   _cache.corbudgets.forEach(b => {
@@ -1824,6 +1904,8 @@ function updateAdminUI() {
     document.getElementById('budgets-locked-notice').style.display = (!canEdit() && !hasFiles) ? 'flex' : 'none';
   }
   // Tab visibility by role
+  const dashboardTab = document.getElementById('dashboard-tab');
+  if (dashboardTab) dashboardTab.style.display = canViewDashboard() ? '' : 'none';
   const payrollTab = document.getElementById('payroll-tab');
   const budgetsTab = document.getElementById('budgets-tab');
   const lcTab      = document.getElementById('lc-tab');
@@ -2886,11 +2968,173 @@ function exportLCCSV() {
 }
 
 // ═══════════════════════════
+//  DASHBOARD TAB
+// ═══════════════════════════
+let _dashSelectedJob = '';
+
+function canViewDashboard() { return isAdmin() || isPM() || isAccounting(); }
+function canEditDashboard()  { return isAdmin() || isPM(); }
+
+function switchToDashboard() {
+  if (!canViewDashboard()) return;
+  activeTab = 'dashboard';
+  renderTabBar();
+  showPanel('dashboard');
+  renderDashboard();
+}
+
+// Returns the total budget for a job by summing all CSV rows.
+function dashGetTotalBudget(jobName) {
+  const job = getSavedCSVFiles().find(f => f.name === jobName);
+  if (!job || !job.rows) return 0;
+  return job.rows.reduce((s, r) => s + (r.amount || 0), 0);
+}
+
+// Returns the stored contract record for a job (or null).
+function dashGetContract(jobName) {
+  return (_cache.jobcontracts || {})[jobName] || null;
+}
+
+// Populate job selector, render selected-job cards, render all-jobs table.
+function renderDashboard() {
+  if (!canViewDashboard()) return;
+  const sel = document.getElementById('dash-job-select');
+  if (sel) {
+    const jobs = getSavedCSVFiles().map(f => f.name).sort((a,b) => a.localeCompare(b));
+    sel.innerHTML = '<option value="">— Select Job —</option>' +
+      jobs.map(j => `<option value="${eh(j)}"${j === _dashSelectedJob ? ' selected' : ''}>${eh(j)}</option>`).join('');
+  }
+  dashRenderJobCards(_dashSelectedJob);
+  dashRenderTable();
+}
+
+function dashOnJobChange() {
+  const sel = document.getElementById('dash-job-select');
+  _dashSelectedJob = sel ? sel.value : '';
+  dashRenderJobCards(_dashSelectedJob);
+  dashRenderTable();
+}
+
+function _dashSelectJob(jobName) {
+  _dashSelectedJob = jobName;
+  const sel = document.getElementById('dash-job-select');
+  if (sel) sel.value = jobName;
+  dashRenderJobCards(jobName);
+  dashRenderTable();
+}
+
+function dashRenderJobCards(jobName) {
+  const hasJob = !!jobName;
+  document.getElementById('dash-no-job').style.display     = hasJob ? 'none' : '';
+  document.getElementById('dash-cards').style.display      = hasJob ? '' : 'none';
+  document.getElementById('dash-contract-edit').style.display = (hasJob && canEditDashboard()) ? '' : 'none';
+
+  if (!hasJob) return;
+
+  const totalBudget  = dashGetTotalBudget(jobName);
+  const contract     = dashGetContract(jobName);
+  const contractAmt  = contract ? (contract.contractAmount || 0) : 0;
+  const hasContract  = contractAmt > 0;
+  const margin       = hasContract ? contractAmt - totalBudget : null;
+  const marginPct    = (hasContract && contractAmt > 0) ? (margin / contractAmt * 100) : null;
+
+  // Total Budget card
+  const budgetEl = document.getElementById('dash-card-budget');
+  budgetEl.textContent = fm(totalBudget);
+  budgetEl.className   = 'value';
+
+  // Contract Amount card
+  const contractEl = document.getElementById('dash-card-contract');
+  contractEl.textContent = hasContract ? fm(contractAmt) : '—';
+  contractEl.className   = 'value cy';
+
+  const updatedEl = document.getElementById('dash-contract-updated');
+  updatedEl.textContent = (contract && contract.updatedAt)
+    ? 'Updated ' + new Date(contract.updatedAt).toLocaleDateString()
+    : 'Not yet set';
+
+  // Margin $ card
+  const marginEl = document.getElementById('dash-card-margin');
+  marginEl.textContent = margin !== null ? fm(margin) : '—';
+  marginEl.className   = margin !== null ? ('value ' + (margin >= 0 ? 'cg' : 'cr')) : 'value';
+
+  // Margin % card
+  const marginPctEl = document.getElementById('dash-card-margin-pct');
+  if (marginPct !== null) {
+    marginPctEl.textContent = marginPct.toFixed(1) + '%';
+    marginPctEl.className   = 'value ' + (marginPct >= 0 ? 'cg' : 'cr');
+  } else {
+    marginPctEl.textContent = '—';
+    marginPctEl.className   = 'value';
+  }
+
+  // Pre-fill contract input with current value
+  if (canEditDashboard()) {
+    const inp = document.getElementById('dash-contract-input');
+    if (inp) inp.value = hasContract ? fm(contractAmt) : '';
+  }
+}
+
+function dashRenderTable() {
+  const tbody = document.getElementById('dash-table-body');
+  const wrap  = document.getElementById('dash-table-wrap');
+  if (!tbody || !wrap) return;
+  const jobs = getSavedCSVFiles().map(f => f.name).sort((a,b) => a.localeCompare(b));
+  if (!jobs.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  tbody.innerHTML = jobs.map(jobName => {
+    const totalBudget = dashGetTotalBudget(jobName);
+    const contract    = dashGetContract(jobName);
+    const contractAmt = contract ? (contract.contractAmount || 0) : 0;
+    const hasContract = contractAmt > 0;
+    const margin      = hasContract ? contractAmt - totalBudget : null;
+    const marginPct   = (hasContract && contractAmt > 0) ? (margin / contractAmt * 100) : null;
+    const isSelected  = jobName === _dashSelectedJob;
+    const safeJob     = jobName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;${isSelected ? 'background:rgba(201,168,76,.07);' : ''}" onclick="_dashSelectJob('${safeJob}')" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background='${isSelected ? 'rgba(201,168,76,.07)' : ''}'">
+      <td style="padding:11px 12px;font-weight:600;">${eh(jobName)}</td>
+      <td style="padding:11px 12px;text-align:right;">${fm(totalBudget)}</td>
+      <td style="padding:11px 12px;text-align:right;">${hasContract ? fm(contractAmt) : '<span style="color:var(--muted);">—</span>'}</td>
+      <td style="padding:11px 12px;text-align:right;${margin !== null ? (margin >= 0 ? 'color:var(--green)' : 'color:var(--red)') : ''}">${margin !== null ? fm(margin) : '<span style="color:var(--muted);">—</span>'}</td>
+      <td style="padding:11px 12px;text-align:right;${marginPct !== null ? (marginPct >= 0 ? 'color:var(--green)' : 'color:var(--red)') : ''}">${marginPct !== null ? marginPct.toFixed(1) + '%' : '<span style="color:var(--muted);">—</span>'}</td>
+      <td style="padding:11px 12px;text-align:right;color:var(--muted);">${(contract && contract.updatedAt) ? new Date(contract.updatedAt).toLocaleDateString() : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function dashSaveContract() {
+  if (!canEditDashboard()) return;
+  const jobName = _dashSelectedJob;
+  if (!jobName) { alert('Please select a job first.'); return; }
+  const inp = document.getElementById('dash-contract-input');
+  if (!inp) return;
+  const raw = inp.value.replace(/[$,]/g, '').trim();
+  const amount = parseFloat(raw);
+  if (isNaN(amount) || amount < 0) { alert('Please enter a valid contract amount.'); return; }
+  const docId = jobName.replace(/[^\w-]/g, '_');
+  const data = {
+    jobName,
+    contractAmount: amount,
+    updatedAt: new Date().toISOString(),
+    updatedBy: _currentUser ? _currentUser.email : 'unknown',
+  };
+  try {
+    await db.collection('jobcontracts').doc(docId).set(data);
+    if (!_cache.jobcontracts) _cache.jobcontracts = {};
+    _cache.jobcontracts[jobName] = data;
+    dashRenderJobCards(jobName);
+    dashRenderTable();
+  } catch(e) {
+    alert('Failed to save contract amount: ' + e.message);
+  }
+}
+
+// ═══════════════════════════
 //  TAB ROUTING
 // ═══════════════════════════
 function showPanel(name) {
-  ['csv-content','payroll-content','budgets-content','lc-content','emp-content','paysheet-content','accounting-content','co-content'].forEach(id => document.getElementById(id).style.display = 'none');
-  const map = { csv:'csv-content', payroll:'payroll-content', budgets:'budgets-content', lc:'lc-content', emp:'emp-content', accounting:'accounting-content', co:'co-content' };
+  ['csv-content','payroll-content','budgets-content','lc-content','emp-content','paysheet-content','accounting-content','co-content','dashboard-content'].forEach(id => document.getElementById(id).style.display = 'none');
+  const map = { csv:'csv-content', payroll:'payroll-content', budgets:'budgets-content', lc:'lc-content', emp:'emp-content', accounting:'accounting-content', co:'co-content', dashboard:'dashboard-content' };
   if (map[name]) document.getElementById(map[name]).style.display = 'block';
   if (name === 'budgets') {
     const hasFiles = getSavedCSVFiles().length > 0;
@@ -2901,6 +3145,8 @@ function showPanel(name) {
 }
 
 function renderTabBar() {
+  const dashTabEl = document.getElementById('dashboard-tab');
+  if (dashTabEl) dashTabEl.classList.toggle('active', activeTab === 'dashboard');
   document.getElementById('payroll-tab').classList.toggle('active',    activeTab === 'payroll');
   document.getElementById('budgets-tab').classList.toggle('active',    activeTab === 'budgets');
   document.getElementById('lc-tab').classList.toggle('active',         activeTab === 'lc');
