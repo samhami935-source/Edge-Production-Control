@@ -10607,7 +10607,6 @@ function coBurnAreasChanged() {
 
 // ── CO (non-burn) area multi-select ──────────────────────────────────
 function coAreaOpen() {
-  if (_coBurnMode) return;
   _coAreaRenderDropdown('');
   if (_coAreaClickHandler) document.removeEventListener('mousedown', _coAreaClickHandler, true);
   _coAreaClickHandler = e => {
@@ -10688,7 +10687,6 @@ function _coAreaRenderTags() {
 let _coLcClickHandler = null;
 
 function coLcOpen() {
-  if (_coBurnMode) return;
   _coLcRenderDropdown('');
   if (_coLcClickHandler) document.removeEventListener('mousedown', _coLcClickHandler, true);
   _coLcClickHandler = e => {
