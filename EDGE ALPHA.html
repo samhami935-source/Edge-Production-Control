@@ -6330,7 +6330,7 @@ function renderPSAreaBudgetTable() {
 // Burns get [Burn#N] prefix (with burn number + description); regular COR budgets get [COR] prefix.
 function corbAreaKey(b) {
   return b.isBurn
-    ? `[Burn#${b.burnNumber || '?'}] ${b.description || b.burnArea || ''}`
+    ? `[Burn#${b.burnNumber || '?'}] ${b.burnArea || b.description || ''}`
     : b.area
       ? `[COR] ${b.corNumber} \u2013 ${b.area}`
       : `[COR] ${b.corNumber} \u2013 ${b.description}`;
@@ -6342,10 +6342,18 @@ function corbForArea(area, jobName) {
   // Primary: exact match on current key format
   const exact = (_cache.corbudgets || []).find(b => corbAreaKey(b) === area && b.jobId === jobName);
   if (exact) return exact;
-  // Backward compat: old format was `[BURN] – areaName` — match by burnArea for docs saved before the rename
+  // Backward compat v1: old format was `[BURN] – areaName`
   if (area && area.startsWith('[BURN]')) {
     const oldArea = area.replace(/^\[BURN\]\s*[\u2013-]\s*/, '').trim();
     return (_cache.corbudgets || []).find(b => b.isBurn && b.burnArea === oldArea && b.jobId === jobName);
+  }
+  // Backward compat v2: old format was `[Burn#N] description` — match by burnNumber+description
+  if (area && area.startsWith('[Burn#')) {
+    const m = area.match(/^\[Burn#([^\]]*)\]\s*(.*)/);
+    if (m) {
+      const [, bNum, bDesc] = m;
+      return (_cache.corbudgets || []).find(b => b.isBurn && String(b.burnNumber || '') === bNum && (b.description || '') === bDesc && b.jobId === jobName);
+    }
   }
   return null;
 }
@@ -6356,6 +6364,13 @@ function corbsForArea(area, jobName) {
   if (area && area.startsWith('[BURN]')) {
     const oldArea = area.replace(/^\[BURN\]\s*[\u2013-]\s*/, '').trim();
     return (_cache.corbudgets || []).filter(b => b.isBurn && b.burnArea === oldArea && b.jobId === jobName);
+  }
+  if (area && area.startsWith('[Burn#')) {
+    const m = area.match(/^\[Burn#([^\]]*)\]\s*(.*)/);
+    if (m) {
+      const [, bNum, bDesc] = m;
+      return (_cache.corbudgets || []).filter(b => b.isBurn && String(b.burnNumber || '') === bNum && (b.description || '') === bDesc && b.jobId === jobName);
+    }
   }
   return [];
 }
@@ -11265,9 +11280,11 @@ function computeCorPaid(corb) {
   // The primary match for payroll entries is the unique corBudgetId — this is what
   // prevents two CORs sharing the same labor code from cross-contaminating PTD.
   const areaKey = corbAreaKey(corb);
-  // Also build the legacy area key (old [BURN] – area format) for backward compat with DI entries
-  // saved before the area key was renamed to [Burn#N] format.
-  const legacyAreaKey = corb.isBurn ? `[BURN] \u2013 ${corb.burnArea || ''}` : null;
+  // Legacy area keys for backward compat with DI entries saved before key format changes:
+  // v1: [BURN] – burnArea (very old)
+  // v2: [Burn#N] description (before burnArea was used as the label)
+  const legacyAreaKey  = corb.isBurn ? `[BURN] \u2013 ${corb.burnArea || ''}` : null;
+  const legacyAreaKey2 = corb.isBurn ? `[Burn#${corb.burnNumber || '?'}] ${corb.description || ''}` : null;
   let paid = 0;
 
   // ── Daily input submissions ──────────────────────────────────────────────
@@ -11284,7 +11301,7 @@ function computeCorPaid(corb) {
           if (!price) return; // DI entries currently have no price — skip to avoid false 0-sums
           const matched = e.corBudgetId
             ? e.corBudgetId === corb.id
-            : ((e.area === areaKey || (legacyAreaKey && e.area === legacyAreaKey)) && e.costCode === corb.laborCode);
+            : ((e.area === areaKey || (legacyAreaKey && e.area === legacyAreaKey) || (legacyAreaKey2 && e.area === legacyAreaKey2)) && e.costCode === corb.laborCode);
           if (matched) paid += price;
         });
       });
