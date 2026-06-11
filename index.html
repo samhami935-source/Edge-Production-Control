@@ -843,10 +843,23 @@
         <div class="value" id="dash-card-budget">—</div>
         <div class="sub">From project budget</div>
       </div>
-      <div class="card">
+      <div class="card" id="dash-contract-card">
         <div class="label">Contract Amount</div>
         <div class="value cy" id="dash-card-contract">—</div>
         <div class="sub" id="dash-contract-updated">Not set</div>
+        <!-- Inline edit section — shown for admin/PM only -->
+        <div id="dash-contract-inline-edit" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+          <div id="dash-contract-locked-row">
+            <button class="btn btn-sm" onclick="dashOpenPinModal()" style="font-size:.75rem;padding:5px 14px;margin:0;">✏️ Edit</button>
+          </div>
+          <div id="dash-contract-unlocked-row" style="display:none;">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <input type="text" id="dash-contract-input" class="fi" style="flex:1;min-width:90px;font-size:.82rem;" inputmode="decimal" placeholder="$0.00" oninput="corbFormatDollarInput(this)" />
+              <button class="btn btn-sm" onclick="dashSaveContract()" style="font-size:.75rem;padding:5px 12px;margin:0;">Save</button>
+              <button class="btn btn-sm" onclick="dashLockContract()" style="font-size:.75rem;padding:5px 10px;margin:0;background:transparent;border:1px solid var(--border);color:var(--muted);">✕</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="card">
         <div class="label">Margin ($)</div>
@@ -857,15 +870,6 @@
         <div class="label">Margin %</div>
         <div class="value" id="dash-card-margin-pct">—</div>
         <div class="sub">Margin ÷ Contract</div>
-      </div>
-    </div>
-
-    <!-- Contract amount editor (admin/PM only, job must be selected) -->
-    <div id="dash-contract-edit" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:24px;">
-      <div style="font-size:.85rem;font-weight:600;margin-bottom:12px;color:var(--text);">Set Contract Amount</div>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <input type="text" id="dash-contract-input" class="fi" style="width:200px;" inputmode="decimal" placeholder="$0.00" oninput="corbFormatDollarInput(this)" />
-        <button class="btn btn-sm" onclick="dashSaveContract()" style="padding:8px 18px;font-size:.82rem;">Save</button>
       </div>
     </div>
 
@@ -893,6 +897,42 @@
           </thead>
           <tbody id="dash-table-body"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard PIN Modal -->
+  <div class="modal-overlay" id="dash-pin-modal" onclick="if(event.target===this)dashClosePinModal()">
+    <div class="modal" style="width:360px;max-width:96vw;">
+      <h2 style="margin-bottom:4px;font-size:1.1rem;" id="dash-pin-title">Enter PIN</h2>
+      <p style="color:var(--muted);font-size:.82rem;margin-bottom:20px;" id="dash-pin-subtitle">Enter your PIN to edit the contract amount.</p>
+      <!-- Create PIN mode -->
+      <div id="dash-pin-create-fields">
+        <div style="margin-bottom:12px;">
+          <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:6px;">New PIN (4–8 digits)</label>
+          <input type="password" id="dash-pin-new" class="fi" style="width:100%;letter-spacing:.25em;font-size:1.2rem;text-align:center;" inputmode="numeric" maxlength="8" placeholder="••••" />
+        </div>
+        <div style="margin-bottom:20px;">
+          <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:6px;">Confirm PIN</label>
+          <input type="password" id="dash-pin-confirm" class="fi" style="width:100%;letter-spacing:.25em;font-size:1.2rem;text-align:center;" inputmode="numeric" maxlength="8" placeholder="••••" onkeydown="if(event.key==='Enter')dashCreatePin()" />
+        </div>
+        <div id="dash-pin-create-error" style="display:none;color:var(--red);font-size:.8rem;margin-bottom:12px;"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button class="btn btn-outline" style="margin:0;" onclick="dashClosePinModal()">Cancel</button>
+          <button class="btn" style="margin:0;" onclick="dashCreatePin()">Create PIN</button>
+        </div>
+      </div>
+      <!-- Enter PIN mode -->
+      <div id="dash-pin-enter-fields" style="display:none;">
+        <div style="margin-bottom:8px;">
+          <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:6px;">PIN</label>
+          <input type="password" id="dash-pin-entry" class="fi" style="width:100%;letter-spacing:.25em;font-size:1.2rem;text-align:center;" inputmode="numeric" maxlength="8" placeholder="••••" onkeydown="if(event.key==='Enter')dashVerifyPin()" />
+        </div>
+        <div id="dash-pin-error" style="display:none;color:var(--red);font-size:.8rem;margin-bottom:12px;">Incorrect PIN. Please try again.</div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+          <button class="btn btn-outline" style="margin:0;" onclick="dashClosePinModal()">Cancel</button>
+          <button class="btn" style="margin:0;" onclick="dashVerifyPin()">Unlock</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2970,7 +3010,8 @@ function exportLCCSV() {
 // ═══════════════════════════
 //  DASHBOARD TAB
 // ═══════════════════════════
-let _dashSelectedJob = '';
+let _dashSelectedJob  = '';
+let _dashPinUnlocked  = false; // true after correct PIN entered, resets on job change / save / cancel
 
 function canViewDashboard() { return isAdmin() || isPM() || isAccounting(); }
 function canEditDashboard()  { return isAdmin() || isPM(); }
@@ -3010,12 +3051,14 @@ function renderDashboard() {
 
 function dashOnJobChange() {
   const sel = document.getElementById('dash-job-select');
-  _dashSelectedJob = sel ? sel.value : '';
+  _dashPinUnlocked  = false;
+  _dashSelectedJob  = sel ? sel.value : '';
   dashRenderJobCards(_dashSelectedJob);
   dashRenderTable();
 }
 
 function _dashSelectJob(jobName) {
+  _dashPinUnlocked = false;
   _dashSelectedJob = jobName;
   const sel = document.getElementById('dash-job-select');
   if (sel) sel.value = jobName;
@@ -3025,9 +3068,8 @@ function _dashSelectJob(jobName) {
 
 function dashRenderJobCards(jobName) {
   const hasJob = !!jobName;
-  document.getElementById('dash-no-job').style.display     = hasJob ? 'none' : '';
-  document.getElementById('dash-cards').style.display      = hasJob ? '' : 'none';
-  document.getElementById('dash-contract-edit').style.display = (hasJob && canEditDashboard()) ? '' : 'none';
+  document.getElementById('dash-no-job').style.display = hasJob ? 'none' : '';
+  document.getElementById('dash-cards').style.display  = hasJob ? '' : 'none';
 
   if (!hasJob) return;
 
@@ -3044,14 +3086,25 @@ function dashRenderJobCards(jobName) {
   budgetEl.className   = 'value';
 
   // Contract Amount card
-  const contractEl = document.getElementById('dash-card-contract');
-  contractEl.textContent = hasContract ? fm(contractAmt) : '—';
-  contractEl.className   = 'value cy';
-
-  const updatedEl = document.getElementById('dash-contract-updated');
-  updatedEl.textContent = (contract && contract.updatedAt)
+  document.getElementById('dash-card-contract').textContent = hasContract ? fm(contractAmt) : '—';
+  document.getElementById('dash-card-contract').className   = 'value cy';
+  document.getElementById('dash-contract-updated').textContent = (contract && contract.updatedAt)
     ? 'Updated ' + new Date(contract.updatedAt).toLocaleDateString()
     : 'Not yet set';
+
+  // Inline edit section — visible only to edit-authorized roles
+  const inlineEdit  = document.getElementById('dash-contract-inline-edit');
+  const lockedRow   = document.getElementById('dash-contract-locked-row');
+  const unlockedRow = document.getElementById('dash-contract-unlocked-row');
+  if (inlineEdit) {
+    inlineEdit.style.display  = canEditDashboard() ? '' : 'none';
+    lockedRow.style.display   = _dashPinUnlocked ? 'none' : '';
+    unlockedRow.style.display = _dashPinUnlocked ? '' : 'none';
+    if (_dashPinUnlocked) {
+      const inp = document.getElementById('dash-contract-input');
+      if (inp && inp.value === '') inp.value = hasContract ? fm(contractAmt) : '';
+    }
+  }
 
   // Margin $ card
   const marginEl = document.getElementById('dash-card-margin');
@@ -3066,12 +3119,6 @@ function dashRenderJobCards(jobName) {
   } else {
     marginPctEl.textContent = '—';
     marginPctEl.className   = 'value';
-  }
-
-  // Pre-fill contract input with current value
-  if (canEditDashboard()) {
-    const inp = document.getElementById('dash-contract-input');
-    if (inp) inp.value = hasContract ? fm(contractAmt) : '';
   }
 }
 
@@ -3103,7 +3150,7 @@ function dashRenderTable() {
 }
 
 async function dashSaveContract() {
-  if (!canEditDashboard()) return;
+  if (!canEditDashboard() || !_dashPinUnlocked) return;
   const jobName = _dashSelectedJob;
   if (!jobName) { alert('Please select a job first.'); return; }
   const inp = document.getElementById('dash-contract-input');
@@ -3122,10 +3169,115 @@ async function dashSaveContract() {
     await db.collection('jobcontracts').doc(docId).set(data);
     if (!_cache.jobcontracts) _cache.jobcontracts = {};
     _cache.jobcontracts[jobName] = data;
+    _dashPinUnlocked = false; // re-lock after every save
     dashRenderJobCards(jobName);
     dashRenderTable();
   } catch(e) {
     alert('Failed to save contract amount: ' + e.message);
+  }
+}
+
+function dashLockContract() {
+  _dashPinUnlocked = false;
+  dashRenderJobCards(_dashSelectedJob);
+}
+
+// ─── Dashboard PIN Functions ───
+async function dashOpenPinModal() {
+  if (!canEditDashboard()) return;
+  const uid = _currentUser && _currentUser.uid;
+  if (!uid) return;
+  // Check if user already has a PIN
+  let hasPin = false;
+  try {
+    const doc = await db.collection('userpins').doc(uid).get();
+    hasPin = doc.exists && doc.data().pin;
+  } catch(e) { /* collection may not exist yet */ }
+
+  const modal = document.getElementById('dash-pin-modal');
+  const title    = document.getElementById('dash-pin-title');
+  const subtitle = document.getElementById('dash-pin-subtitle');
+  const createFields = document.getElementById('dash-pin-create-fields');
+  const enterFields  = document.getElementById('dash-pin-enter-fields');
+  const pinError     = document.getElementById('dash-pin-error');
+  const createError  = document.getElementById('dash-pin-create-error');
+
+  if (hasPin) {
+    title.textContent    = 'Enter PIN';
+    subtitle.textContent = 'Enter your PIN to edit the contract amount.';
+    createFields.style.display = 'none';
+    enterFields.style.display  = '';
+    document.getElementById('dash-pin-entry').value = '';
+    if (pinError) pinError.style.display = 'none';
+  } else {
+    title.textContent    = 'Create a PIN';
+    subtitle.textContent = 'Set a PIN to protect changes to contract amounts.';
+    createFields.style.display = '';
+    enterFields.style.display  = 'none';
+    document.getElementById('dash-pin-new').value     = '';
+    document.getElementById('dash-pin-confirm').value = '';
+    if (createError) createError.style.display = 'none';
+  }
+  modal.classList.add('open');
+  // Focus the first input after a tick
+  setTimeout(() => {
+    const first = hasPin
+      ? document.getElementById('dash-pin-entry')
+      : document.getElementById('dash-pin-new');
+    if (first) first.focus();
+  }, 80);
+}
+
+function dashClosePinModal() {
+  const modal = document.getElementById('dash-pin-modal');
+  if (modal) modal.classList.remove('open');
+}
+
+async function dashCreatePin() {
+  const uid = _currentUser && _currentUser.uid;
+  if (!uid) return;
+  const newPin     = document.getElementById('dash-pin-new').value.trim();
+  const confirmPin = document.getElementById('dash-pin-confirm').value.trim();
+  const errEl      = document.getElementById('dash-pin-create-error');
+  const showErr = (msg) => { errEl.textContent = msg; errEl.style.display = ''; };
+
+  if (!/^\d{4,8}$/.test(newPin))     { showErr('PIN must be 4–8 digits (numbers only).'); return; }
+  if (newPin !== confirmPin)          { showErr('PINs do not match. Please try again.'); return; }
+
+  try {
+    await db.collection('userpins').doc(uid).set({
+      pin: newPin,
+      createdAt: new Date().toISOString(),
+      createdBy: _currentUser.email,
+    });
+    _dashPinUnlocked = true;
+    dashClosePinModal();
+    dashRenderJobCards(_dashSelectedJob);
+  } catch(e) {
+    showErr('Failed to save PIN: ' + e.message);
+  }
+}
+
+async function dashVerifyPin() {
+  const uid = _currentUser && _currentUser.uid;
+  if (!uid) return;
+  const entered = document.getElementById('dash-pin-entry').value.trim();
+  const errEl   = document.getElementById('dash-pin-error');
+  try {
+    const doc = await db.collection('userpins').doc(uid).get();
+    if (!doc.exists || !doc.data().pin) { errEl.style.display = ''; return; }
+    if (doc.data().pin === entered) {
+      _dashPinUnlocked = true;
+      dashClosePinModal();
+      dashRenderJobCards(_dashSelectedJob);
+    } else {
+      errEl.style.display = '';
+      document.getElementById('dash-pin-entry').value = '';
+      document.getElementById('dash-pin-entry').focus();
+    }
+  } catch(e) {
+    errEl.textContent = 'Error verifying PIN: ' + e.message;
+    errEl.style.display = '';
   }
 }
 
