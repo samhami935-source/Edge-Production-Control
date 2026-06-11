@@ -10473,19 +10473,9 @@ function coOpenSubmitModal(burnMode) {
   document.getElementById('co-photo-preview').innerHTML = '';
   document.getElementById('co-submit-progress').style.display = 'none';
   document.getElementById('co-submit-confirm-btn').disabled = false;
-  // Burn mode: show burn fields, hide WO row, update title and button label
-  const burnFields = document.getElementById('co-submit-burn-fields');
-  burnFields.style.display = _coBurnMode ? 'flex' : 'none';
-  _coBurnSelectedAreas = [];
-  const _bSearch = document.getElementById('co-burn-area-search');
-  if (_bSearch) _bSearch.value = '';
-  const _bTags = document.getElementById('co-burn-area-tags');
-  if (_bTags) { _bTags.innerHTML = ''; _bTags.style.marginBottom = '0'; }
-  const _bDd = document.getElementById('co-burn-area-dropdown');
-  if (_bDd) _bDd.style.display = 'none';
-  document.getElementById('co-burn-code').innerHTML  = '<option value="">— Select Area First —</option>';
-  document.getElementById('co-burn-hours').value     = '';
-  document.getElementById('co-submit-co-fields').style.display = _coBurnMode ? 'none' : 'flex';
+  // Both modes use the same unified fields — just update title and button label
+  document.getElementById('co-submit-burn-fields').style.display = 'none'; // legacy fields, never shown
+  document.getElementById('co-submit-co-fields').style.display = 'flex';
   document.getElementById('co-submit-modal-title').textContent = _coBurnMode ? '🔥 Submit 503 Burn' : '📋 Submit Change Order';
   document.getElementById('co-submit-confirm-btn').textContent = _coBurnMode ? 'Submit 503 Burn' : 'Submit Change Order';
   document.getElementById('co-submit-modal').classList.add('open');
@@ -10497,16 +10487,21 @@ function coCloseSubmitModal() {
 }
 
 function coBurnJobChanged() {
-  if (!_coBurnMode) return;
-  // Reset area multi-select when job changes
-  _coBurnSelectedAreas = [];
-  const search = document.getElementById('co-burn-area-search');
-  const tags   = document.getElementById('co-burn-area-tags');
-  const dd     = document.getElementById('co-burn-area-dropdown');
-  if (search) search.value = '';
-  if (tags)   { tags.innerHTML = ''; tags.style.marginBottom = '0'; }
-  if (dd)     dd.style.display = 'none';
-  document.getElementById('co-burn-code').innerHTML = '<option value="">— Select Area First —</option>';
+  // Reset the shared area + labor code multi-selects when job changes (works for both COR and burn modes)
+  _coSelectedAreas = [];
+  _coSelectedLaborCodes = [];
+  const areaSearch   = document.getElementById('co-area-search');
+  const areaTags     = document.getElementById('co-area-tags');
+  const areaDropdown = document.getElementById('co-area-dropdown');
+  if (areaSearch)   areaSearch.value = '';
+  if (areaTags)     { areaTags.innerHTML = ''; areaTags.style.marginBottom = '0'; }
+  if (areaDropdown) areaDropdown.style.display = 'none';
+  const lcSearch   = document.getElementById('co-lc-search');
+  const lcTags     = document.getElementById('co-lc-tags');
+  const lcDropdown = document.getElementById('co-lc-dropdown');
+  if (lcSearch)   lcSearch.value = '';
+  if (lcTags)     { lcTags.innerHTML = ''; lcTags.style.marginBottom = '0'; }
+  if (lcDropdown) lcDropdown.style.display = 'none';
 }
 
 function coBurnAreaOpen() {
@@ -10826,12 +10821,11 @@ async function coSubmit() {
   const wo         = _coBurnMode ? '503 - Burn' : '502 - Change Orders';
   const desc = document.getElementById('co-submit-desc').value.trim();
   if (!jobId) { alert('Please select a job.'); return; }
-  if (!_coBurnMode && !_coSelectedLaborCodes.length) { alert('Please add at least one labor code.'); return; }
-  const burnAreas = _coBurnMode ? [..._coBurnSelectedAreas] : [];
+  if (!_coSelectedLaborCodes.length) { alert('Please add at least one labor code.'); return; }
+  const burnAreas = _coBurnMode ? [..._coSelectedAreas] : [];
   const burnArea  = burnAreas[0] || '';
-  const burnCode  = _coBurnMode ? document.getElementById('co-burn-code').value.trim()  : '';
-  const burnHours = _coBurnMode ? (parseFloat(document.getElementById('co-burn-hours').value) || 0) : 0;
-  if (_coBurnMode && !burnAreas.length) { alert('Please select at least one area.'); return; }
+  const burnCode  = _coBurnMode ? (_coSelectedLaborCodes[0] || '') : '';
+  const burnHours = _coBurnMode ? (parseFloat(document.getElementById('co-submit-hours').value) || null) : null;
 
   const btn  = document.getElementById('co-submit-confirm-btn');
   const prog = document.getElementById('co-submit-progress');
@@ -10855,12 +10849,12 @@ async function coSubmit() {
     prog.textContent = 'Saving change order…';
     const doc = {
       id, jobId, workOrderNumber: wo,
-      laborCode: _coBurnMode ? null : (_coSelectedLaborCodes[0] || null),
-      laborCodes: _coBurnMode ? [] : [..._coSelectedLaborCodes],
-      coAreas: _coBurnMode ? [] : [..._coSelectedAreas],
-      coHours: _coBurnMode ? null : (parseFloat(document.getElementById('co-submit-hours').value) || null),
+      laborCode: _coSelectedLaborCodes[0] || null,
+      laborCodes: [..._coSelectedLaborCodes],
+      coAreas: [..._coSelectedAreas],
+      coHours: parseFloat(document.getElementById('co-submit-hours').value) || null,
       description: desc, photoUrls,
-      ...(wo === '503 - Burn' ? { burnArea, burnAreas, burnLaborCode: burnCode, burnHours, burnNumber } : {}),
+      ...(wo === '503 - Burn' ? { burnArea, burnAreas, burnLaborCode: burnCode, burnLaborCodes: [..._coSelectedLaborCodes], burnHours, burnNumber } : {}),
       submittedByEmail: _currentUser.email, submittedByUid: _currentUser.uid,
       submittedByRole: _currentUserRole, submittedAt: new Date().toISOString(),
       status: 'submitted', reviewerEmail: null, reviewerUid: null, reviewedAt: null,
@@ -10967,7 +10961,7 @@ function coOpenDetail(coId) {
       ${!_isBurn && co.coAreas && co.coAreas.length ? `<div style="grid-column:span 2"><span style="color:var(--muted);">Areas</span><br/><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${co.coAreas.map(a => `<span style="display:inline-block;padding:2px 9px;background:rgba(201,168,76,.13);border:1px solid rgba(201,168,76,.35);border-radius:10px;font-size:.8rem;color:var(--accent);">${eh(a)}</span>`).join('')}</div></div>` : ''}
       ${!_isBurn ? (() => { const codes = (co.laborCodes && co.laborCodes.length) ? co.laborCodes : (co.laborCode ? [co.laborCode] : []); return codes.length ? `<div style="grid-column:span 2"><span style="color:var(--muted);">Labor Codes</span><br/><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${codes.map(c => `<span style="display:inline-block;padding:2px 9px;background:rgba(201,168,76,.13);border:1px solid rgba(201,168,76,.35);border-radius:10px;font-size:.8rem;color:var(--accent);">${eh(c)}</span>`).join('')}</div></div>` : ''; })() : ''}
       ${!_isBurn && co.coHours != null ? `<div><span style="color:var(--muted);">Hours</span><br/><strong>${co.coHours}</strong></div>` : ''}
-      ${_isBurn && co.burnLaborCode ? `<div><span style="color:var(--muted);">Labor Code</span><br/><strong>${eh(co.burnLaborCode)}</strong></div>` : ''}
+      ${_isBurn ? (() => { const lcs = (co.burnLaborCodes && co.burnLaborCodes.length) ? co.burnLaborCodes : (co.burnLaborCode ? [co.burnLaborCode] : []); return lcs.length ? `<div style="grid-column:span 2"><span style="color:var(--muted);">Labor Codes</span><br/><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${lcs.map(c => `<span style="display:inline-block;padding:2px 9px;background:rgba(201,168,76,.13);border:1px solid rgba(201,168,76,.35);border-radius:10px;font-size:.8rem;color:var(--accent);">${eh(c)}</span>`).join('')}</div></div>` : ''; })() : ''}
       ${_isBurn && co.burnHours != null ? `<div><span style="color:var(--muted);">Hours</span><br/><strong>${co.burnHours}</strong></div>` : ''}
       ${co.reviewerEmail ? `<div><span style="color:var(--muted);">Reviewed By</span><br/><strong>${eh(co.reviewerEmail)}</strong></div>` : ''}
       ${co.reviewedAt    ? `<div><span style="color:var(--muted);">Reviewed At</span><br/><strong>${reviewedStr}</strong></div>` : ''}
@@ -11073,11 +11067,11 @@ function coOpenBudgetModal(coId) {
   const lcDisplay = document.getElementById('co-budget-lc-display');
   const lcHidden  = document.getElementById('co-budget-lc');
   if (isBurn) {
-    const burnLc = co.burnLaborCode || '';
-    lcDisplay.innerHTML = burnLc
-      ? `<span style="display:inline-block;padding:2px 9px;background:rgba(201,168,76,.13);border:1px solid rgba(201,168,76,.35);border-radius:10px;font-size:.8rem;color:var(--accent);">${eh(burnLc)}</span>`
+    const burnLcs = (co.burnLaborCodes && co.burnLaborCodes.length) ? co.burnLaborCodes : (co.burnLaborCode ? [co.burnLaborCode] : []);
+    lcDisplay.innerHTML = burnLcs.length
+      ? burnLcs.map(c => `<span style="display:inline-block;padding:2px 9px;background:rgba(201,168,76,.13);border:1px solid rgba(201,168,76,.35);border-radius:10px;font-size:.8rem;color:var(--accent);">${eh(c)}</span>`).join('')
       : '<span style="color:var(--muted);font-size:.83rem;">—</span>';
-    lcHidden.value = burnLc;
+    lcHidden.value = burnLcs[0] || '';
   } else {
     const coLcs = (co.laborCodes && co.laborCodes.length) ? co.laborCodes : (co.laborCode ? [co.laborCode] : []);
     lcDisplay.innerHTML = coLcs.length
@@ -11133,8 +11127,13 @@ function coOpenBudgetModal(coId) {
   // Build _corbDistPairs: one entry per (area × laborCode) combo
   if (isBurn) {
     const _bAreas = (co.burnAreas && co.burnAreas.length) ? co.burnAreas : (co.burnArea ? [co.burnArea] : [null]);
-    const _bLc = co.burnLaborCode || '';
-    _corbDistPairs = _bAreas.map(a => ({ area: a, laborCode: _bLc }));
+    const _bLcs   = (co.burnLaborCodes && co.burnLaborCodes.length) ? co.burnLaborCodes : (co.burnLaborCode ? [co.burnLaborCode] : ['']);
+    _corbDistPairs = [];
+    for (const area of _bAreas) {
+      for (const lc of _bLcs) {
+        _corbDistPairs.push({ area, laborCode: lc });
+      }
+    }
   } else {
     const _cAreas = (co.coAreas && co.coAreas.length) ? co.coAreas : [null];
     const _cLcs   = (co.laborCodes && co.laborCodes.length) ? co.laborCodes : (co.laborCode ? [co.laborCode] : ['']);
