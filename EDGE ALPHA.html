@@ -10406,8 +10406,8 @@ function renderCOLog() {
     const hasCorb  = allCorbs.length > 0;
     const _isBurnCo = co.workOrderNumber === '503 - Burn';
     const paid     = allCorbs.reduce((s, c) => s + computeCorPaid(c), 0);
-    // Burns store foremanTrackingAmount as the total on every corb (same as internalCorAmount) — don't sum
-    const fAmt     = hasCorb ? (_isBurnCo ? corbForemanAmount(allCorbs[0]) : allCorbs.reduce((s, c) => s + corbForemanAmount(c), 0)) : 0;
+    // Burns: remaining tracks against the internal amount (no separate foreman amount for burns)
+    const fAmt     = hasCorb ? (_isBurnCo ? corbInternalAmount(allCorbs[0]) : allCorbs.reduce((s, c) => s + corbForemanAmount(c), 0)) : 0;
     const iAmt     = hasCorb ? corbInternalAmount(allCorbs[0]) : 0; // internalCorAmount is the total CO amount, same on every corb — don't sum
     const rem      = fAmt - paid;
     const remColor = rem < 0 ? '#ef4444' : rem === 0 ? '#c9a84c' : '#22c55e';
@@ -11170,7 +11170,8 @@ function coOpenBudgetModal(coId) {
 
   // Show distribution table or single input depending on pair count
   const _isMultiDist = _corbDistPairs.length > 1;
-  document.getElementById('co-budget-foreman-single').style.display = _isMultiDist ? 'none' : '';
+  // Burns: no separate foreman amount — internal amount IS the tracking amount
+  document.getElementById('co-budget-foreman-single').style.display = (_isMultiDist || isBurn) ? 'none' : '';
   document.getElementById('co-budget-foreman-dist').style.display   = _isMultiDist ? '' : 'none';
   if (_isMultiDist) {
     document.getElementById('co-budget-dist-total-input').value = '';
@@ -11183,8 +11184,16 @@ function coOpenBudgetModal(coId) {
           style="width:100%;text-align:right;padding:5px 8px;" oninput="corbUpdateDistSum()" />
       </div>`
     ).join('');
+    if (isBurn) {
+      // Auto-sync internal burn amount → dist total so ÷ Evenly distributes the internal amount
+      document.getElementById('co-budget-internal-amount').oninput = function() {
+        corbFormatDollarInput(this);
+        document.getElementById('co-budget-dist-total-input').value = this.value;
+      };
+    }
   } else {
     document.getElementById('co-budget-foreman-amount').value = '';
+    document.getElementById('co-budget-internal-amount').oninput = function() { corbFormatDollarInput(this); };
   }
 
   document.getElementById('co-budget-modal').classList.add('open');
@@ -11210,12 +11219,13 @@ async function coConfirmBudget() {
   const _distAmounts = _isMultiDist
     ? [...document.querySelectorAll('.co-budget-dist-input')].map(inp => parseFloat(inp.value) || 0)
     : null;
-  const foremanAmt = _isMultiDist ? 0 : corbParseDollar(document.getElementById('co-budget-foreman-amount').value);
+  // Burns: no separate foreman input — internal amount IS the tracking amount
+  const foremanAmt = _isMultiDist ? 0 : (isBurn ? internalAmt : corbParseDollar(document.getElementById('co-budget-foreman-amount').value));
 
   if (!desc)                             { alert('Please enter a description.'); return; }
   if (isBurn && burnHours <= 0)          { alert('Please enter hours greater than 0.'); return; }
-  if (isNaN(internalAmt) || internalAmt < 0) { alert('Please enter a valid Internal COR Amount.'); return; }
-  if (!_isMultiDist && (isNaN(foremanAmt) || foremanAmt < 0)) { alert('Please enter a valid Foreman Tracking Amount.'); return; }
+  if (isNaN(internalAmt) || internalAmt < 0) { alert('Please enter a valid Internal Burn Amount.'); return; }
+  if (!_isMultiDist && !isBurn && (isNaN(foremanAmt) || foremanAmt < 0)) { alert('Please enter a valid Foreman Tracking Amount.'); return; }
 
   const btn  = document.getElementById('co-budget-confirm-btn');
   const prog = document.getElementById('co-budget-progress');
