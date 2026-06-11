@@ -10359,14 +10359,16 @@ function renderCOLog() {
   }
 
   tbody.innerHTML = list.map(co => {
-    const corb     = (_cache.corbudgets || []).find(b => b.changeOrderId === co.id);
-    const paid     = corb ? computeCorPaid(corb) : 0;
-    const fAmt     = corb ? corbForemanAmount(corb) : 0;
-    const iAmt     = corb ? corbInternalAmount(corb) : 0;
+    // Sum across ALL corb docs for this CO — dist mode creates one doc per area×labor code pair
+    const allCorbs = (_cache.corbudgets || []).filter(b => b.changeOrderId === co.id);
+    const hasCorb  = allCorbs.length > 0;
+    const paid     = allCorbs.reduce((s, c) => s + computeCorPaid(c), 0);
+    const fAmt     = allCorbs.reduce((s, c) => s + corbForemanAmount(c), 0);
+    const iAmt     = allCorbs.reduce((s, c) => s + corbInternalAmount(c), 0);
     const rem      = fAmt - paid;
     const remColor = rem < 0 ? '#ef4444' : rem === 0 ? '#c9a84c' : '#22c55e';
     const pct      = fAmt > 0 ? Math.min(100, Math.round(paid / fAmt * 100)) : 0;
-    const ptdCell  = corb
+    const ptdCell  = hasCorb
       ? `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
           <div class="co-progress-bar-wrap"><div class="co-progress-bar" style="width:${pct}%"></div></div>
           <span style="font-size:.78rem;">${fm(paid)}</span>
@@ -10382,10 +10384,10 @@ function renderCOLog() {
       <td>${coStatusBadge(co.status)}</td>
       <td style="text-align:center;">${photoCount > 0 ? `📷 ${photoCount}` : '—'}</td>
       <td>${co.corNumber ? `<strong>${eh(co.corNumber)}</strong>` : '—'}</td>
-      <td class="co-mgmt-col" style="text-align:right;font-size:.82rem;">${corb ? fm(iAmt) : '—'}</td>
-      <td style="text-align:right;font-size:.82rem;">${corb ? fm(fAmt) : '—'}</td>
+      <td class="co-mgmt-col" style="text-align:right;font-size:.82rem;">${hasCorb ? fm(iAmt) : '—'}</td>
+      <td style="text-align:right;font-size:.82rem;">${hasCorb ? fm(fAmt) : '—'}</td>
       <td style="text-align:right;">${ptdCell}</td>
-      <td style="text-align:right;font-weight:700;font-size:.82rem;color:${remColor};">${corb ? (rem < 0 ? '-' : '') + fm(Math.abs(rem)) : '—'}</td>
+      <td style="text-align:right;font-weight:700;font-size:.82rem;color:${remColor};">${hasCorb ? (rem < 0 ? '-' : '') + fm(Math.abs(rem)) : '—'}</td>
       <td><button class="btn-sm" onclick="coOpenDetail('${ea(co.id)}')">View</button></td>
     </tr>`;
   }).join('');
