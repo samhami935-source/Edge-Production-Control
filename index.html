@@ -10574,6 +10574,7 @@ function corbFormatDollarInput(el) {
   const parts = raw.split('.');
   const intPart = (parts[0] || '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   el.value = parts.length > 1 ? intPart + '.' + parts[1] : intPart;
+  if (el.id === 'co-budget-internal-amount') corbUpdateBurden();
 }
 // Parse a potentially comma-formatted dollar string to a float
 function corbParseDollar(str) { return parseFloat((str || '').replace(/,/g, '')) || 0; }
@@ -11889,7 +11890,7 @@ function computeCorPaid(corb) {
       </div>
       <div>
         <label id="co-budget-internal-label" style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Internal COR Amount <span style="color:#ef4444;">*</span></label>
-        <input id="co-budget-internal-amount" class="fi" type="text" inputmode="decimal" style="width:100%;padding:5px 10px;font-size:.83rem;text-align:right;" placeholder="0.00" oninput="corbFormatDollarInput(this);corbUpdateBurden()" />
+        <input id="co-budget-internal-amount" class="fi" type="text" inputmode="decimal" style="width:100%;padding:5px 10px;font-size:.83rem;text-align:right;" placeholder="0.00" oninput="corbFormatDollarInput(this)" onchange="corbUpdateBurden()" />
         <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Management-only amount. Not shown to Foreman.</div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:8px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
           <span style="font-size:.8rem;color:var(--muted);">Burden <span style="font-size:.72rem;">(32%)</span></span>
