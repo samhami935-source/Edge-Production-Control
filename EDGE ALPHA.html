@@ -3013,8 +3013,8 @@ function exportLCCSV() {
 let _dashSelectedJob  = '';
 let _dashPinUnlocked  = false; // true after correct PIN entered, resets on job change / save / cancel
 
-function canViewDashboard() { return isAdmin() || isPM() || isAccounting(); }
-function canEditDashboard()  { return isAdmin() || isPM(); }
+function canViewDashboard() { return isAdmin(); }
+function canEditDashboard()  { return isAdmin(); }
 
 function switchToDashboard() {
   if (!canViewDashboard()) return;
