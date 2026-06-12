@@ -6579,7 +6579,7 @@ function switchToPaysheet() {
   if (isAccounting()) return;
   activeTab = 'paysheet';
   renderTabBar();
-  ['csv-content','payroll-content','budgets-content','lc-content','emp-content','accounting-content','co-content'].forEach(id => document.getElementById(id).style.display = 'none');
+  ['csv-content','payroll-content','budgets-content','lc-content','emp-content','accounting-content','co-content','dashboard-content'].forEach(id => document.getElementById(id).style.display = 'none');
   document.getElementById('paysheet-content').style.display = 'block';
   psPopulateJobSelect();
   psPopulateAreaBudgetSelect();
