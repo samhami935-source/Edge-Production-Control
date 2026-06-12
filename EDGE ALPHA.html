@@ -1397,7 +1397,9 @@
       <div style="font-weight:600;font-size:.88rem;margin-bottom:8px;color:var(--accent);">Create New Folder</div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <label style="font-size:.82rem;color:var(--muted);white-space:nowrap;">Week Ending:</label>
-        <input type="date" id="ps-new-folder-date" class="fi" style="flex:1;min-width:160px;">
+        <input type="date" id="ps-new-folder-date" class="fi" style="flex:1;min-width:150px;">
+        <label style="font-size:.82rem;color:var(--muted);white-space:nowrap;">Label:</label>
+        <input type="text" id="ps-new-folder-label" class="fi" placeholder="e.g. Building A, Crew 1…" style="flex:2;min-width:180px;">
         <button class="btn" style="margin-top:0;padding:7px 16px;font-size:.82rem;" onclick="psCreateFolder()">Create</button>
         <button class="btn btn-outline" style="margin-top:0;padding:7px 14px;font-size:.82rem;" onclick="psToggleNewFolderForm()">Cancel</button>
       </div>
@@ -1565,7 +1567,7 @@ let _currentUserRole = null;
 let _currentUser     = null;
 
 // ─── In-memory data cache ───
-const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, employees: null, paysheets: null, psFolders: null, psFolderMeta: {}, psFolderRequests: [], changeorders: [], corbudgets: [], jobcontracts: {} };
+const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, employees: null, paysheets: null, psFolders: null, psFoldersList: [], psFolderMeta: {}, psFolderRequests: [], changeorders: [], corbudgets: [], jobcontracts: {} };
 
 async function loadAllData() {
   const loadMsg = document.getElementById('loading-msg');
@@ -1597,9 +1599,23 @@ async function loadAllData() {
   _cache.employees  = empDoc.exists ? (empDoc.data().employees || null) : null;
   _cache.paysheets  = paysheetsSnap.docs.map(d => d.data());
   // Shared week-ending folders — Firestore-backed, visible to all roles
-  _cache.psFolders    = psFoldersSnap.docs.map(d => d.data().weekEnding).filter(Boolean).sort((a,b) => b.localeCompare(a));
+  _cache.psFolders    = [...new Set(psFoldersSnap.docs.map(d => d.data().weekEnding).filter(Boolean))].sort((a,b) => b.localeCompare(a));
+  // psFoldersList: one object per folder doc that has a createdBy (excludes pure lock-state docs)
+  _cache.psFoldersList = psFoldersSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(f => f.weekEnding && (f.id !== f.weekEnding || f.createdBy))
+    .sort((a,b) => b.weekEnding.localeCompare(a.weekEnding));
   _cache.psFolderMeta = {};
-  psFoldersSnap.docs.forEach(d => { const data = d.data(); if (data.weekEnding) _cache.psFolderMeta[data.weekEnding] = data; });
+  psFoldersSnap.docs.forEach(d => {
+    const data = d.data();
+    if (!data.weekEnding) return;
+    const we = data.weekEnding;
+    if (!_cache.psFolderMeta[we]) _cache.psFolderMeta[we] = { weekEnding: we };
+    if (data.locked)   _cache.psFolderMeta[we].locked   = data.locked;
+    if (data.lockedBy) _cache.psFolderMeta[we].lockedBy = data.lockedBy;
+    if (data.lockedAt) _cache.psFolderMeta[we].lockedAt = data.lockedAt;
+    if (data.grants)   _cache.psFolderMeta[we].grants   = Object.assign(_cache.psFolderMeta[we].grants || {}, data.grants);
+  });
   _cache.psFolderRequests = psFolderReqSnap.docs.map(d => d.data());
   _cache.changeorders = coSnap.docs.map(d => d.data());
   _cache.corbudgets   = corbSnap.docs.map(d => d.data());
@@ -8798,62 +8814,76 @@ function psToggleNewFolderForm() {
   f.style.display = isHidden ? 'block' : 'none';
   if (isHidden) {
     document.getElementById('ps-new-folder-date').value = '';
+    document.getElementById('ps-new-folder-label').value = '';
     document.getElementById('ps-new-folder-date').focus();
   }
 }
 
 async function psCreateFolder() {
   if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can create week-ending folders.'); return; }
-  const d = document.getElementById('ps-new-folder-date').value;
+  const d   = document.getElementById('ps-new-folder-date').value;
+  const lbl = (document.getElementById('ps-new-folder-label').value || '').trim();
   if (!d) { alert('Please select a week ending date.'); return; }
-  if ((_cache.psFolders || []).includes(d)) {
-    alert('A folder for ' + _fmtWeekDate(d) + ' already exists.');
-    return;
-  }
+  const folderId   = 'psf_' + Date.now();
+  const folderData = {
+    weekEnding: d,
+    label:      lbl,
+    createdBy:  _currentUser ? _currentUser.email : 'unknown',
+    createdAt:  new Date().toISOString(),
+  };
   try {
-    const folderData = {
-      weekEnding: d,
-      createdBy:  _currentUser ? _currentUser.email : 'unknown',
-      createdAt:  new Date().toISOString(),
-    };
-    await db.collection('psfolders').doc(d).set(folderData);
+    await db.collection('psfolders').doc(folderId).set(folderData);
     if (!_cache.psFolders) _cache.psFolders = [];
-    _cache.psFolders.push(d);
-    _cache.psFolders.sort((a, b) => b.localeCompare(a));
+    if (!_cache.psFolders.includes(d)) {
+      _cache.psFolders.push(d);
+      _cache.psFolders.sort((a, b) => b.localeCompare(a));
+    }
     if (!_cache.psFolderMeta) _cache.psFolderMeta = {};
-    _cache.psFolderMeta[d] = folderData;
+    if (!_cache.psFolderMeta[d]) _cache.psFolderMeta[d] = { weekEnding: d };
+    if (!_cache.psFoldersList) _cache.psFoldersList = [];
+    _cache.psFoldersList.push({ id: folderId, ...folderData });
+    _cache.psFoldersList.sort((a, b) => b.weekEnding.localeCompare(a.weekEnding));
   } catch(e) {
     console.error('psCreateFolder:', e);
     alert('Failed to create folder: ' + e.message);
     return;
   }
-  _psLoadOpenFolders.add(d);
+  _psLoadOpenFolders.add(folderId);
   document.getElementById('ps-new-folder-form').style.display = 'none';
   renderPSLoadList();
 }
 
-async function psDeleteFolder(we) {
+async function psDeleteFolder(folderId) {
   if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can delete folders.'); return; }
-  // Guard: refuse if any paysheets exist in this folder (across all jobs)
+  // Resolve the folder object and weekEnding
+  const folder = (_cache.psFoldersList||[]).find(f => f.id === folderId);
+  const we     = folder ? folder.weekEnding : folderId; // fallback: legacy folders have id === weekEnding
+  const folderName = folder && folder.label ? `"${folder.label}" (Week Ending: ${_fmtWeekDate(we)})` : `"Week Ending: ${_fmtWeekDate(we)}"`;
+
+  // Guard: refuse if any paysheets exist for this week ending (across all jobs)
   const sheetsInFolder = (_cache.paysheets || []).filter(p => p.weekEnding === we);
   if (sheetsInFolder.length > 0) {
     const jobs = [...new Set(sheetsInFolder.map(p => p.job).filter(Boolean))].join(', ');
     alert(`Cannot delete — this folder still contains ${sheetsInFolder.length} paysheet${sheetsInFolder.length !== 1 ? 's' : ''} (${jobs || 'unknown job'}).\n\nDelete or move all paysheets first, then try again.`);
     return;
   }
-  // Also guard daily inputs
   const diInFolder = (_cache.dailyInputs || []).filter(d => d.weekEnding === we);
   if (diInFolder.length > 0) {
     alert(`Cannot delete — this folder still contains ${diInFolder.length} daily input${diInFolder.length !== 1 ? 's' : ''}.\n\nDelete them from the submission log first.`);
     return;
   }
-  if (!confirm(`Delete empty folder "Week Ending: ${_fmtWeekDate(we)}"?\nThis cannot be undone.`)) return;
+  if (!confirm(`Delete empty folder ${folderName}?\nThis cannot be undone.`)) return;
   try {
-    await db.collection('psfolders').doc(we).delete();
-    _cache.psFolders = (_cache.psFolders || []).filter(f => f !== we);
-    if (_cache.psFolderMeta) delete _cache.psFolderMeta[we];
+    await db.collection('psfolders').doc(folderId).delete();
+    _cache.psFoldersList = (_cache.psFoldersList||[]).filter(f => f.id !== folderId);
+    // Only remove from psFolders if no remaining folders exist for this weekEnding
+    const remainingForWE = (_cache.psFoldersList||[]).filter(f => f.weekEnding === we);
+    if (!remainingForWE.length) {
+      _cache.psFolders = (_cache.psFolders || []).filter(f => f !== we);
+      if (_cache.psFolderMeta) delete _cache.psFolderMeta[we];
+    }
   } catch(e) { alert('Failed to delete folder: ' + e.message); return; }
-  _psLoadOpenFolders.delete(we);
+  _psLoadOpenFolders.delete(folderId);
   renderPSLoadList();
 }
 
@@ -8864,11 +8894,12 @@ async function psLockFolder(we) {
   if (!confirm(`Lock folder "Week Ending: ${_fmtWeekDate(we)}"?\n\nForeman-class users will be blocked from viewing this folder and its paysheets until unlocked or granted temporary access.`)) return;
   const now = new Date().toISOString();
   try {
-    await db.collection('psfolders').doc(we).update({
+    await db.collection('psfolders').doc(we).set({
+      weekEnding: we,
       locked: true,
       lockedBy: _currentUser ? _currentUser.email : 'unknown',
       lockedAt: now,
-    });
+    }, { merge: true });
     if (!_cache.psFolderMeta) _cache.psFolderMeta = {};
     if (!_cache.psFolderMeta[we]) _cache.psFolderMeta[we] = { weekEnding: we };
     Object.assign(_cache.psFolderMeta[we], { locked: true, lockedBy: _currentUser ? _currentUser.email : 'unknown', lockedAt: now });
@@ -8880,7 +8911,7 @@ async function psUnlockFolder(we) {
   if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can unlock folders.'); return; }
   if (!confirm(`Unlock folder "Week Ending: ${_fmtWeekDate(we)}"?\n\nForeman-class users will be able to view this folder again.`)) return;
   try {
-    await db.collection('psfolders').doc(we).update({ locked: false, lockedBy: null, lockedAt: null });
+    await db.collection('psfolders').doc(we).set({ weekEnding: we, locked: false, lockedBy: null, lockedAt: null }, { merge: true });
     if (_cache.psFolderMeta && _cache.psFolderMeta[we]) {
       _cache.psFolderMeta[we].locked   = false;
       _cache.psFolderMeta[we].lockedBy = null;
@@ -8934,7 +8965,7 @@ async function psApproveFolderRequest(reqId) {
     const meta   = (_cache.psFolderMeta || {})[req.weekEnding] || {};
     const grants = Object.assign({}, meta.grants || {});
     grants[req.requestedBy] = { grantedAt: reviewedAt, expiresAt, grantedBy: _currentUser ? _currentUser.email : 'unknown' };
-    await db.collection('psfolders').doc(req.weekEnding).update({ grants });
+    await db.collection('psfolders').doc(req.weekEnding).set({ weekEnding: req.weekEnding, grants }, { merge: true });
     // Update caches
     Object.assign(req, { status: 'approved', reviewedBy: _currentUser ? _currentUser.email : 'unknown', reviewedAt, expiresAt });
     if (!_cache.psFolderMeta) _cache.psFolderMeta = {};
@@ -8967,7 +8998,7 @@ async function psRevokeFolderAccess(we, email) {
     const meta   = (_cache.psFolderMeta || {})[we] || {};
     const grants = Object.assign({}, meta.grants || {});
     delete grants[email];
-    await db.collection('psfolders').doc(we).update({ grants });
+    await db.collection('psfolders').doc(we).set({ weekEnding: we, grants }, { merge: true });
     if (_cache.psFolderMeta && _cache.psFolderMeta[we]) _cache.psFolderMeta[we].grants = grants;
     renderPSLoadList();
   } catch(e) { alert('Failed to revoke access: ' + e.message); }
@@ -8983,8 +9014,15 @@ async function psRefreshFolderRequests() {
 
 function openLoadPaysheetModal() {
   // Auto-expand the most recent folder
-  const allWE = [...new Set([...(_cache.psFolders||[]), ...(_cache.paysheets||[]).map(p=>p.weekEnding).filter(Boolean)])].sort((a,b)=>b.localeCompare(a));
-  if (allWE.length) _psLoadOpenFolders.add(allWE[0]);
+  // Auto-open folders for the most recent week ending
+  const _sortedFL = (_cache.psFoldersList||[]);
+  if (_sortedFL.length) {
+    const firstWE = _sortedFL[0].weekEnding;
+    _sortedFL.filter(f => f.weekEnding === firstWE).forEach(f => _psLoadOpenFolders.add(f.id));
+  } else {
+    const allWE = [...new Set([...(_cache.psFolders||[]), ...(_cache.paysheets||[]).map(p=>p.weekEnding).filter(Boolean)])].sort((a,b)=>b.localeCompare(a));
+    if (allWE.length) _psLoadOpenFolders.add(allWE[0]); // orphan: id === weekEnding
+  }
   // Refresh requests from Firestore so approvals/denials from other devices show up
   psRefreshFolderRequests().then(() => renderPSLoadList());
   renderPSLoadList();
@@ -9020,25 +9058,34 @@ function renderPSLoadList() {
     return;
   }
 
-  // Collect all week endings: shared Firestore folders + paysheet weekEndings + daily input weekEndings.
-  // For foremen, locked folders they cannot access are still included (so they can request access).
+  // Collect all week endings for content (paysheets + daily inputs)
   const allPsWE = isForeman()
     ? all.map(p => p.weekEnding).filter(Boolean)
     : (_cache.paysheets||[]).map(p => p.weekEnding).filter(Boolean);
   const allDiWE = (_cache.dailyInputs||[]).map(d => d.weekEnding).filter(Boolean);
-  // Always include all management-created folders (locked ones visible to foremen as "locked")
-  const weekEndingSet = new Set([...(_cache.psFolders||[]), ...allPsWE, ...allDiWE]);
-  const weekEndings   = [...weekEndingSet].sort((a,b) => b.localeCompare(a));
 
-  if (!weekEndings.length) {
+  // Build the list of folder rows:
+  // 1. All explicit folder objects from psFoldersList (labeled + legacy with createdBy)
+  // 2. Orphan weekEndings (from psFolders string array or content) not covered by any explicit folder
+  const explicitFolders = (_cache.psFoldersList||[]);
+  const explicitWEs     = new Set(explicitFolders.map(f => f.weekEnding));
+  const orphanWESet     = new Set([...(_cache.psFolders||[]), ...allPsWE, ...allDiWE]);
+  const orphanFolders   = [...orphanWESet]
+    .filter(we => !explicitWEs.has(we))
+    .map(we => ({ id: we, weekEnding: we, label: '' }));
+  const allFolderRows   = [...explicitFolders, ...orphanFolders]
+    .sort((a, b) => b.weekEnding.localeCompare(a.weekEnding));
+
+  if (!allFolderRows.length) {
     list.innerHTML = canManagePSFolders()
       ? '<div style="padding:24px;text-align:center;color:var(--muted);">No folders yet. Click &ldquo;+ New Folder&rdquo; to create one, or submit daily input to auto-create.</div>'
       : '<div style="padding:24px;text-align:center;color:var(--muted);">No week-ending folders available yet. Ask your manager to create one.</div>';
     return;
   }
 
-  // Folder view grouped by weekEnding
-  list.innerHTML = weekEndings.map(we => {
+  // Folder view — one row per folder object
+  list.innerHTML = allFolderRows.map(folder => {
+    const we             = folder.weekEnding;
     const isLocked       = _isFolderLocked(we);
     const canView        = _canViewFolder(we);
     const myGrant        = (isForeman() && isLocked) ? _getActiveFolderGrant(we) : null;
@@ -9046,13 +9093,14 @@ function renderPSLoadList() {
     const pendingReqs    = canManagePSFolders() ? _getPendingRequestsForFolder(we) : [];
     const activeGrants   = canManagePSFolders() ? _getActiveGrantsForFolder(we) : [];
 
-    // Only count/show paysheets the user can see (locked-folder paysheets already stripped from `all`)
+    // Only count/show paysheets the user can see
     const sheets   = all.filter(p => p.weekEnding === we);
-    // Unfiltered count across ALL jobs — used for Delete Folder eligibility (folder is truly empty only when this is 0)
+    // Unfiltered count across ALL jobs — used for Delete Folder eligibility
     const allSheetsInFolder = (_cache.paysheets || []).filter(p => p.weekEnding === we);
-    const folderId = 'pswe_' + we.replace(/[^\w]/g,'_');
-    const isOpen   = _psLoadOpenFolders.has(we);
-    const label    = _fmtWeekDate(we);
+    const folderId  = 'pswe_' + folder.id.replace(/[^\w]/g,'_');
+    const isOpen    = _psLoadOpenFolders.has(folder.id);
+    const dateLabel = _fmtWeekDate(we);
+    const label     = folder.label ? `${eh(folder.label)} — Week Ending: ${dateLabel}` : `Week Ending: ${dateLabel}`;
 
     // ── Folder header controls ──────────────────────────────────────────
     // Management: lock/unlock toggle + pending-requests badge
@@ -9061,8 +9109,8 @@ function renderPSLoadList() {
         ? `<button class="btn-sm" onclick="event.stopPropagation();psUnlockFolder('${we}')" style="white-space:nowrap;font-size:.72rem;padding:3px 9px;background:rgba(34,197,94,.15);color:var(--green);border:1px solid var(--green);" title="Unlock — allow foremen to view">🔓 Unlock</button>`
         : `<button class="btn-sm" onclick="event.stopPropagation();psLockFolder('${we}')" style="white-space:nowrap;font-size:.72rem;padding:3px 9px;background:rgba(239,68,68,.1);color:#ef4444;border:1px solid #ef4444;" title="Lock — block foremen from viewing">🔒 Lock</button>`
       }
-      ${pendingReqs.length ? `<button class="btn-sm" onclick="event.stopPropagation();if(!_psLoadOpenFolders.has('${we}')){_psLoadOpenFolders.add('${we}');}renderPSLoadList();" style="font-size:.72rem;padding:3px 10px;background:rgba(251,191,36,.2);color:#f59e0b;border:1px solid #f59e0b;border-radius:4px;white-space:nowrap;cursor:pointer;" title="Click to review access requests">⏳ ${pendingReqs.length} Request${pendingReqs.length!==1?'s':''} — Review</button>` : ''}
-      ${activeGrants.length ? `<button class="btn-sm" onclick="event.stopPropagation();if(!_psLoadOpenFolders.has('${we}')){_psLoadOpenFolders.add('${we}');}renderPSLoadList();" style="font-size:.72rem;padding:3px 10px;background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid #60a5fa;border-radius:4px;white-space:nowrap;cursor:pointer;" title="Click to view and revoke active access">🔑 ${activeGrants.length} Active Access${activeGrants.length!==1?'es':''}</button>` : ''}
+      ${pendingReqs.length ? `<button class="btn-sm" onclick="event.stopPropagation();if(!_psLoadOpenFolders.has('${folder.id}')){_psLoadOpenFolders.add('${folder.id}');}renderPSLoadList();" style="font-size:.72rem;padding:3px 10px;background:rgba(251,191,36,.2);color:#f59e0b;border:1px solid #f59e0b;border-radius:4px;white-space:nowrap;cursor:pointer;" title="Click to review access requests">⏳ ${pendingReqs.length} Request${pendingReqs.length!==1?'s':''} — Review</button>` : ''}
+      ${activeGrants.length ? `<button class="btn-sm" onclick="event.stopPropagation();if(!_psLoadOpenFolders.has('${folder.id}')){_psLoadOpenFolders.add('${folder.id}');}renderPSLoadList();" style="font-size:.72rem;padding:3px 10px;background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid #60a5fa;border-radius:4px;white-space:nowrap;cursor:pointer;" title="Click to view and revoke active access">🔑 ${activeGrants.length} Active Access${activeGrants.length!==1?'es':''}</button>` : ''}
     ` : '';
 
     // Foreman controls when folder is locked and they don't have active access
@@ -9169,7 +9217,7 @@ function renderPSLoadList() {
       } else {
         folderBody = `<div style="padding:10px 36px;font-size:.82rem;color:var(--muted);display:flex;align-items:center;justify-content:space-between;gap:8px;">
           <span>${hasOtherJobSheets ? 'No paysheets for the selected job — switch jobs to view.' : 'Empty — save a paysheet here.'}</span>
-          ${canManagePSFolders() ? `<button class="btn-sm btn-danger" style="font-size:.75rem;white-space:nowrap;" onclick="psDeleteFolder('${we}')">Delete Folder</button>` : ''}
+          ${canManagePSFolders() ? `<button class="btn-sm btn-danger" style="font-size:.75rem;white-space:nowrap;" onclick="psDeleteFolder('${folder.id}')">Delete Folder</button>` : ''}
         </div>`;
       }
     } else {
@@ -9200,10 +9248,10 @@ function renderPSLoadList() {
     return `
     <div style="border:1px solid ${borderColor};border-radius:8px;margin-bottom:8px;overflow:hidden;">
       <div style="display:flex;align-items:center;gap:8px;padding:12px 14px;background:${headerBg};user-select:none;flex-wrap:wrap;">
-        <div onclick="psToggleFolder('${we}','${folderId}')" style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer;min-width:0;">
+        <div onclick="psToggleFolder('${folder.id}','${folderId}')" style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer;min-width:0;">
           <span style="font-size:1rem;flex-shrink:0;">${folderEmoji}</span>
           <div style="flex:1;min-width:0;">
-            <div style="font-weight:700;font-size:.93rem;">Week Ending: ${eh(label)}</div>
+            <div style="font-weight:700;font-size:.93rem;">${label}</div>
             <div style="font-size:.75rem;color:var(--muted);margin-top:1px;">${subtitle}</div>
           </div>
           <span style="color:var(--muted);font-size:.85rem;flex-shrink:0;">${isOpen ? '▲' : '▼'}</span>
@@ -9254,15 +9302,16 @@ async function psMoveDailyTo(docId, newWeekEnding, selectEl) {
     // Ensure destination folder exists
     if (!(_cache.psFolders||[]).includes(newWeekEnding)) {
       try {
-        await db.collection('psfolders').doc(newWeekEnding).set({
-          weekEnding: newWeekEnding, createdBy: _currentUser ? _currentUser.email : 'unknown',
-          createdAt: new Date().toISOString(), autoCreated: true,
-        });
+        const autoData = { weekEnding: newWeekEnding, label: '', createdBy: _currentUser ? _currentUser.email : 'unknown', createdAt: new Date().toISOString(), autoCreated: true };
+        await db.collection('psfolders').doc(newWeekEnding).set(autoData);
         if (!_cache.psFolders) _cache.psFolders = [];
         _cache.psFolders.push(newWeekEnding);
         _cache.psFolders.sort((a,b) => b.localeCompare(a));
         if (!_cache.psFolderMeta) _cache.psFolderMeta = {};
         _cache.psFolderMeta[newWeekEnding] = { weekEnding: newWeekEnding };
+        if (!_cache.psFoldersList) _cache.psFoldersList = [];
+        _cache.psFoldersList.push({ id: newWeekEnding, ...autoData });
+        _cache.psFoldersList.sort((a,b) => b.weekEnding.localeCompare(a.weekEnding));
       } catch(e) { /* non-fatal */ }
     }
     _psLoadOpenFolders.add(newWeekEnding);
@@ -9315,12 +9364,12 @@ function _psLoadRow(p, currentFolder) {
   </div>`;
 }
 
-function psToggleFolder(we, elId) {
+function psToggleFolder(folderId, elId) {
   const el = document.getElementById(elId);
   if (!el) return;
   const open = el.style.display !== 'none';
-  if (open) { _psLoadOpenFolders.delete(we); el.style.display = 'none'; }
-  else      { _psLoadOpenFolders.add(we);    el.style.display = 'block'; }
+  if (open) { _psLoadOpenFolders.delete(folderId); el.style.display = 'none'; }
+  else      { _psLoadOpenFolders.add(folderId);    el.style.display = 'block'; }
   // Re-render so emoji updates (open/close folder icon)
   renderPSLoadList();
 }
@@ -9341,15 +9390,20 @@ async function psMovePaysheetTo(docId, newWeekEnding, selectEl) {
     // Ensure the destination folder exists in Firestore so all users see it
     if (!(_cache.psFolders||[]).includes(newWeekEnding)) {
       try {
-        await db.collection('psfolders').doc(newWeekEnding).set({
+        const autoData = {
           weekEnding:  newWeekEnding,
+          label:       '',
           createdBy:   _currentUser ? _currentUser.email : 'unknown',
           createdAt:   new Date().toISOString(),
           autoCreated: true,
-        });
+        };
+        await db.collection('psfolders').doc(newWeekEnding).set(autoData);
         if (!_cache.psFolders) _cache.psFolders = [];
         _cache.psFolders.push(newWeekEnding);
         _cache.psFolders.sort((a,b) => b.localeCompare(a));
+        if (!_cache.psFoldersList) _cache.psFoldersList = [];
+        _cache.psFoldersList.push({ id: newWeekEnding, ...autoData });
+        _cache.psFoldersList.sort((a,b) => b.weekEnding.localeCompare(a.weekEnding));
       } catch(e) { /* non-fatal — folder will appear from paysheet weekEnding */ }
     }
     _psLoadOpenFolders.add(newWeekEnding);
@@ -9411,15 +9465,14 @@ async function psSaveToFolder(weekEnding) {
   // Auto-register this week-ending in Firestore so all users see the folder
   if (!(_cache.psFolders||[]).includes(weekEnding)) {
     try {
-      await db.collection('psfolders').doc(weekEnding).set({
-        weekEnding,
-        createdBy:   _currentUser ? _currentUser.email : 'unknown',
-        createdAt:   new Date().toISOString(),
-        autoCreated: true,
-      });
+      const autoData = { weekEnding, label: '', createdBy: _currentUser ? _currentUser.email : 'unknown', createdAt: new Date().toISOString(), autoCreated: true };
+      await db.collection('psfolders').doc(weekEnding).set(autoData);
       if (!_cache.psFolders) _cache.psFolders = [];
       _cache.psFolders.push(weekEnding);
       _cache.psFolders.sort((a,b) => b.localeCompare(a));
+      if (!_cache.psFoldersList) _cache.psFoldersList = [];
+      _cache.psFoldersList.push({ id: weekEnding, ...autoData });
+      _cache.psFoldersList.sort((a,b) => b.weekEnding.localeCompare(a.weekEnding));
     } catch(e) { /* non-fatal — paysheet still saves; folder visible from weekEnding field */ }
   }
   // Carry over type/date/submissionId from pending save context
