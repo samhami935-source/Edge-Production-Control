@@ -11324,8 +11324,10 @@ function coOpenDetail(coId) {
     const rem  = fAmt - ptd;
     const rc   = rem < 0 ? 'color:var(--red)' : rem === 0 ? 'color:var(--yellow)' : 'color:var(--green)';
     const internalLabel = _isBurn ? 'Internal Burn Amount' : 'Internal COR Amount';
+    const burdenAmt = c.burden != null ? c.burden : Math.round(iAmt * 0.32 * 100) / 100;
     const internalRow = !isForeman()
-      ? `<div><span style="color:var(--muted);">${internalLabel}</span><br/><strong style="color:var(--accent);">${fm(iAmt)}</strong></div>`
+      ? `<div><span style="color:var(--muted);">${internalLabel}</span><br/><strong style="color:var(--accent);">${fm(iAmt)}</strong></div>
+         <div><span style="color:var(--muted);">Burden (32%)</span><br/><strong style="color:var(--accent);">${fm(burdenAmt)}</strong></div>`
       : '';
     const areaRow = c.area
       ? `<div><span style="color:var(--muted);">Area</span><br/><strong>${eh(c.area)}</strong></div>`
@@ -11652,6 +11654,7 @@ async function coConfirmBudget() {
         amount: pairAmt,
         foremanTrackingAmount: pairAmt,
         internalCorAmount: internalAmt,
+        burden: Math.round(internalAmt * 0.32 * 100) / 100,
         ...(pair.area ? { area: pair.area } : {}),
         ...(isBurn
           ? { isBurn: true, burnHours, burnArea: pair.area || '', burnNumber: co.burnNumber || null }
