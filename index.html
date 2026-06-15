@@ -8680,7 +8680,15 @@ async function psCompileWeeklyPaysheet(weekEnding) {
 
   const crews = {};
 
-  for (let c = 1; c <= _psCrewCount; c++) {
+  // Determine max crew number from actual data rather than UI tab count (_psCrewCount),
+  // so crews that aren't currently open as tabs still get compiled.
+  const _maxCrewFromData = Math.max(
+    1,
+    ...diInputs.flatMap(p => (p.crews || []).map(cr => cr.crewNum || 1)),
+    ...legacyDailySheets.flatMap(p => Object.keys(p.crews || {}).map(Number))
+  );
+
+  for (let c = 1; c <= _maxCrewFromData; c++) {
     const areaMap = {};   // key: area|||code → aggregated row
     const empSet  = new Set(); // normalized (trim + collapse spaces) names — ensures one row per person
     const _normEmp = name => (name || '').trim().replace(/\s+/g, ' ');
