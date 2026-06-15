@@ -4399,11 +4399,13 @@ async function diDeleteCrewSet(id, name) {
 
 // Builds <option> HTML for an area+code select — shared by primary rows and extra sub-rows
 function _diMakeCodeOpts(area, selectedCode, jobName, csvFile) {
+  // If selected value is 999 and user is not admin, reset it so the blank option shows
+  if (selectedCode === '999' && !isAdmin()) selectedCode = '';
   let codeOpts = '<option value=""></option>';
   if (isSpecialArea(area)) {
     const allC = corbsForArea(area, jobName);
     if (allC.length) {
-      codeOpts = allC.map(corb => {
+      codeOpts = allC.filter(corb => isAdmin() || corb.laborCode !== '999').map(corb => {
         const paid   = computeCorPaid(corb);
         const rem    = corbForemanAmount(corb) - paid;
         const remStr = rem < 0 ? `-${fm(Math.abs(rem))}` : fm(rem);
