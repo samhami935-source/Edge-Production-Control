@@ -9099,8 +9099,11 @@ function renderPSLoadList() {
 
   // Build the list of folder rows:
   // 1. All explicit folder objects from psFoldersList (labeled + legacy with createdBy)
+  //    — if a weekEnding has both labeled and unlabeled folders, suppress the unlabeled ones
   // 2. Orphan weekEndings (from psFolders string array or content) not covered by any explicit folder
-  const explicitFolders = (_cache.psFoldersList||[]);
+  const allExplicit     = (_cache.psFoldersList||[]);
+  const labeledWEs      = new Set(allExplicit.filter(f => f.label).map(f => f.weekEnding));
+  const explicitFolders = allExplicit.filter(f => f.label || !labeledWEs.has(f.weekEnding));
   const explicitWEs     = new Set(explicitFolders.map(f => f.weekEnding));
   const orphanWESet     = new Set([...(_cache.psFolders||[]), ...allPsWE, ...allDiWE]);
   const orphanFolders   = [...orphanWESet]
