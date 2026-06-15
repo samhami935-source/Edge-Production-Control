@@ -6671,6 +6671,8 @@ function onJobChanged() {
   // Reset filters and page on job change
   _psFilterCode = '';
   _psCurrentPage = 0;
+  // Clear loaded paysheet context so Save Paysheet derives a fresh docId for the new job
+  _psCurrentDocId = null;
   // Auto-fill paysheet header from job metadata
   if (jobName) diAutoFillPaysheetHeader(jobName);
   // Update paysheet
@@ -8474,8 +8476,12 @@ async function savePaysheetToCloud(silent, opts = {}) {
   if (!weekEnd) { if (!silent) alert('Please enter a Week Ending date in the paysheet header before saving.'); return; }
 
   // Daily: unique doc per submission (via submissionId); Weekly: one doc per job per weekEnding
-  // opts.docId overrides all derivation — used when editing an existing loaded paysheet
-  const docId = opts.docId
+  // opts.docId overrides derivation — used when editing an existing loaded paysheet.
+  // Validate that the loaded doc's job+weekEnding still match the current UI before using it;
+  // if the user switched job or week after loading, derive a fresh docId instead.
+  const _optsMeta = opts.docId ? (_cache.paysheets||[]).find(p => p.id === opts.docId) : null;
+  const _useOptsDocId = opts.docId && (!_optsMeta || (_optsMeta.job === jobName && _optsMeta.weekEnding === weekEnd));
+  const docId = _useOptsDocId
     ? opts.docId
     : isDailyType
       ? (opts.submissionId
