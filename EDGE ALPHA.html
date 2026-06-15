@@ -7149,6 +7149,16 @@ function psCodeChanged(i, code) {
   const oldCode = _ps().rows[i].costCode;
   const area    = _ps().rows[i].area;
   _ps().rows[i].costCode = code;
+  // For COR rows, sync corBudgetId to the matching budget for the newly selected labor code
+  // so the display label (which reads from corb.laborCode) reflects the change after save/reload.
+  if (isSpecialArea(area)) {
+    const jobName2 = (document.getElementById('ps-job-select') || {}).value || '';
+    const matched  = corbsForArea(area, jobName2).find(c => c.laborCode === code);
+    if (matched) {
+      _ps().rows[i].corBudgetId = matched.id;
+      _ps().rows[i].corNumber   = matched.corNumber || '';
+    }
+  }
   // Propagate code change back to linked daily inputs (weekly paysheets, non-foremen only)
   if (_psCurrentType === 'weekly' && !isForeman() && area && oldCode && oldCode !== code) {
     _psQueueDiChange({ type: 'change', matchArea: area, matchCode: oldCode, setArea: area, setCode: code });
