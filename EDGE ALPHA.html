@@ -8113,7 +8113,7 @@ function psScheduleAutoSave() {
   clearTimeout(_psAutoSaveTimer);
   _psAutoSaveTimer = setTimeout(async () => {
     _psSetAutoSaveStatus('saving');
-    const doc = await savePaysheetToCloud(true);
+    const doc = await savePaysheetToCloud(true, { docId: _psCurrentDocId });
     _psSetAutoSaveStatus(doc ? 'saved' : 'error');
   }, 3000);
 }
