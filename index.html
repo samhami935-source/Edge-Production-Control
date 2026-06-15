@@ -5913,6 +5913,14 @@ function diRenderLogRows() {
     const hasPaysheet = r.weekEnding && r.job &&
       (_cache.paysheets||[]).some(p => p.type === 'weekly' && p.weekEnding === r.weekEnding && p.job === r.job);
     const rowBg = hasPaysheet ? 'background:rgba(34,197,94,.08);border-left:3px solid #22c55e;' : '';
+    // Build Open buttons — one per crew that has a compiled paysheet doc
+    const openBtns = (r.crews||[]).map(crew => {
+      const docId = (r.job + '_' + r.weekEnding + '_crew' + crew.crewNum).replace(/[^\w-]/g, '_');
+      const ps    = (_cache.paysheets||[]).find(p => p.id === docId);
+      if (!ps) return '';
+      const label = (r.crews||[]).length > 1 ? `Open (${crewLabel(crew)})` : 'Open';
+      return `<button class="btn-sm" onclick="loadPaysheetFromCloud('${docId.replace(/'/g,"\\'")}')" style="font-size:.72rem;padding:3px 8px;">${label}</button>`;
+    }).join('');
     return `<tr style="border-top:1px solid var(--border);${rowBg}">
       <td style="padding:4px 6px;width:28px;text-align:center;">
         <button onclick="diToggleLogDetail('${safeId}')" id="ditog_${safeId}"
@@ -5926,6 +5934,7 @@ function diRenderLogRows() {
       <td style="padding:8px 10px;color:var(--muted);">${eh(r.submittedBy)}</td>
       <td style="padding:8px 10px;">${empCount} employee${empCount!==1?'s':''}</td>
       <td style="padding:8px 10px;white-space:nowrap;">
+        ${openBtns}
         ${isAdmin()?`<button class="btn-sm btn-danger" onclick="diDeleteSubmission('${r.id}')">Delete</button>`:''}
       </td>
     </tr>
