@@ -8758,7 +8758,7 @@ async function psCompileWeeklyPaysheet(weekEnding) {
       crewName,
       savedAt: new Date().toISOString(),
       savedBy: _currentUser ? _currentUser.email : 'unknown',
-      crews: { [crewKey]: crewData },
+      crews: { '1': crewData },
     };
     await db.collection('paysheets').doc(docId).set(doc);
     const idx = _cache.paysheets.findIndex(p => p.id === docId);
