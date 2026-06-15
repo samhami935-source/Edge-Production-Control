@@ -5557,18 +5557,35 @@ function diOpenSaveInputModal(date, jobName, crews) {
 
   const autoWE = _calcWeekEnding(date);
 
-  // Only offer folders that currently exist in Firestore — deleted folders are excluded.
-  const weekEndings = [...(_cache.psFolders||[])].sort((a,b) => b.localeCompare(a));
+  // Build folder list matching Saved Paysheets display — explicit labeled folders first, then orphans
+  const explicitFolders = [...(_cache.psFoldersList || [])].sort((a, b) => b.weekEnding.localeCompare(a.weekEnding));
+  const explicitWEs     = new Set(explicitFolders.map(f => f.weekEnding));
+  const orphanFolders   = (_cache.psFolders || [])
+    .filter(we => !explicitWEs.has(we))
+    .map(we => ({ id: we, weekEnding: we, label: '' }));
+  const allFolders = [...explicitFolders, ...orphanFolders].sort((a, b) => b.weekEnding.localeCompare(a.weekEnding));
 
   const sel = document.getElementById('di-save-input-folder-select');
-  if (!weekEndings.length) {
+  if (!allFolders.length) {
     sel.innerHTML = '<option value="" disabled>No folders — create one in Saved Paysheets first</option>';
   } else {
-    // Mark the auto-computed week ending as suggested if it exists; otherwise suggest the nearest future folder
-    const suggested = weekEndings.includes(autoWE) ? autoWE : (weekEndings.find(we => we >= autoWE) || weekEndings[0]);
-    sel.innerHTML = weekEndings.map(we => {
-      const label = _fmtWeekDate(we) + (we === suggested ? ' (suggested)' : '');
-      return `<option value="${eh(we)}"${we === suggested ? ' selected' : ''}>${label}</option>`;
+    const allWEs  = [...new Set(allFolders.map(f => f.weekEnding))];
+    const suggested = allWEs.includes(autoWE) ? autoWE : (allWEs.find(we => we >= autoWE) || allWEs[0]);
+    let firstSuggestedSeen = false;
+    sel.innerHTML = allFolders.map(folder => {
+      const we = folder.weekEnding;
+      const isSuggested = we === suggested;
+      const displayLabel = folder.label
+        ? `${folder.label} — Week Ending: ${_fmtWeekDate(we)}`
+        : `Week Ending: ${_fmtWeekDate(we)}`;
+      let optLabel = displayLabel;
+      let selected = '';
+      if (isSuggested && !firstSuggestedSeen) {
+        firstSuggestedSeen = true;
+        optLabel += ' (suggested)';
+        selected = ' selected';
+      }
+      return `<option value="${eh(we)}"${selected}>${optLabel}</option>`;
     }).join('');
   }
 
