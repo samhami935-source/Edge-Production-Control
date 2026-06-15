@@ -4927,7 +4927,16 @@ function _diAreaRenderDropdown(input, crew, rowIdx) {
   const dropdown = _diGetPortal();
   const jobName  = (document.getElementById('ps-job-select') || {}).value || '';
   const all      = _diAreaList();
-  const filtered = q ? all.filter(a => a.toLowerCase().includes(q)) : all;
+  const _diCsvFile = jobName ? getSavedCSVFiles().find(x => x.name === jobName) : null;
+  const _diAllVisible = isAdmin()
+    ? all
+    : all.filter(a => {
+        if (isSpecialArea(a)) return true; // COR areas: 999 filtered in code dropdown
+        const areaRows = _diCsvFile ? _diCsvFile.rows.filter(r => r.area === a) : [];
+        // Hide areas where every CSV row is code 999 (no accessible code remains)
+        return !areaRows.length || areaRows.some(r => isForemanAllowedCode(r.costCode));
+      });
+  const filtered = q ? _diAllVisible.filter(a => a.toLowerCase().includes(q)) : _diAllVisible;
   if (!filtered.length) { dropdown.style.display = 'none'; return; }
   const tagMap   = _diPsTagMap(jobName);
   dropdown.innerHTML = filtered.map(a => {
