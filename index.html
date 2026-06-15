@@ -8666,7 +8666,7 @@ async function psCompileWeeklyPaysheet(weekEnding) {
     ? `${diInputs.length} daily input${diInputs.length !== 1 ? 's' : ''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy paysheet${legacyDailySheets.length !== 1 ? 's' : ''}` : ''}`
     : `${legacyDailySheets.length} legacy daily paysheet${legacyDailySheets.length !== 1 ? 's' : ''}`;
 
-  if (!confirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into a weekly summary?\n\nThis creates one paysheet per crew with all areas/employees combined and ready for % Split, Amount, and signatures.\n(Any existing weekly summary for this week will be overwritten.)`)) return;
+  if (!confirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly summaries?\n\nThis creates one separate paysheet per crew with all areas/employees combined and ready for % Split, Amount, and signatures.\n(Any existing compiled paysheets for each crew this week will be overwritten.)`)) return;
 
   const crews = {};
 
@@ -8745,22 +8745,28 @@ async function psCompileWeeklyPaysheet(weekEnding) {
 
   if (!Object.keys(crews).length) { alert('No crew data found to compile.'); return; }
 
-  // Use same docId format as manual save so "Save" after editing overwrites the compiled doc
-  const docId = (activeJob + '_' + weekEnding).replace(/[^\w-]/g, '_');
-  const doc = {
-    id: docId, job: activeJob, weekEnding,
-    type: 'weekly',
-    savedAt: new Date().toISOString(),
-    savedBy: _currentUser ? _currentUser.email : 'unknown',
-    crews,
-  };
-  await db.collection('paysheets').doc(docId).set(doc);
+  // Save one doc per crew so each crew has its own paysheet entry
   if (!_cache.paysheets) _cache.paysheets = [];
-  const idx = _cache.paysheets.findIndex(p => p.id === docId);
-  if (idx !== -1) _cache.paysheets[idx] = doc; else _cache.paysheets.push(doc);
+  const savedCount = Object.keys(crews).length;
+  for (const [crewKey, crewData] of Object.entries(crews)) {
+    const crewName = crewData.header.crewName || `Crew ${crewKey}`;
+    const docId = (activeJob + '_' + weekEnding + '_crew' + crewKey).replace(/[^\w-]/g, '_');
+    const doc = {
+      id: docId, job: activeJob, weekEnding,
+      type: 'weekly',
+      crewNum: parseInt(crewKey),
+      crewName,
+      savedAt: new Date().toISOString(),
+      savedBy: _currentUser ? _currentUser.email : 'unknown',
+      crews: { [crewKey]: crewData },
+    };
+    await db.collection('paysheets').doc(docId).set(doc);
+    const idx = _cache.paysheets.findIndex(p => p.id === docId);
+    if (idx !== -1) _cache.paysheets[idx] = doc; else _cache.paysheets.push(doc);
+  }
 
   renderPSLoadList();
-  alert(`Weekly summary compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nOpen the Load tab and click "Load" on the weekly summary to fill it out.`);
+  alert(`Weekly summary compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\n${savedCount} crew paysheet${savedCount !== 1 ? 's' : ''} created. Open the Load tab and click "Load" on each crew's paysheet to fill it out.`);
 }
 
 /** Create a blank supplemental weekly paysheet for an already-compiled week and load it. */
@@ -9369,8 +9375,9 @@ function _psLoadRow(p, currentFolder) {
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
         ${typeLabel}
         <span style="font-weight:600;font-size:.88rem;">${eh(p.job||'No Job')}</span>
+        ${p.crewName ? `<span style="font-size:.78rem;color:var(--accent);font-weight:600;">· ${eh(p.crewName)}</span>` : ''}
       </div>
-      <div style="font-size:.75rem;color:var(--muted);">${roleLabel}Saved ${d} ${t} · ${who} · ${crewCount} crew${crewCount!==1?'s':''} with data</div>
+      <div style="font-size:.75rem;color:var(--muted);">${roleLabel}Saved ${d} ${t} · ${who}${!p.crewName ? ` · ${crewCount} crew${crewCount!==1?'s':''} with data` : ''}</div>
       ${lastEditLine}
     </div>
     <button class="btn" style="font-size:.78rem;padding:5px 12px;white-space:nowrap;margin-top:0;" onclick="loadPaysheetFromCloud('${safeId}')">Load</button>
