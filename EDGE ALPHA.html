@@ -6560,7 +6560,7 @@ function psRenderCrewTabs() {
         <button class="btn btn-outline" style="white-space:nowrap;color:var(--muted);border-color:var(--border);" onclick="openLoadPaysheetModal()" title="Load saved daily or weekly paysheets">📂 Saved Paysheets</button>
         <button class="btn btn-outline" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);" onclick="psEnterEditMode()">✏️ Edit</button>
         ${_approveBtn}
-        <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="savePaysheetToCloud()">💾 Save Paysheet</button>`;
+        <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="savePaysheetToCloud(false, {docId: _psCurrentDocId})">💾 Save Paysheet</button>`;
     }
   } else {
     // Daily paysheet
