@@ -7052,7 +7052,7 @@ function psRenderMainTable() {
   const isDaily   = _psCurrentType === 'daily';
   const container = document.getElementById('ps-pages-container');
 
-  const rows = allRows;
+  const rows = isAdmin() ? allRows : allRows.filter(r => r.costCode !== '999');
 
   const totalFiltered = rows.length;
   const numPages = Math.max(1, Math.ceil(totalFiltered / PS_PAGE_ROWS));
@@ -7614,7 +7614,7 @@ function psExportPDF() {
   for (let c = 1; c <= _psCrewCount; c++) {
     const state = _psState[c];
     if (!state) continue;
-    const rows   = state.rows.filter(r => r.area || r.costCode || r.weAmount || r.ptd);
+    const rows   = state.rows.filter(r => (r.area || r.costCode || r.weAmount || r.ptd) && (isAdmin() || r.costCode !== '999'));
     const splits = state.splits.filter(s => s.employee);
     if (!rows.length && !splits.length) continue;
 
@@ -7842,7 +7842,7 @@ async function _psExportSheetsAsZip(sheets, zipLabel) {
     for (let c = 1; c <= docMaxCrew; c++) {
       const crewData = doc.crews && (doc.crews[String(c)] || doc.crews[c]);
       if (!crewData) continue;
-      const rows   = (crewData.rows   || []).filter(r => r.area || r.costCode || r.weAmount || r.ptd);
+      const rows   = (crewData.rows   || []).filter(r => (r.area || r.costCode || r.weAmount || r.ptd) && (isAdmin() || r.costCode !== '999'));
       const splits = (crewData.splits || []).filter(s => s.employee);
       if (!rows.length && !splits.length) continue;
 
