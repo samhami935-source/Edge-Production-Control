@@ -8784,7 +8784,8 @@ async function psCompileWeeklyPaysheet(weekEnding) {
   }
 
   renderPSLoadList();
-  alert(`Weekly summary compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\n${savedCount} crew paysheet${savedCount !== 1 ? 's' : ''} created. Open the Load tab and click "Load" on each crew's paysheet to fill it out.`);
+  const crewSummary = Object.entries(crews).map(([k, d]) => `  • Crew ${k}: ${d.header.crewName || '(unnamed)'}`).join('\n');
+  alert(`Weekly summary compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''} (crews 1–${_maxCrewFromData}).\n\n${savedCount} crew paysheet${savedCount !== 1 ? 's' : ''} saved:\n${crewSummary}\n\nOpen the Load tab and click "Load" on each crew's paysheet to fill it out.`);
 }
 
 /** Create a blank supplemental weekly paysheet for an already-compiled week and load it. */
