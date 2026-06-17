@@ -482,7 +482,7 @@
           <select id="filter-area" onchange="applyFilters()"><option value="">All areas</option></select>
           <select id="filter-costcode" onchange="applyFilters()"><option value="">All cost codes</option></select>
           <button class="btn btn-outline" onclick="resetFilters()">Reset</button>
-          <button class="btn" onclick="exportCSV()">Export</button>
+          <button id="export-csv-btn" class="btn" onclick="exportCSV()">Export</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -711,7 +711,7 @@
       <select id="pr-filter-area" onchange="applyPayrollFilters()"><option value="">All areas</option></select>
       <input type="date" id="pr-filter-date" onchange="applyPayrollFilters()" title="Filter by date" />
       <button class="btn btn-outline" onclick="clearPayrollFilters()">Reset</button>
-      <button class="btn" onclick="exportPayrollCSV()">Export</button>
+      <button id="export-payroll-btn" class="btn" onclick="exportPayrollCSV()">Export</button>
     </div>
 
     <div class="table-wrap" style="overflow-x:auto;">
@@ -761,7 +761,7 @@
     <div class="filters" style="margin-bottom:16px;">
       <input type="text" id="budgets-search" class="fi" placeholder="Search jobs…" oninput="renderBudgetsTable()" style="flex:1;min-width:180px;" />
       <button class="btn btn-outline" id="budgets-upload-btn" style="display:none" onclick="fileInput.click()">＋ Upload CSV</button>
-      <button class="btn" onclick="exportBudgetsCSV()">Export</button>
+      <button id="export-budgets-btn" class="btn" onclick="exportBudgetsCSV()">Export</button>
     </div>
     <div class="table-wrap" style="overflow-x:auto;">
       <table style="min-width:750px;">
@@ -779,7 +779,7 @@
   <div id="lc-content" style="display:none">
     <div class="filters" style="margin-bottom:16px;">
       <input type="text" id="lc-search" class="fi" placeholder="Search codes or descriptions…" oninput="renderLCTable()" style="flex:1;min-width:180px;" />
-      <button class="btn" onclick="exportLCCSV()">Export</button>
+      <button id="export-lc-btn" class="btn" onclick="exportLCCSV()">Export</button>
     </div>
     <div id="lc-admin-form" style="display:none">
       <div class="lc-add-form">
@@ -830,7 +830,7 @@
     <div class="filters" style="margin-bottom:16px;">
       <input type="text" id="emp-search" class="fi" placeholder="Search by name or employee #…" oninput="renderEmpTable()" style="flex:1;min-width:180px;" />
       <span id="emp-count" style="font-size:.8rem;color:var(--muted);white-space:nowrap;align-self:center;"></span>
-      <button onclick="exportEmployeesExcel()" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:.82rem;font-weight:700;line-height:1.2;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:64px;">
+      <button id="export-employees-btn" onclick="exportEmployeesExcel()" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:.82rem;font-weight:700;line-height:1.2;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:64px;">
         <span style="font-size:1rem;line-height:1;">⬇</span>
         <span>Export</span>
         <span>Excel</span>
@@ -1228,8 +1228,8 @@
       </select>
       <button class="btn btn-outline" style="padding:7px 14px;font-size:.8rem;" onclick="acctRefreshFromFirestore()">⟳ Refresh</button>
       <button id="acct-cleanup-btn" class="btn btn-outline" style="display:none;padding:7px 14px;font-size:.8rem;border-color:#ef4444;color:#ef4444;" onclick="acctCleanupOrphanedPaysheets()" title="Delete paysheets and daily inputs for jobs that no longer exist">🗑 Clean Up</button>
-      <button class="btn" style="padding:7px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="acctExportPDF()">⬇ Export PDF</button>
-      <button class="btn" style="padding:7px 14px;font-size:.8rem;background:#16a34a;color:#fff;border:none;" onclick="acctExportExcel()">⬇ Export Excel</button>
+      <button id="acct-export-pdf-btn" class="btn" style="padding:7px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="acctExportPDF()">⬇ Export PDF</button>
+      <button id="acct-export-excel-btn" class="btn" style="padding:7px 14px;font-size:.8rem;background:#16a34a;color:#fff;border:none;" onclick="acctExportExcel()">⬇ Export Excel</button>
     </div>
   </div>
 
@@ -2045,6 +2045,11 @@ function updateAdminUI() {
   // Only management can create week-ending folders
   const newFolderBtn = document.getElementById('ps-new-folder-btn');
   if (newFolderBtn) newFolderBtn.style.display = canManagePSFolders() ? '' : 'none';
+  // Hide all export buttons from foreman
+  ['export-csv-btn','export-payroll-btn','export-budgets-btn','export-lc-btn','export-employees-btn','acct-export-pdf-btn','acct-export-excel-btn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isForeman() ? 'none' : '';
+  });
   renderTabBar();
 }
 
