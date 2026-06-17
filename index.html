@@ -7083,7 +7083,10 @@ function psRenderCrewTabs() {
   const wrap = document.getElementById('ps-crew-tab-bar');
   if (!wrap) return;
   wrap.innerHTML = '';
+  const _weeklyForemanView = isForeman() && _psCurrentType === 'weekly';
   for (let c=1; c<=_psCrewCount; c++) {
+    // Foreman on weekly paysheet: only show their own crew tab(s)
+    if (_weeklyForemanView && _currentUser && (_psState[c].header.foreman || '') !== _currentUser.email) continue;
     const hasData = _psState[c].rows.some(r => r.area || r.costCode || r.weAmount) ||
                     _psState[c].splits.some(s => s.employee || s.empNum);
     const isActive = c === _psActiveCrew;
@@ -10253,6 +10256,13 @@ async function loadPaysheetFromCloud(docId) {
   _psCurrentType  = 'weekly';
   _psCurrentDocId = docId;
   _psEditMode     = false;
+
+  // Foreman: jump to their own crew tab (skip crews belonging to other foremen)
+  if (isForeman() && _currentUser) {
+    for (let c = 1; c <= _psCrewCount; c++) {
+      if ((_psState[c].header.foreman || '') === _currentUser.email) { _psActiveCrew = c; break; }
+    }
+  }
 
   // Refresh current crew view
   psLoadHeaderFields();
