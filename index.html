@@ -6733,6 +6733,7 @@ function _diEmpNameKey(e, input, crew, i) {
 
 function _diLeadPickEmp(name, num) {
   const crew = _diActiveCrew;
+  const prevLead = (_diCrewLeadNames[crew] || '').trim();
   const leadNameEl = document.getElementById('di-crew-lead-input');
   const leadNumEl  = document.getElementById('di-crew-lead-num');
   const dd         = document.getElementById('di-emp-dd-lead');
@@ -6753,7 +6754,7 @@ function _diLeadPickEmp(name, num) {
   const rows0 = _diData[crew];
   if (rows0 && rows0.length > 0) {
     const firstEmp = (rows0[0].employee || '').trim();
-    if (!firstEmp || firstEmp === (_diCrewLeadNames[crew] || '')) {
+    if (!firstEmp || firstEmp === prevLead) {
       rows0[0].employee = name;
       rows0[0].empNum   = String(num);
       const firstNameInput = document.getElementById('di-emp-name-' + crew + '-0');
