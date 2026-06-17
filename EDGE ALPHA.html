@@ -1090,8 +1090,22 @@
         </div>
         </div><!-- /di-table-wrap -->
 
+        <!-- Pay Week Filter + Compile -->
+        <div id="di-week-bar" style="margin-top:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
+          <span style="font-size:.8rem;font-weight:700;color:var(--muted);white-space:nowrap;">Pay Week</span>
+          <select id="di-week-select" class="fi" style="min-width:200px;flex:1;max-width:280px;" onchange="_diWeekFilter=this.value;diRenderLogRows()">
+            <option value="">— All weeks —</option>
+          </select>
+          <div id="di-week-compile-wrap" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;"></div>
+        </div>
+
+        <!-- Admin: Pay Week Schedule Settings -->
+        <div id="di-payweek-settings-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:8px;font-size:.82rem;">
+          <div id="di-payweek-settings-body"></div>
+        </div>
+
         <!-- Daily Log -->
-        <div style="margin-top:24px;">
+        <div style="margin-top:16px;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
             <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Submission Log</div>
           </div>
@@ -1587,6 +1601,10 @@ let _currentUser     = null;
 // ─── In-memory data cache ───
 const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, employees: null, paysheets: null, psFolders: null, psFoldersList: [], psFolderMeta: {}, psFolderRequests: [], changeorders: [], corbudgets: [], jobcontracts: {} };
 
+// Pay-week schedule — Thursday 4:00 AM → Wednesday 5:00 PM (America/Los_Angeles).
+// Loaded from Firestore settings/payweek on init; admin can update via UI.
+let _payWeekSettings = { startDay: 4, startHour: 4, endDay: 3, endHour: 17 };
+
 async function loadAllData() {
   const loadMsg = document.getElementById('loading-msg');
   if (loadMsg) loadMsg.textContent = 'Loading data…';
@@ -1647,6 +1665,17 @@ async function loadAllData() {
       if (co && co.burnNumber != null) b.burnNumber = co.burnNumber;
     }
   });
+  // Load pay-week schedule settings (admin-editable, defaults to Thu 4am → Wed 5pm)
+  try {
+    const pwDoc = await db.collection('settings').doc('payweek').get();
+    if (pwDoc.exists) {
+      const pw = pwDoc.data();
+      if (pw.startDay  !== undefined) _payWeekSettings.startDay  = pw.startDay;
+      if (pw.startHour !== undefined) _payWeekSettings.startHour = pw.startHour;
+      if (pw.endDay    !== undefined) _payWeekSettings.endDay    = pw.endDay;
+      if (pw.endHour   !== undefined) _payWeekSettings.endHour   = pw.endHour;
+    }
+  } catch(e) { /* settings collection may not exist yet */ }
   // Load job metadata (project name, foreman, crew name per job)
   try {
     const metaSnap = await db.collection('jobmeta').get();
@@ -5698,6 +5727,46 @@ function _calcWeekEnding(dateStr) {
   return d.toISOString().slice(0, 10);
 }
 
+// Returns the Wednesday week-ending date (YYYY-MM-DD) of the pay week that contains
+// the given ISO timestamp, using the current _payWeekSettings (default Thu 4am → Wed 5pm Pacific).
+// Inputs in the gap between week-end and week-start are assigned to the UPCOMING week.
+function _calcPayWeekEnding(isoTimestamp) {
+  const { startDay = 4, startHour = 4, endDay = 3, endHour = 17 } = _payWeekSettings;
+  const d  = new Date(isoTimestamp);
+  const LA = 'America/Los_Angeles';
+
+  // Pacific date string (YYYY-MM-DD) — en-CA locale reliably outputs ISO format
+  const laDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: LA }).format(d);
+
+  // Weekday + time in Pacific
+  const parts  = new Intl.DateTimeFormat('en-US', {
+    timeZone: LA, weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: false
+  }).formatToParts(d);
+  const get    = type => ((parts.find(p => p.type === type) || {}).value || '0');
+  const dayMap = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+  const laDay  = dayMap[get('weekday')] ?? 0;
+  const laMins = (parseInt(get('hour')) % 24) * 60 + parseInt(get('minute'));
+
+  const endMins   = endHour   * 60;
+  const startMins = startHour * 60;
+
+  // Is this timestamp inside the gap between week-end and week-start?
+  const inGap = (laDay === endDay && laMins >= endMins) || (laDay === startDay && laMins < startMins);
+
+  let daysToEnd;
+  if (inGap) {
+    // Wed evening → next Thu's Wed is 8 days away; Thu early AM → this Thu's Wed is 6 days away
+    daysToEnd = (laDay === endDay) ? 8 : 6;
+  } else {
+    // Days from today's Pacific date to the closing end-day (Wednesday)
+    daysToEnd = (endDay - laDay + 7) % 7;
+  }
+
+  const base = new Date(laDateStr + 'T12:00:00');
+  base.setDate(base.getDate() + daysToEnd);
+  return base.toISOString().slice(0, 10);
+}
+
 async function submitDailyInput() {
   const date    = document.getElementById('di-date').value;
   const jobName = document.getElementById('ps-job-select').value;
@@ -5716,8 +5785,38 @@ async function submitDailyInput() {
   }
   if (!crews.length) { alert('Please enter at least one employee name or area.'); return; }
 
-  // Open folder picker — actual save happens in diConfirmSaveInput()
-  diOpenSaveInputModal(date, jobName, crews);
+  // Auto-assign pay week from save timestamp (Thu 4am → Wed 5pm Pacific).
+  // No folder picker needed — weekEnding is derived from when the input is submitted.
+  const now        = new Date();
+  const submittedAt = now.toISOString();
+  const weekEnding = _calcPayWeekEnding(submittedAt);
+  const timeStr    = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const id         = `${date}_${jobName.replace(/[^\w-]/g, '_')}_${Date.now()}`;
+
+  const doc = {
+    id, date, weekEnding,
+    job:             jobName,
+    sourceType:      'dailyInput',
+    crews,
+    submittedBy:     _currentUser ? _currentUser.email : 'unknown',
+    submittedByRole: _currentUserRole || 'unknown',
+    submittedAt,
+    submittedTime:   timeStr,
+  };
+
+  const btn = document.getElementById('di-save-btn');
+  if (btn) btn.disabled = true;
+  try {
+    await db.collection('dailyinput').doc(id).set(doc);
+    await diClearDraft();
+    const badge = document.getElementById('di-saved-badge');
+    if (badge) { badge.style.display = ''; setTimeout(() => badge.style.display = 'none', 3000); }
+    diLoadLog();
+  } catch(e) {
+    alert('Failed to save daily input: ' + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 // Holds validated Daily Input data while the folder picker modal is open
@@ -5902,6 +6001,49 @@ async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
 
 let _diLogDocs   = [];   // cached from real-time listener
 let _diLogUnsub  = null; // firestore unsubscribe handle
+let _diWeekFilter = '';  // currently selected pay-week ending date (YYYY-MM-DD), or '' for all
+
+// Populate the Pay Week dropdown from actual daily input data.
+function renderDiWeekSelect() {
+  const sel = document.getElementById('di-week-select');
+  if (!sel) return;
+  const weeks = [...new Set((_cache.dailyInputs || []).map(d => d.weekEnding).filter(Boolean))]
+    .sort((a, b) => b.localeCompare(a));
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— All weeks —</option>' +
+    weeks.map(we => `<option value="${eh(we)}"${we === prev ? ' selected' : ''}>${_fmtWeekDate(we)} (Wk ending)</option>`).join('');
+  // Drop stale filter if its week no longer exists in the data
+  if (_diWeekFilter && !weeks.includes(_diWeekFilter)) _diWeekFilter = '';
+  if (!sel.value && _diWeekFilter) sel.value = _diWeekFilter;
+}
+
+// Render/hide the Compile button next to the Pay Week dropdown.
+function renderDiWeekCompile() {
+  const wrap     = document.getElementById('di-week-compile-wrap');
+  const adminWrap = document.getElementById('di-payweek-settings-wrap');
+  if (!wrap) return;
+
+  // Admin settings section visibility
+  if (adminWrap) adminWrap.style.display = isAdmin() ? '' : 'none';
+  if (isAdmin()) _renderPayWeekSettingsBody();
+
+  const we       = _diWeekFilter;
+  const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
+  if (!we || !canCompilePaysheet()) {
+    wrap.style.display = 'none';
+    wrap.innerHTML = '';
+    return;
+  }
+  const hasDone = (_cache.paysheets || []).some(p => p.type === 'weekly' && p.weekEnding === we && (!activeJob || p.job === activeJob));
+  wrap.style.display = 'flex';
+  wrap.innerHTML =
+    `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">📋 Compile into Weekly Paysheet</button>` +
+    (activeJob
+      ? (hasDone
+          ? `<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>`
+          : `<span style="font-size:.75rem;color:var(--muted);">Compiles all daily inputs into one summary per crew</span>`)
+      : `<span style="font-size:.75rem;color:var(--muted);">Select a job to compile</span>`);
+}
 
 function diLoadLog() {
   // Tear down previous listener
@@ -5918,6 +6060,7 @@ function diLoadLog() {
       .onSnapshot(snap => {
         _diLogDocs = snap.docs.map(d => d.data());
         _cache.dailyInputs = _diLogDocs; // expose to compile + folder list
+        renderDiWeekSelect();
         diRenderLogRows();
         // Keep CO tab PTD + remaining live as daily input entries are submitted
         try { renderCOLog(); } catch(_) {}
@@ -5928,6 +6071,7 @@ function diLoadLog() {
         _diLogUnsub = db.collection('dailyinput').onSnapshot(snap => {
           _diLogDocs = snap.docs.map(d => d.data()).sort((a,b) => (b.submittedAt||'').localeCompare(a.submittedAt||''));
           _cache.dailyInputs = _diLogDocs;
+          renderDiWeekSelect();
           diRenderLogRows();
           try { renderCOLog(); } catch(_) {}
           try { renderPSAreaBudgetTable(); } catch(_) {}
@@ -5948,6 +6092,8 @@ function diRenderLogRows() {
   const jobName = document.getElementById('ps-job-select').value;
   let docs = _diLogDocs;
   if (jobName) docs = docs.filter(r => r.job === jobName);
+  // Filter by selected pay week (if any)
+  if (_diWeekFilter) docs = docs.filter(r => r.weekEnding === _diWeekFilter);
   // Foremen only see their own submissions
   if (isForeman() && _currentUser) docs = docs.filter(r => r.submittedBy === _currentUser.email);
 
@@ -6113,11 +6259,95 @@ function diRenderLogRows() {
       <td colspan="8" style="padding:0;">${_diLogDetailHTML(r)}</td>
     </tr>`;
   }).join('');
+
+  // Keep compile button in sync with current week selection
+  try { renderDiWeekCompile(); } catch(_) {}
 }
 
 function diClearLogFilters() {
   _diLogFilters = { date:'', job:'', crew:'', foreman:'', empCount:'' };
   diRenderLogRows();
+}
+
+// ── Pay Week admin settings UI ──────────────────────────────────────────────
+
+const _PW_DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+function _renderPayWeekSettingsBody() {
+  const body = document.getElementById('di-payweek-settings-body');
+  if (!body) return;
+  const { startDay, startHour, endDay, endHour } = _payWeekSettings;
+  const dayOpts = n => _PW_DAY_NAMES.map((name, i) =>
+    `<option value="${i}"${i===n?' selected':''}>${name}</option>`).join('');
+  const hrOpts = n => Array.from({length:24}, (_,i) =>
+    `<option value="${i}"${i===n?' selected':''}>${String(i).padStart(2,'0')}:00</option>`).join('');
+  body.innerHTML = `
+    <div style="font-weight:700;color:var(--accent);margin-bottom:8px;">⚙ Pay Week Schedule</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+      <span style="color:var(--muted);">Starts:</span>
+      <select id="di-pw-start-day" class="fi" style="min-width:120px;" onchange="diPayWeekSettingChanged()">${dayOpts(startDay)}</select>
+      <select id="di-pw-start-hour" class="fi" style="min-width:90px;" onchange="diPayWeekSettingChanged()">${hrOpts(startHour)}</select>
+      <span style="color:var(--muted);">· Ends:</span>
+      <select id="di-pw-end-day" class="fi" style="min-width:120px;" onchange="diPayWeekSettingChanged()">${dayOpts(endDay)}</select>
+      <select id="di-pw-end-hour" class="fi" style="min-width:90px;" onchange="diPayWeekSettingChanged()">${hrOpts(endHour)}</select>
+      <button class="btn" id="di-pw-save-btn" style="margin:0;padding:4px 14px;font-size:.8rem;display:none;" onclick="diSavePayWeekSettings()">Save Schedule</button>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <button class="btn-sm" onclick="diMigratePayWeeks()" style="font-size:.75rem;padding:3px 10px;background:rgba(239,68,68,.15);color:#ef4444;border:1px solid #ef4444;">Migrate Existing Data</button>
+      <span style="font-size:.74rem;color:var(--muted);">Recomputes weekEnding for all saved daily inputs using their save timestamp and the schedule above</span>
+    </div>`;
+}
+
+function diPayWeekSettingChanged() {
+  const btn = document.getElementById('di-pw-save-btn');
+  if (btn) btn.style.display = '';
+}
+
+async function diSavePayWeekSettings() {
+  if (!isAdmin()) { alert('Admin only.'); return; }
+  const startDay  = parseInt(document.getElementById('di-pw-start-day').value);
+  const startHour = parseInt(document.getElementById('di-pw-start-hour').value);
+  const endDay    = parseInt(document.getElementById('di-pw-end-day').value);
+  const endHour   = parseInt(document.getElementById('di-pw-end-hour').value);
+  try {
+    await db.collection('settings').doc('payweek').set({ startDay, startHour, endDay, endHour }, { merge: true });
+    _payWeekSettings = { startDay, startHour, endDay, endHour };
+    const btn = document.getElementById('di-pw-save-btn');
+    if (btn) btn.style.display = 'none';
+    alert('Pay week schedule saved.');
+  } catch(e) {
+    alert('Failed to save: ' + e.message);
+  }
+}
+
+// Admin-only: recompute weekEnding for all existing dailyinput docs from their submittedAt timestamp.
+async function diMigratePayWeeks() {
+  if (!isAdmin()) { alert('Admin only.'); return; }
+  if (!confirm('Recompute the weekEnding on all daily inputs using the current Thursday→Wednesday pay-week rule and each record\'s save timestamp?\n\nThis updates existing records. It cannot be undone.')) return;
+  try {
+    const snap = await db.collection('dailyinput').get();
+    const updates = [];
+    snap.docs.forEach(doc => {
+      const data = doc.data();
+      if (!data.submittedAt) return;
+      const newWE = _calcPayWeekEnding(data.submittedAt);
+      if (newWE !== data.weekEnding) updates.push({ ref: doc.ref, weekEnding: newWE });
+    });
+    if (!updates.length) {
+      alert('All daily inputs already have the correct weekEnding. Nothing to update.');
+      return;
+    }
+    // Firestore batch limit is 500 — split into chunks
+    for (let i = 0; i < updates.length; i += 499) {
+      const batch = db.batch();
+      updates.slice(i, i + 499).forEach(u => batch.update(u.ref, { weekEnding: u.weekEnding }));
+      await batch.commit();
+    }
+    alert(`Migration complete — updated ${updates.length} daily input${updates.length !== 1 ? 's' : ''}.`);
+    diLoadLog();
+  } catch(e) {
+    alert('Migration failed: ' + e.message);
+  }
 }
 
 /** Detail expand view for a supplemental paysheet entry in the submission log. */
