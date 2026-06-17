@@ -167,6 +167,12 @@
     .di-area-dropdown { position:absolute; background:var(--surface2); border:1px solid var(--accent); max-height:220px; overflow-y:auto; z-index:9999; display:none; box-shadow:0 4px 16px rgba(0,0,0,.35); }
     .di-area-opt { padding:7px 12px; font-size:.83rem; cursor:pointer; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .di-area-opt:hover, .di-area-opt.hi { background:var(--accent); color:#000; font-weight:600; }
+    .di-emp-wrap { position:relative; flex:1; }
+    .di-emp-wrap input { width:100%; }
+    .di-emp-dropdown { position:absolute; left:0; right:0; background:var(--surface2); border:1px solid var(--accent); max-height:200px; overflow-y:auto; z-index:9999; display:none; box-shadow:0 4px 16px rgba(0,0,0,.35); }
+    .di-emp-opt { display:flex; align-items:center; gap:10px; padding:7px 12px; font-size:.83rem; cursor:pointer; color:var(--text); }
+    .di-emp-opt:hover, .di-emp-opt.hi { background:var(--accent); color:#000; font-weight:600; }
+    .di-emp-opt-num { font-size:.75rem; opacity:.7; min-width:28px; text-align:right; }
     .budget-area-wrap { position:relative; max-width:280px; }
     .budget-area-wrap input { width:100%; }
     .budget-area-dropdown { position:absolute; top:100%; left:0; right:0; background:var(--surface2); border:1px solid var(--accent); border-top:none; border-radius:0 0 8px 8px; max-height:260px; overflow-y:auto; z-index:999; display:none; min-width:220px; }
@@ -391,6 +397,7 @@
     if (portal && portal.style.display !== 'none') return true;
     if (document.querySelector('.di-area-dropdown[style*="block"]')) return true;
     if (document.querySelector('.budget-area-dropdown[style*="block"]')) return true;
+    if (document.querySelector('.di-emp-dropdown[style*="block"]')) return true;
     return false;
   }
 
@@ -4651,8 +4658,11 @@ function diRenderCrewTable() {
       `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">` +
         `<input id="di-crew-lead-num" class="fi" value="${eh(curLeadNum)}" placeholder="#" ` +
         `style="width:64px;flex-shrink:0;padding:6px 8px;font-size:.88rem;text-align:center;" />` +
-        `<input id="di-crew-lead-input" class="fi" list="di-emp-names-datalist" value="${eh(curLead)}" placeholder="Enter crew lead name…" ` +
-        `style="width:220px;max-width:100%;padding:6px 10px;font-size:.88rem;" />` +
+        `<div class="di-emp-wrap" style="width:220px;max-width:100%;">` +
+        `<input id="di-crew-lead-input" class="fi" autocomplete="off" value="${eh(curLead)}" placeholder="Enter crew lead name…" ` +
+        `style="width:100%;padding:6px 10px;font-size:.88rem;" />` +
+        `<div class="di-emp-dropdown" id="di-emp-dd-lead"></div>` +
+        `</div>` +
         `<button class="btn-sm" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);font-weight:700;" onclick="diSaveCrewSet()">💾 Save Crew</button>` +
         `<button class="btn-sm btn-outline" style="white-space:nowrap;" onclick="diOpenCrewSetsModal()">📋 Load Crew</button>` +
       `</div>`;
@@ -4674,9 +4684,28 @@ function diRenderCrewTable() {
       }
     }
 
+    // Custom employee dropdown for crew lead
+    function _renderLeadDropdown() {
+      const dd  = document.getElementById('di-emp-dd-lead');
+      if (!dd) return;
+      const q   = leadInput.value.trim().toLowerCase();
+      const all = getEmployees();
+      const matches = q ? all.filter(e => e.name.toLowerCase().includes(q)) : all;
+      if (!matches.length) { dd.style.display = 'none'; dd.innerHTML = ''; return; }
+      dd.innerHTML = matches.slice(0, 30).map(e =>
+        `<div class="di-emp-opt" data-name="${eh(e.name)}" data-num="${e.n}"
+          onmousedown="event.preventDefault()"
+          onclick="_diLeadPickEmp('${e.name.replace(/'/g,"\\'")}','${e.n}')">
+          <span>${eh(e.name)}</span><span class="di-emp-opt-num">#${e.n}</span>
+        </div>`
+      ).join('');
+      dd.style.display = 'block';
+    }
+    leadInput.addEventListener('focus', _renderLeadDropdown);
     leadInput.addEventListener('input', function() {
       const val      = this.value;
       const prevLead = (_diCrewLeadNames[_diActiveCrew] || '').trim();
+      _renderLeadDropdown();
 
       // Auto-fill # from employee list when name matches
       const resolved = _resolveEmpNum('', val.trim());
@@ -4747,6 +4776,10 @@ function diRenderCrewTable() {
       }
       diAutoSaveDraft();
     });
+    leadInput.addEventListener('blur', function() {
+      const dd = document.getElementById('di-emp-dd-lead');
+      if (dd) { dd.style.display = 'none'; }
+    });
     leadInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') this.blur(); });
     leadNumEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') this.blur(); });
   }
@@ -4769,10 +4802,14 @@ function diRenderCrewTable() {
           oninput="_diData[${_diActiveCrew}][${i}].empNum=this.value"
           onblur="_diEmpNumBlur(${_diActiveCrew},${i},this.value)"
           onkeydown="if(event.key==='Enter')this.blur()" />
-        <input class="fi" id="di-emp-name-${_diActiveCrew}-${i}" data-emp-idx="${i}" list="di-emp-names-datalist" style="flex:1;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
-          oninput="_diData[${_diActiveCrew}][${i}].employee=this.value;diAutoSaveDraft()"
-          onblur="_diEmpNameBlur(${_diActiveCrew},${i},this.value)"
-          onkeydown="if(event.key==='Enter')this.blur()" />
+        <div class="di-emp-wrap">
+          <input class="fi" id="di-emp-name-${_diActiveCrew}-${i}" data-emp-idx="${i}" autocomplete="off" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.employee)}" placeholder="Employee name"
+            oninput="_diEmpNameInput(this,${_diActiveCrew},${i})"
+            onfocus="_diEmpNameInput(this,${_diActiveCrew},${i})"
+            onblur="_diEmpNameBlur(${_diActiveCrew},${i},this.value)"
+            onkeydown="_diEmpNameKey(event,this,${_diActiveCrew},${i})" />
+          <div class="di-emp-dropdown" id="di-emp-dd-${_diActiveCrew}-${i}"></div>
+        </div>
         <button onclick="diDeleteRow(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;flex-shrink:0;" title="Remove employee">✕</button>
       </div>`).join('');
   }
@@ -6616,6 +6653,118 @@ function _diEmpNameBlur(crew, i, val) {
     }
     diRenderCrewTabs();
   }
+  diAutoSaveDraft();
+}
+
+// ── Employee name custom dropdown ────────────────────────────────────────────
+
+function _diEmpNameInput(input, crew, i) {
+  const dd = document.getElementById('di-emp-dd-' + crew + '-' + i);
+  if (!dd) return;
+  _diData[crew][i].employee = input.value;
+  const q   = input.value.trim().toLowerCase();
+  const all = getEmployees();
+  const matches = q ? all.filter(e => e.name.toLowerCase().includes(q)) : all;
+  if (!matches.length) { dd.style.display = 'none'; dd.innerHTML = ''; return; }
+  dd.innerHTML = matches.slice(0, 30).map(e =>
+    `<div class="di-emp-opt" data-name="${eh(e.name)}" data-num="${e.n}"
+      onmousedown="event.preventDefault()"
+      onclick="_diEmpPick('${e.name.replace(/'/g,"\\'")}',${e.n},${crew},${i})">
+      <span>${eh(e.name)}</span><span class="di-emp-opt-num">#${e.n}</span>
+    </div>`
+  ).join('');
+  dd.style.display = 'block';
+}
+
+function _diEmpPick(name, num, crew, i) {
+  _diData[crew][i].employee = name;
+  _diData[crew][i].empNum   = String(num);
+  const nameEl = document.getElementById('di-emp-name-' + crew + '-' + i);
+  const numEl  = document.getElementById('di-emp-num-'  + crew + '-' + i);
+  if (nameEl) nameEl.value = name;
+  if (numEl)  numEl.value  = String(num);
+  const dd = document.getElementById('di-emp-dd-' + crew + '-' + i);
+  if (dd) { dd.style.display = 'none'; }
+  // Row 0 drives crew lead
+  if (i === 0) {
+    _diCrewLeadNames[crew] = name;
+    _diCrewLeadNums[crew]  = String(num);
+    const leadNameEl = document.getElementById('di-crew-lead-input');
+    const leadNumEl  = document.getElementById('di-crew-lead-num');
+    if (leadNameEl && crew === _diActiveCrew) leadNameEl.value = name;
+    if (leadNumEl  && crew === _diActiveCrew) leadNumEl.value  = String(num);
+    diRenderCrewTabs();
+  }
+  diAutoSaveDraft();
+}
+
+function _diEmpNameKey(e, input, crew, i) {
+  const dd = document.getElementById('di-emp-dd-' + crew + '-' + i);
+  if (!dd || dd.style.display === 'none') { if (e.key === 'Enter') input.blur(); return; }
+  const opts = dd.querySelectorAll('.di-emp-opt');
+  let hi = [...opts].findIndex(o => o.classList.contains('hi'));
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (hi >= 0) opts[hi].classList.remove('hi');
+    hi = Math.min(hi + 1, opts.length - 1);
+    opts[hi].classList.add('hi');
+    opts[hi].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (hi >= 0) opts[hi].classList.remove('hi');
+    hi = Math.max(hi - 1, 0);
+    opts[hi].classList.add('hi');
+    opts[hi].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter' && hi >= 0) {
+    e.preventDefault();
+    const opt = opts[hi];
+    _diEmpPick(opt.dataset.name, parseInt(opt.dataset.num), crew, i);
+  } else if (e.key === 'Escape') {
+    dd.style.display = 'none';
+  } else if (e.key === 'Enter') {
+    input.blur();
+  }
+}
+
+function _diLeadPickEmp(name, num) {
+  const crew = _diActiveCrew;
+  const leadNameEl = document.getElementById('di-crew-lead-input');
+  const leadNumEl  = document.getElementById('di-crew-lead-num');
+  const dd         = document.getElementById('di-emp-dd-lead');
+  if (leadNameEl) leadNameEl.value = name;
+  if (leadNumEl)  leadNumEl.value  = String(num);
+  if (dd) dd.style.display = 'none';
+  _diCrewLeadNames[crew] = name;
+  _diCrewLeadNums[crew]  = String(num);
+  const jn = document.getElementById('ps-job-select').value;
+  if (jn) {
+    if (!_diAllData[jn]) _diAllData[jn] = {};
+    if (!_diAllData[jn].__crewLeadNames) _diAllData[jn].__crewLeadNames = {};
+    if (!_diAllData[jn].__crewLeadNums)  _diAllData[jn].__crewLeadNums  = {};
+    _diAllData[jn].__crewLeadNames[crew] = name;
+    _diAllData[jn].__crewLeadNums[crew]  = String(num);
+  }
+  // Auto-fill row 0
+  const rows0 = _diData[crew];
+  if (rows0 && rows0.length > 0) {
+    const firstEmp = (rows0[0].employee || '').trim();
+    if (!firstEmp || firstEmp === (_diCrewLeadNames[crew] || '')) {
+      rows0[0].employee = name;
+      rows0[0].empNum   = String(num);
+      const firstNameInput = document.getElementById('di-emp-name-' + crew + '-0');
+      const firstNumInput  = document.getElementById('di-emp-num-'  + crew + '-0');
+      if (firstNameInput) firstNameInput.value = name;
+      if (firstNumInput)  firstNumInput.value  = String(num);
+    }
+  }
+  if (_psState && _psState[crew]) {
+    _psState[crew].header.crewName = name;
+    if (_psActiveCrew === crew) {
+      const psCrewEl = document.getElementById('ps-crew');
+      if (psCrewEl) psCrewEl.value = name;
+    }
+  }
+  diRenderCrewTabs();
   diAutoSaveDraft();
 }
 
@@ -10648,6 +10797,9 @@ document.addEventListener('mousedown', e => {
   }
   if (!e.target.closest('.budget-area-wrap')) {
     document.querySelectorAll('.budget-area-dropdown').forEach(d => d.style.display = 'none');
+  }
+  if (!e.target.closest('.di-emp-wrap')) {
+    document.querySelectorAll('.di-emp-dropdown').forEach(d => d.style.display = 'none');
   }
 });
 
