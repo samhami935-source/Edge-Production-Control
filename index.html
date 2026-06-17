@@ -1090,8 +1090,13 @@
         </div>
         </div><!-- /di-table-wrap -->
 
+        <!-- Admin: Pay Week Schedule Settings -->
+        <div id="di-payweek-settings-wrap" style="display:none;margin-top:20px;padding:10px 14px;background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:8px;font-size:.82rem;">
+          <div id="di-payweek-settings-body"></div>
+        </div>
+
         <!-- Pay Week Filter + Compile -->
-        <div id="di-week-bar" style="margin-top:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
+        <div id="di-week-bar" style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
           <span style="font-size:.8rem;font-weight:700;color:var(--muted);white-space:nowrap;">Pay Week</span>
           <select id="di-week-select" class="fi" style="min-width:200px;flex:1;max-width:280px;" onchange="_diWeekFilter=this.value;diRenderLogRows()">
             <option value="">— All weeks —</option>
@@ -1101,11 +1106,6 @@
 
         <!-- Compiled paysheets log for selected pay week -->
         <div id="di-week-paysheets" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:8px;overflow:hidden;"></div>
-
-        <!-- Admin: Pay Week Schedule Settings -->
-        <div id="di-payweek-settings-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:8px;font-size:.82rem;">
-          <div id="di-payweek-settings-body"></div>
-        </div>
 
         <!-- Daily Log -->
         <div style="margin-top:16px;">
