@@ -570,6 +570,7 @@
           </div>
           <button class="btn btn-outline" style="margin-top:0;padding:8px 12px;font-size:.82rem;color:var(--muted);" onclick="budgetAreaClear('area-budget-select')">✕ Clear</button>
           <button class="btn btn-outline" style="margin-top:0;padding:8px 16px;font-size:.82rem;" onclick="exportAreaBudgetCSV()">Export CSV</button>
+          <button class="btn btn-outline" style="margin-top:0;padding:8px 16px;font-size:.82rem;border-color:var(--green);color:var(--green);" onclick="exportBudgetExcel()">Export to Excel</button>
         </div>
         <div style="overflow-x:auto;">
           <table style="min-width:500px;margin:0;">
@@ -2377,6 +2378,76 @@ function exportAreaBudgetCSV() {
     });
     dlCSV(lines.join('\n'), `budget-by-area_${label}.csv`);
   }
+}
+
+function exportBudgetExcel() {
+  if (typeof XLSX === 'undefined') { alert('Excel library not loaded — please wait a moment and try again.'); return; }
+  const fileName = document.getElementById('pr-csv-file').value;
+  if (!fileName) { alert('Please select a job first.'); return; }
+  const f = getSavedCSVFiles().find(x => x.name === fileName);
+  if (!f) return;
+
+  const allEntries = getPayrollEntries().filter(e => e.csvFile === fileName);
+  const areaFilter = document.getElementById('area-budget-select').value;
+  const areas = areaFilter
+    ? [areaFilter]
+    : [...new Set(f.rows.map(r => r.area).filter(a => a && a !== '—'))].sort();
+
+  const header = ['Area', 'Labor Code', 'Amount', 'Remaining'];
+  const dataRows = [];
+
+  if (isForeman()) {
+    // Row-level (exact cost codes), same as foreman path in exportAreaBudgetCSV
+    areas.forEach(a => {
+      f.rows.filter(r => r.area === a && isForemanAllowedCode(r.costCode)).forEach(r => {
+        const paid = allEntries
+          .filter(e => e.area === a && e.costCode === r.costCode && e.description === r.description)
+          .reduce((s, e) => s + e.price, 0);
+        if (r.amount === 0 && paid === 0) return;
+        dataRows.push([a, r.costCode, r.amount, r.amount - paid]);
+      });
+    });
+  } else {
+    // Group-level (PAYROLL_GROUPS), same as non-foreman path in exportAreaBudgetCSV
+    areas.forEach(a => {
+      PAYROLL_GROUPS.forEach(g => {
+        const budget = f.rows.filter(r => r.area === a && getCodeGroup(r.costCode) === g.code)
+                              .reduce((s, r) => s + r.amount, 0);
+        const paid   = allEntries.filter(e => e.area === a && e.costCode === g.code)
+                                  .reduce((s, e) => s + e.price, 0);
+        if (budget === 0 && paid === 0) return;
+        dataRows.push([a, `${g.code} — ${g.description}`, budget, budget - paid]);
+      });
+    });
+  }
+
+  // Total row
+  const totalAmt = dataRows.reduce((s, r) => s + r[2], 0);
+  const totalRem = dataRows.reduce((s, r) => s + r[3], 0);
+
+  const sheetData = [header, ...dataRows, ['TOTAL', '', totalAmt, totalRem]];
+  const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+  // Column widths
+  ws['!cols'] = [{ wch: 30 }, { wch: 28 }, { wch: 16 }, { wch: 16 }];
+
+  // Currency format for Amount and Remaining columns (C and D, rows 2 onward)
+  const fmtCurrency = '"$"#,##0.00';
+  const numRows = sheetData.length;
+  for (let i = 1; i < numRows; i++) {
+    const amtCell = XLSX.utils.encode_cell({ r: i, c: 2 });
+    const remCell = XLSX.utils.encode_cell({ r: i, c: 3 });
+    if (ws[amtCell]) ws[amtCell].z = fmtCurrency;
+    if (ws[remCell]) ws[remCell].z = fmtCurrency;
+  }
+
+  const wb = XLSX.utils.book_new();
+  const sheetName = (areaFilter || 'All Areas').slice(0, 31);
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+  const date = new Date().toLocaleDateString('en-US', { month:'2-digit', day:'2-digit', year:'numeric' }).replace(/\//g, '-');
+  const jobLabel = fileName.replace(/\.csv$/i, '').replace(/[^\w-]/g, '_');
+  XLSX.writeFile(wb, `Budget_${jobLabel}_${date}.xlsx`);
 }
 
 function renderBurnLog() {
