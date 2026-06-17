@@ -6003,16 +6003,22 @@ function renderDiWeekCompile() {
     sheets.map(p => {
       const savedStr   = p.savedAt ? new Date(p.savedAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) + ' ' + new Date(p.savedAt).toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' }) : '';
       const safeId     = (p.id || '').replace(/'/g, "\\'");
-      const typeLabel  = p.isSupplemental || (p.id && p.id.includes('_add_'))
+      const isSupp     = p.isSupplemental || (p.id && p.id.includes('_add_'));
+      const typeLabel  = isSupp
         ? `<span style="font-size:.7rem;background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.3);padding:1px 6px;border-radius:4px;font-weight:700;">SUPPLEMENTAL</span>`
         : `<span style="font-size:.7rem;background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3);padding:1px 6px;border-radius:4px;font-weight:700;">★ WEEKLY</span>`;
+      const crewLine   = (p.crewNames && p.crewNames.length)
+        ? p.crewNames.map(n => eh(n)).join(' · ')
+        : (p.crewName ? eh(p.crewName) : '');
+      const crewCount  = p.crewCount || (p.crewNames && p.crewNames.length) || (p.crewName ? 1 : '');
       return `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid var(--border);flex-wrap:wrap;">
         <div style="flex:1;min-width:120px;">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
             ${typeLabel}
             <span style="font-weight:600;font-size:.88rem;">${eh(p.job || '')}</span>
-            ${p.crewName ? `<span style="font-size:.78rem;color:var(--accent);font-weight:600;">· ${eh(p.crewName)}</span>` : ''}
+            ${crewCount ? `<span style="font-size:.76rem;color:var(--muted);">${crewCount} crew${crewCount !== 1 ? 's' : ''}</span>` : ''}
           </div>
+          ${crewLine ? `<div style="font-size:.78rem;color:var(--accent);font-weight:600;margin-bottom:2px;">${crewLine}</div>` : ''}
           <div style="font-size:.74rem;color:var(--muted);">Saved ${savedStr}${p.savedBy ? ' · ' + eh(p.savedBy) : ''}</div>
         </div>
         <button class="btn" style="font-size:.78rem;padding:5px 12px;white-space:nowrap;margin-top:0;" onclick="loadPaysheetFromCloud('${safeId}')">Load</button>
@@ -9177,30 +9183,40 @@ async function psCompileWeeklyPaysheet(weekEnding) {
 
   if (!Object.keys(crews).length) { alert('No crew data found to compile.'); return; }
 
-  // Save one doc per crew so each crew has its own paysheet entry
   if (!_cache.paysheets) _cache.paysheets = [];
-  const savedCount = Object.keys(crews).length;
-  for (const [crewKey, crewData] of Object.entries(crews)) {
-    const crewName = crewData.header.crewName || `Crew ${crewKey}`;
-    const docId = (activeJob + '_' + weekEnding + '_crew' + crewKey).replace(/[^\w-]/g, '_');
-    const doc = {
-      id: docId, job: activeJob, weekEnding,
-      type: 'weekly',
-      crewNum: parseInt(crewKey),
-      crewName,
-      savedAt: new Date().toISOString(),
-      savedBy: _currentUser ? _currentUser.email : 'unknown',
-      crews: { '1': crewData },
-    };
-    await db.collection('paysheets').doc(docId).set(doc);
-    const idx = _cache.paysheets.findIndex(p => p.id === docId);
-    if (idx !== -1) _cache.paysheets[idx] = doc; else _cache.paysheets.push(doc);
+
+  const crewNames  = Object.entries(crews).map(([k, d]) => d.header.crewName || `Crew ${k}`);
+  const crewCount  = Object.keys(crews).length;
+  const combinedId = (activeJob + '_' + weekEnding + '_weekly').replace(/[^\w-]/g, '_');
+
+  // Delete any old per-crew docs for this week so they don't linger in the load list
+  const oldPerCrew = (_cache.paysheets || []).filter(p =>
+    p.job === activeJob && p.weekEnding === weekEnding && p.type === 'weekly' && p.id !== combinedId
+  );
+  for (const old of oldPerCrew) {
+    try { await db.collection('paysheets').doc(old.id).delete(); } catch(_) {}
+    _cache.paysheets = _cache.paysheets.filter(p => p.id !== old.id);
   }
+
+  const combinedDoc = {
+    id:       combinedId,
+    job:      activeJob,
+    weekEnding,
+    type:     'weekly',
+    crewCount,
+    crewNames,
+    savedAt:  new Date().toISOString(),
+    savedBy:  _currentUser ? _currentUser.email : 'unknown',
+    crews,
+  };
+  await db.collection('paysheets').doc(combinedId).set(combinedDoc);
+  const idx = _cache.paysheets.findIndex(p => p.id === combinedId);
+  if (idx !== -1) _cache.paysheets[idx] = combinedDoc; else _cache.paysheets.push(combinedDoc);
 
   renderPSLoadList();
   try { renderDiWeekCompile(); } catch(_) {}
   const crewSummary = Object.entries(crews).map(([k, d]) => `  • Crew ${k}: ${d.header.crewName || '(unnamed)'}`).join('\n');
-  alert(`Weekly summary compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''} (crews 1–${_maxCrewFromData}).\n\n${savedCount} crew paysheet${savedCount !== 1 ? 's' : ''} saved:\n${crewSummary}`);
+  alert(`Weekly summary compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''} (crews 1–${_maxCrewFromData}).\n\n${crewCount} crew${crewCount !== 1 ? 's' : ''} compiled into one paysheet:\n${crewSummary}`);
 }
 
 /** Create a blank supplemental weekly paysheet for an already-compiled week and load it. */
@@ -9812,9 +9828,10 @@ function _psLoadRow(p, currentFolder) {
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
         ${typeLabel}
         <span style="font-weight:600;font-size:.88rem;">${eh(p.job||'No Job')}</span>
-        ${p.crewName ? `<span style="font-size:.78rem;color:var(--accent);font-weight:600;">· ${eh(p.crewName)}</span>` : ''}
+        ${p.crewCount || (p.crewNames && p.crewNames.length) ? `<span style="font-size:.76rem;color:var(--muted);">${p.crewCount || p.crewNames.length} crew${(p.crewCount || p.crewNames.length) !== 1 ? 's' : ''}</span>` : (p.crewName ? `<span style="font-size:.78rem;color:var(--accent);font-weight:600;">· ${eh(p.crewName)}</span>` : '')}
       </div>
-      <div style="font-size:.75rem;color:var(--muted);">${roleLabel}Saved ${d} ${t} · ${who}${!p.crewName ? ` · ${crewCount} crew${crewCount!==1?'s':''} with data` : ''}</div>
+      ${(p.crewNames && p.crewNames.length) ? `<div style="font-size:.78rem;color:var(--accent);font-weight:600;margin-bottom:2px;">${p.crewNames.map(n=>eh(n)).join(' · ')}</div>` : ''}
+      <div style="font-size:.75rem;color:var(--muted);">${roleLabel}Saved ${d} ${t} · ${who}${!p.crewName && !p.crewNames ? ` · ${crewCount} crew${crewCount!==1?'s':''} with data` : ''}</div>
       ${lastEditLine}
     </div>
     <button class="btn" style="font-size:.78rem;padding:5px 12px;white-space:nowrap;margin-top:0;" onclick="loadPaysheetFromCloud('${safeId}')">Load</button>
