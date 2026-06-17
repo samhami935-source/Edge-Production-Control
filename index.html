@@ -4716,7 +4716,8 @@ function diRenderCrewTable() {
 
     // # input — auto-fills name when number matches an employee
     leadNumEl.addEventListener('input', function() {
-      const numVal = this.value.trim();
+      const numVal   = this.value.trim();
+      const prevLead = (_diCrewLeadNames[_diActiveCrew] || '').trim();
       _diCrewLeadNums[_diActiveCrew] = numVal;
       const n = parseInt(numVal, 10);
       if (!isNaN(n) && numVal) {
@@ -4724,6 +4725,19 @@ function diRenderCrewTable() {
         if (match) {
           leadInput.value = match.name;
           _syncLeadState(match.name, numVal);
+          // Auto-fill row 0 if blank or was the old lead
+          const rows0 = _diData[_diActiveCrew];
+          if (rows0 && rows0.length > 0) {
+            const firstEmp = (rows0[0].employee || '').trim();
+            if (!firstEmp || firstEmp === prevLead) {
+              rows0[0].employee = match.name;
+              rows0[0].empNum   = numVal;
+              const firstNameInput = document.getElementById('di-emp-name-' + _diActiveCrew + '-0');
+              const firstNumInput  = document.getElementById('di-emp-num-'  + _diActiveCrew + '-0');
+              if (firstNameInput) firstNameInput.value = match.name;
+              if (firstNumInput)  firstNumInput.value  = numVal;
+            }
+          }
           diRenderCrewTabs();
         } else {
           _syncLeadState(leadInput.value, numVal);
