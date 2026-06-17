@@ -1099,6 +1099,9 @@
           <div id="di-week-compile-wrap" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;"></div>
         </div>
 
+        <!-- Compiled paysheets log for selected pay week -->
+        <div id="di-week-paysheets" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:8px;overflow:hidden;"></div>
+
         <!-- Admin: Pay Week Schedule Settings -->
         <div id="di-payweek-settings-wrap" style="display:none;margin-top:8px;padding:10px 14px;background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:8px;font-size:.82rem;">
           <div id="di-payweek-settings-body"></div>
@@ -1603,7 +1606,9 @@ const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, 
 
 // Pay-week schedule — Thursday 4:00 AM → Wednesday 5:00 PM (America/Los_Angeles).
 // Loaded from Firestore settings/payweek on init; admin can update via UI.
-let _payWeekSettings = { startDay: 4, startHour: 4, endDay: 3, endHour: 17 };
+// anchorStartDate / anchorEndDate are the specific calendar dates the admin picked
+// when setting up the schedule (used to pre-fill the date pickers in the admin UI).
+let _payWeekSettings = { startDay: 4, startHour: 4, endDay: 3, endHour: 17, anchorStartDate: '', anchorEndDate: '' };
 
 async function loadAllData() {
   const loadMsg = document.getElementById('loading-msg');
@@ -1670,10 +1675,12 @@ async function loadAllData() {
     const pwDoc = await db.collection('settings').doc('payweek').get();
     if (pwDoc.exists) {
       const pw = pwDoc.data();
-      if (pw.startDay  !== undefined) _payWeekSettings.startDay  = pw.startDay;
-      if (pw.startHour !== undefined) _payWeekSettings.startHour = pw.startHour;
-      if (pw.endDay    !== undefined) _payWeekSettings.endDay    = pw.endDay;
-      if (pw.endHour   !== undefined) _payWeekSettings.endHour   = pw.endHour;
+      if (pw.startDay       !== undefined) _payWeekSettings.startDay       = pw.startDay;
+      if (pw.startHour      !== undefined) _payWeekSettings.startHour      = pw.startHour;
+      if (pw.endDay         !== undefined) _payWeekSettings.endDay         = pw.endDay;
+      if (pw.endHour        !== undefined) _payWeekSettings.endHour        = pw.endHour;
+      if (pw.anchorStartDate)              _payWeekSettings.anchorStartDate = pw.anchorStartDate;
+      if (pw.anchorEndDate)               _payWeekSettings.anchorEndDate  = pw.anchorEndDate;
     }
   } catch(e) { /* settings collection may not exist yet */ }
   // Load job metadata (project name, foreman, crew name per job)
@@ -6017,9 +6024,10 @@ function renderDiWeekSelect() {
   if (!sel.value && _diWeekFilter) sel.value = _diWeekFilter;
 }
 
-// Render/hide the Compile button next to the Pay Week dropdown.
+// Render/hide the Compile button + compiled paysheets log for the selected pay week.
 function renderDiWeekCompile() {
-  const wrap     = document.getElementById('di-week-compile-wrap');
+  const wrap      = document.getElementById('di-week-compile-wrap');
+  const psLog     = document.getElementById('di-week-paysheets');
   const adminWrap = document.getElementById('di-payweek-settings-wrap');
   if (!wrap) return;
 
@@ -6027,22 +6035,60 @@ function renderDiWeekCompile() {
   if (adminWrap) adminWrap.style.display = isAdmin() ? '' : 'none';
   if (isAdmin()) _renderPayWeekSettingsBody();
 
-  const we       = _diWeekFilter;
+  const we        = _diWeekFilter;
   const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
+
+  // ── Compile button ──
   if (!we || !canCompilePaysheet()) {
     wrap.style.display = 'none';
     wrap.innerHTML = '';
-    return;
+  } else {
+    const hasDone = (_cache.paysheets || []).some(p => p.type === 'weekly' && p.weekEnding === we && (!activeJob || p.job === activeJob));
+    wrap.style.display = 'flex';
+    wrap.innerHTML =
+      `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">📋 Compile into Weekly Paysheet</button>` +
+      (activeJob
+        ? (hasDone
+            ? `<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>`
+            : `<span style="font-size:.75rem;color:var(--muted);">Compiles all daily inputs into one summary per crew</span>`)
+        : `<span style="font-size:.75rem;color:var(--muted);">Select a job to compile</span>`);
   }
-  const hasDone = (_cache.paysheets || []).some(p => p.type === 'weekly' && p.weekEnding === we && (!activeJob || p.job === activeJob));
-  wrap.style.display = 'flex';
-  wrap.innerHTML =
-    `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">📋 Compile into Weekly Paysheet</button>` +
-    (activeJob
-      ? (hasDone
-          ? `<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>`
-          : `<span style="font-size:.75rem;color:var(--muted);">Compiles all daily inputs into one summary per crew</span>`)
-      : `<span style="font-size:.75rem;color:var(--muted);">Select a job to compile</span>`);
+
+  // ── Compiled paysheets log for this week ──
+  if (!psLog) return;
+  if (!we) { psLog.style.display = 'none'; psLog.innerHTML = ''; return; }
+
+  const sheets = (_cache.paysheets || [])
+    .filter(p => p.weekEnding === we && (!activeJob || p.job === activeJob))
+    .sort((a, b) => (a.crewNum || 0) - (b.crewNum || 0) || (a.savedAt || '').localeCompare(b.savedAt || ''));
+
+  if (!sheets.length) { psLog.style.display = 'none'; psLog.innerHTML = ''; return; }
+
+  psLog.style.display = '';
+  psLog.innerHTML =
+    `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:var(--surface2);border-bottom:1px solid var(--border);">
+      <span style="font-size:.76rem;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.06em;">★ Compiled Paysheets — Week Ending ${_fmtWeekDate(we)}</span>
+      <span style="font-size:.74rem;color:var(--muted);">${sheets.length} paysheet${sheets.length !== 1 ? 's' : ''}</span>
+    </div>` +
+    sheets.map(p => {
+      const savedStr   = p.savedAt ? new Date(p.savedAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) + ' ' + new Date(p.savedAt).toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' }) : '';
+      const safeId     = (p.id || '').replace(/'/g, "\\'");
+      const typeLabel  = p.isSupplemental || (p.id && p.id.includes('_add_'))
+        ? `<span style="font-size:.7rem;background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.3);padding:1px 6px;border-radius:4px;font-weight:700;">SUPPLEMENTAL</span>`
+        : `<span style="font-size:.7rem;background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3);padding:1px 6px;border-radius:4px;font-weight:700;">★ WEEKLY</span>`;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid var(--border);flex-wrap:wrap;">
+        <div style="flex:1;min-width:120px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
+            ${typeLabel}
+            <span style="font-weight:600;font-size:.88rem;">${eh(p.job || '')}</span>
+            ${p.crewName ? `<span style="font-size:.78rem;color:var(--accent);font-weight:600;">· ${eh(p.crewName)}</span>` : ''}
+          </div>
+          <div style="font-size:.74rem;color:var(--muted);">Saved ${savedStr}${p.savedBy ? ' · ' + eh(p.savedBy) : ''}</div>
+        </div>
+        <button class="btn" style="font-size:.78rem;padding:5px 12px;white-space:nowrap;margin-top:0;" onclick="loadPaysheetFromCloud('${safeId}')">Load</button>
+        ${canManagePSFolders() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;border-color:#ef4444;color:#ef4444;white-space:nowrap;margin-top:0;" onclick="deleteSavedPaysheet('${safeId}',event)">Delete</button>` : ''}
+      </div>`;
+    }).join('');
 }
 
 function diLoadLog() {
@@ -6273,28 +6319,42 @@ function diClearLogFilters() {
 
 const _PW_DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
+// Format hour (0-23) as 12-hour time string: 0→12:00 AM, 4→4:00 AM, 17→5:00 PM
+function _fmtHr12(h) {
+  if (h === 0)  return '12:00 AM';
+  if (h < 12)   return `${h}:00 AM`;
+  if (h === 12) return '12:00 PM';
+  return `${h - 12}:00 PM`;
+}
+
+// Extract YYYY-MM-DD date string from a date input, returning '' if blank/invalid
+function _pwDateVal(id) { return (document.getElementById(id) || {}).value || ''; }
+
 function _renderPayWeekSettingsBody() {
   const body = document.getElementById('di-payweek-settings-body');
   if (!body) return;
-  const { startDay, startHour, endDay, endHour } = _payWeekSettings;
-  const dayOpts = n => _PW_DAY_NAMES.map((name, i) =>
-    `<option value="${i}"${i===n?' selected':''}>${name}</option>`).join('');
-  const hrOpts = n => Array.from({length:24}, (_,i) =>
-    `<option value="${i}"${i===n?' selected':''}>${String(i).padStart(2,'0')}:00</option>`).join('');
+  const { startHour, endHour, anchorStartDate, anchorEndDate } = _payWeekSettings;
   body.innerHTML = `
-    <div style="font-weight:700;color:var(--accent);margin-bottom:8px;">⚙ Pay Week Schedule</div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
-      <span style="color:var(--muted);">Starts:</span>
-      <select id="di-pw-start-day" class="fi" style="min-width:120px;" onchange="diPayWeekSettingChanged()">${dayOpts(startDay)}</select>
-      <select id="di-pw-start-hour" class="fi" style="min-width:90px;" onchange="diPayWeekSettingChanged()">${hrOpts(startHour)}</select>
-      <span style="color:var(--muted);">· Ends:</span>
-      <select id="di-pw-end-day" class="fi" style="min-width:120px;" onchange="diPayWeekSettingChanged()">${dayOpts(endDay)}</select>
-      <select id="di-pw-end-hour" class="fi" style="min-width:90px;" onchange="diPayWeekSettingChanged()">${hrOpts(endHour)}</select>
-      <button class="btn" id="di-pw-save-btn" style="margin:0;padding:4px 14px;font-size:.8rem;display:none;" onclick="diSavePayWeekSettings()">Save Schedule</button>
+    <div style="font-weight:700;color:var(--accent);margin-bottom:10px;">⚙ Pay Week Schedule</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+      <div>
+        <div style="font-size:.76rem;color:var(--muted);margin-bottom:4px;">Week Start Date</div>
+        <input type="date" id="di-pw-start-date" class="fi" style="min-width:160px;" value="${eh(anchorStartDate)}" onchange="diPayWeekSettingChanged()">
+        <div style="font-size:.74rem;color:var(--muted);margin-top:3px;">Opens at ${_fmtHr12(startHour)} Pacific</div>
+      </div>
+      <div>
+        <div style="font-size:.76rem;color:var(--muted);margin-bottom:4px;">Week End Date</div>
+        <input type="date" id="di-pw-end-date" class="fi" style="min-width:160px;" value="${eh(anchorEndDate)}" onchange="diPayWeekSettingChanged()">
+        <div style="font-size:.74rem;color:var(--muted);margin-top:3px;">Closes at ${_fmtHr12(endHour)} Pacific</div>
+      </div>
+      <button class="btn" id="di-pw-save-btn" style="margin:0;padding:6px 16px;font-size:.82rem;display:none;" onclick="diSavePayWeekSettings()">Set Schedule</button>
+    </div>
+    <div style="font-size:.76rem;color:var(--muted);margin-bottom:10px;">
+      Pick the start and end dates for <em>any</em> single pay week — the system auto-detects the day of the week and applies that pattern to all weeks going forward.
     </div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
       <button class="btn-sm" onclick="diMigratePayWeeks()" style="font-size:.75rem;padding:3px 10px;background:rgba(239,68,68,.15);color:#ef4444;border:1px solid #ef4444;">Migrate Existing Data</button>
-      <span style="font-size:.74rem;color:var(--muted);">Recomputes weekEnding for all saved daily inputs using their save timestamp and the schedule above</span>
+      <span style="font-size:.74rem;color:var(--muted);">Recomputes week assignment for all saved daily inputs using their save timestamp</span>
     </div>`;
 }
 
@@ -6305,16 +6365,24 @@ function diPayWeekSettingChanged() {
 
 async function diSavePayWeekSettings() {
   if (!isAdmin()) { alert('Admin only.'); return; }
-  const startDay  = parseInt(document.getElementById('di-pw-start-day').value);
-  const startHour = parseInt(document.getElementById('di-pw-start-hour').value);
-  const endDay    = parseInt(document.getElementById('di-pw-end-day').value);
-  const endHour   = parseInt(document.getElementById('di-pw-end-hour').value);
+  const anchorStartDate = _pwDateVal('di-pw-start-date');
+  const anchorEndDate   = _pwDateVal('di-pw-end-date');
+  if (!anchorStartDate || !anchorEndDate) { alert('Please pick both a start date and an end date.'); return; }
+
+  // Derive day-of-week from the chosen calendar dates
+  const startDay = new Date(anchorStartDate + 'T12:00:00').getDay();
+  const endDay   = new Date(anchorEndDate   + 'T12:00:00').getDay();
+  const { startHour, endHour } = _payWeekSettings; // keep existing hours unchanged
+
   try {
-    await db.collection('settings').doc('payweek').set({ startDay, startHour, endDay, endHour }, { merge: true });
-    _payWeekSettings = { startDay, startHour, endDay, endHour };
+    await db.collection('settings').doc('payweek').set(
+      { startDay, startHour, endDay, endHour, anchorStartDate, anchorEndDate },
+      { merge: true }
+    );
+    _payWeekSettings = { startDay, startHour, endDay, endHour, anchorStartDate, anchorEndDate };
     const btn = document.getElementById('di-pw-save-btn');
     if (btn) btn.style.display = 'none';
-    alert('Pay week schedule saved.');
+    alert(`Schedule saved.\nWeeks now run ${_PW_DAY_NAMES[startDay]} → ${_PW_DAY_NAMES[endDay]}.`);
   } catch(e) {
     alert('Failed to save: ' + e.message);
   }
@@ -9200,8 +9268,9 @@ async function psCompileWeeklyPaysheet(weekEnding) {
   }
 
   renderPSLoadList();
+  try { renderDiWeekCompile(); } catch(_) {}
   const crewSummary = Object.entries(crews).map(([k, d]) => `  • Crew ${k}: ${d.header.crewName || '(unnamed)'}`).join('\n');
-  alert(`Weekly summary compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''} (crews 1–${_maxCrewFromData}).\n\n${savedCount} crew paysheet${savedCount !== 1 ? 's' : ''} saved:\n${crewSummary}\n\nOpen the Load tab and click "Load" on each crew's paysheet to fill it out.`);
+  alert(`Weekly summary compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''} (crews 1–${_maxCrewFromData}).\n\n${savedCount} crew paysheet${savedCount !== 1 ? 's' : ''} saved:\n${crewSummary}`);
 }
 
 /** Create a blank supplemental weekly paysheet for an already-compiled week and load it. */
