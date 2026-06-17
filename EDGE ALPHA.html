@@ -536,6 +536,23 @@
       </div>
     </div>
 
+    <!-- Labor Code Control Number -->
+    <div id="lc-control-wrap" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
+      <span style="font-size:.85rem;font-weight:600;color:var(--muted);white-space:nowrap;">Labor Code Remaining</span>
+      <select id="lc-control-select" class="fi" style="min-width:220px;flex:1;max-width:340px;" onchange="renderLaborCodeControl()">
+        <option value="">— Select a labor code —</option>
+      </select>
+      <div id="lc-control-result" style="display:none;align-items:baseline;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:.8rem;color:var(--muted);">Budget:</span>
+        <span id="lc-ctrl-budget" style="font-size:.9rem;font-weight:600;"></span>
+        <span style="font-size:.8rem;color:var(--muted);margin-left:8px;">Paid:</span>
+        <span id="lc-ctrl-paid" style="font-size:.9rem;font-weight:600;color:var(--yellow);"></span>
+        <span style="font-size:.8rem;color:var(--muted);margin-left:8px;">Remaining:</span>
+        <span id="lc-ctrl-remaining" style="font-size:1.15rem;font-weight:700;"></span>
+      </div>
+      <div id="lc-control-empty" style="font-size:.83rem;color:var(--muted);display:none;">No data for this code on the selected job.</div>
+    </div>
+
     <!-- Budget by Area -->
     <details id="area-budget-details" style="margin-bottom:24px;">
       <summary style="cursor:pointer;font-weight:600;font-size:.95rem;color:var(--green);padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;list-style:none;display:flex;align-items:center;gap:8px;">
@@ -3950,6 +3967,78 @@ function renderPayrollSummary() {
 
   // WO snapshot
   renderAreaBudget();
+  // Repopulate labor code dropdown for the current job
+  _lcControlPopulate(selectedFile);
+}
+
+function _lcControlPopulate(selectedFile) {
+  const sel = document.getElementById('lc-control-select');
+  if (!sel) return;
+  const allEntries = getPayrollEntries();
+  const allFiles   = getSavedCSVFiles();
+  const entries    = selectedFile ? allEntries.filter(e => e.csvFile === selectedFile) : allEntries;
+  const files      = selectedFile ? allFiles.filter(f => f.name === selectedFile) : allFiles;
+
+  // Collect codes that have budget or paid for this job scope
+  const activeCodes = new Set();
+  files.forEach(f => f.rows.forEach(r => { if (r.amount) activeCodes.add(getCodeGroup(String(r.costCode))); }));
+  entries.forEach(e => { if (e.costCode) activeCodes.add(String(e.costCode)); });
+
+  // Keep current selection if it's still valid
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— Select a labor code —</option>';
+  PAYROLL_GROUPS
+    .filter(g => activeCodes.has(g.code) && g.code !== '999')
+    .forEach(g => {
+      const opt = document.createElement('option');
+      opt.value = g.code;
+      opt.textContent = `${g.code} — ${g.description}`;
+      if (g.code === prev) opt.selected = true;
+      sel.appendChild(opt);
+    });
+
+  // Refresh the result display (keeps previous selection if still in list)
+  renderLaborCodeControl();
+}
+
+function renderLaborCodeControl() {
+  const sel    = document.getElementById('lc-control-select');
+  const result = document.getElementById('lc-control-result');
+  const empty  = document.getElementById('lc-control-empty');
+  if (!sel || !result || !empty) return;
+
+  const code         = sel.value;
+  const selectedFile = (document.getElementById('pr-filter-file') || {}).value || '';
+  if (!code) { result.style.display = 'none'; empty.style.display = 'none'; return; }
+
+  const allEntries = getPayrollEntries();
+  const allFiles   = getSavedCSVFiles();
+  const entries    = selectedFile ? allEntries.filter(e => e.csvFile === selectedFile) : allEntries;
+  const files      = selectedFile ? allFiles.filter(f => f.name === selectedFile) : allFiles;
+
+  // Budget: sum CSV rows that map to this group code
+  const budget = files.reduce((s, f) =>
+    s + f.rows.filter(r => getCodeGroup(String(r.costCode)) === code).reduce((ss, r) => ss + r.amount, 0), 0);
+
+  // Paid: sum payroll entries tagged with this exact group code
+  const paid = entries.filter(e => String(e.costCode) === code).reduce((s, e) => s + e.price, 0);
+
+  const remaining = budget - paid;
+  const hasData   = budget !== 0 || paid !== 0;
+
+  if (!hasData) {
+    result.style.display = 'none';
+    empty.style.display  = 'block';
+    return;
+  }
+
+  empty.style.display  = 'none';
+  result.style.display = 'flex';
+  document.getElementById('lc-ctrl-budget').textContent    = fm(budget);
+  document.getElementById('lc-ctrl-paid').textContent      = fm(paid);
+  const remEl = document.getElementById('lc-ctrl-remaining');
+  remEl.textContent = (remaining < 0 ? '-' : '') + fm(Math.abs(remaining));
+  remEl.style.color = remaining < 0 ? 'var(--red)' : 'var(--green)';
 }
 
 function exportPayrollCSV() {
