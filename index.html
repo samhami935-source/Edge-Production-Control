@@ -9096,53 +9096,45 @@ async function psCompileWeeklyPaysheet(weekEnding) {
     ? `${diInputs.length} daily input${diInputs.length !== 1 ? 's' : ''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy paysheet${legacyDailySheets.length !== 1 ? 's' : ''}` : ''}`
     : `${legacyDailySheets.length} legacy daily paysheet${legacyDailySheets.length !== 1 ? 's' : ''}`;
 
-  if (!confirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly summaries?\n\nEach daily input submission becomes its own crew tab — one paysheet per crew lead.\n(Any existing compiled paysheet for this week will be overwritten.)`)) return;
+  if (!confirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly summaries?\n\nOne paysheet tab per crew lead — all their entries across the week are combined.\n(Any existing compiled paysheet for this week will be overwritten.)`)) return;
 
-  const crews = {};
-  const _normEmp = name => (name || '').trim().replace(/\s+/g, ' ');
-  let crewIdx = 0;
+  // Group by crew lead name so all of a foreman's entries across multiple daily inputs
+  // land in one tab, regardless of how many submission docs there are.
+  const _normEmp  = name => (name || '').trim().replace(/\s+/g, ' ');
+  const _normName = name => (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
-  // ── New format: each daily input submission → one crew tab ──
-  // Sort oldest → newest so crew numbering is stable across recompiles
+  // crewByName[normalizedLeadName] = { leadName, foreman, areaMap, empSet }
+  const crewByName = {};
+  // Stable ordering: first appearance of each crew lead name (sorted by submittedAt)
+  const crewOrder  = [];
+
   const sortedInputs = [...diInputs].sort((a, b) => (a.submittedAt || '').localeCompare(b.submittedAt || ''));
   sortedInputs.forEach(p => {
     (p.crews || []).forEach(crew => {
-      crewIdx++;
-      const c       = crewIdx;
-      const areaMap = {};
-      const empSet  = new Set();
-      const header  = _psEmptyHeader();
-
-      header.foreman   = p.submittedBy || '';
-      header.crewName  = (crew.crewLeadName || '').trim();
-      // Fall back to first named employee if crew lead name was blank
-      if (!header.crewName) {
+      let leadName = (crew.crewLeadName || '').trim();
+      if (!leadName) {
         const firstEmp = (crew.entries || []).find(e => (e.employee || '').trim());
-        if (firstEmp) header.crewName = firstEmp.employee.trim();
+        if (firstEmp) leadName = firstEmp.employee.trim();
       }
-
+      const key = _normName(leadName) || ('_anon_' + crewOrder.length);
+      if (!crewByName[key]) {
+        crewByName[key] = { leadName, foreman: p.submittedBy || '', areaMap: {}, empSet: new Set() };
+        crewOrder.push(key);
+      }
+      const g = crewByName[key];
       (crew.entries || []).forEach(e => {
-        if (e.employee) empSet.add(_normEmp(e.employee));
+        if (e.employee) g.empSet.add(_normEmp(e.employee));
         if (e.area || e.costCode) {
-          const key = (e.area||'') + '|||' + (e.costCode||'');
-          if (!areaMap[key]) areaMap[key] = { area: e.area||'', costCode: e.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: '' };
-          if (!areaMap[key].notes && e.description) areaMap[key].notes = e.description;
+          const ak = (e.area||'') + '|||' + (e.costCode||'');
+          if (!g.areaMap[ak]) g.areaMap[ak] = { area: e.area||'', costCode: e.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: '' };
+          if (!g.areaMap[ak].notes && e.description) g.areaMap[ak].notes = e.description;
         }
         (e.extraEntries || []).forEach(ex => {
           if (!ex.costCode) return;
-          const exKey = (e.area||'') + '|||' + (ex.costCode||'');
-          if (!areaMap[exKey]) areaMap[exKey] = { area: e.area||'', costCode: ex.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: ex.description||'' };
+          const exk = (e.area||'') + '|||' + (ex.costCode||'');
+          if (!g.areaMap[exk]) g.areaMap[exk] = { area: e.area||'', costCode: ex.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: ex.description||'' };
         });
       });
-
-      if (!Object.keys(areaMap).length && !empSet.size) { crewIdx--; return; }
-
-      header.weekEnding = weekEnding;
-      header.foremanSig = '';
-      const rows   = _psPadRows(Object.values(areaMap));
-      const splits = [...empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
-      while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
-      crews[String(c)] = { header, rows, splits };
     });
   });
 
@@ -9150,28 +9142,41 @@ async function psCompileWeeklyPaysheet(weekEnding) {
   legacyDailySheets.forEach(p => {
     Object.entries(p.crews || {}).forEach(([, sc]) => {
       if (!sc) return;
-      crewIdx++;
-      const c       = crewIdx;
-      const areaMap = {};
-      const empSet  = new Set();
-      const header  = sc.header ? Object.assign(_psEmptyHeader(), sc.header, { foremanSig: '' }) : _psEmptyHeader();
+      const leadName = (sc.header && sc.header.crewName) ? sc.header.crewName.trim() : '';
+      const key = _normName(leadName) || ('_legacy_' + crewOrder.length);
+      if (!crewByName[key]) {
+        crewByName[key] = { leadName, foreman: (sc.header && sc.header.foreman) || '', areaMap: {}, empSet: new Set() };
+        crewOrder.push(key);
+      }
+      const g = crewByName[key];
       (sc.rows || []).forEach(r => {
         if (!r.area && !r.costCode) return;
-        const key = (r.area||'') + '|||' + (r.costCode||'');
-        if (!areaMap[key]) areaMap[key] = { area: r.area||'', costCode: r.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: '' };
-        areaMap[key].weAmount += parseFloat(r.weAmount) || 0;
-        areaMap[key].ptd      += parseFloat(r.ptd)      || 0;
-        if (!areaMap[key].notes && r.notes) areaMap[key].notes = r.notes;
+        const ak = (r.area||'') + '|||' + (r.costCode||'');
+        if (!g.areaMap[ak]) g.areaMap[ak] = { area: r.area||'', costCode: r.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: '' };
+        g.areaMap[ak].weAmount += parseFloat(r.weAmount) || 0;
+        g.areaMap[ak].ptd      += parseFloat(r.ptd)      || 0;
+        if (!g.areaMap[ak].notes && r.notes) g.areaMap[ak].notes = r.notes;
       });
-      (sc.splits || []).forEach(s => { if (s.employee) empSet.add(_normEmp(s.employee)); });
-      if (!Object.keys(areaMap).length && !empSet.size) { crewIdx--; return; }
-      header.weekEnding = weekEnding;
-      header.foremanSig = '';
-      const rows   = _psPadRows(Object.values(areaMap));
-      const splits = [...empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
-      while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
-      crews[String(c)] = { header, rows, splits };
+      (sc.splits || []).forEach(s => { if (s.employee) g.empSet.add(_normEmp(s.employee)); });
     });
+  });
+
+  // Build crews object: one tab per unique crew lead name
+  const crews = {};
+  crewOrder.forEach((key, i) => {
+    const g = crewByName[key];
+    if (!Object.keys(g.areaMap).length && !g.empSet.size) return;
+    const c      = i + 1;
+    const header = Object.assign(_psEmptyHeader(), {
+      crewName:   g.leadName,
+      foreman:    g.foreman,
+      weekEnding,
+      foremanSig: '',
+    });
+    const rows   = _psPadRows(Object.values(g.areaMap));
+    const splits = [...g.empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
+    while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
+    crews[String(c)] = { header, rows, splits };
   });
 
   if (!Object.keys(crews).length) { alert('No crew data found to compile.'); return; }
