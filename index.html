@@ -898,6 +898,30 @@
       </div>
     </div>
 
+    <!-- Margin erosion chart (shown when job is selected) -->
+    <div id="dash-margin-chart-wrap" style="display:none;margin-top:24px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:18px 20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+        <div>
+          <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;">Margin Trend</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:3px;">How approved burns erode margin over time</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:.8rem;">
+          <span style="color:var(--muted);">Threshold:</span>
+          <span id="dash-threshold-display" style="color:var(--accent);font-weight:700;min-width:38px;"></span>
+          <div id="dash-threshold-edit-wrap" style="display:none;align-items:center;gap:6px;">
+            <input id="dash-threshold-input" type="number" min="0" max="100" step="0.1" class="fi" style="width:68px;font-size:.8rem;padding:4px 8px;" onkeydown="if(event.key==='Enter')dashSaveMarginThreshold()" />
+            <button class="btn btn-sm" onclick="dashSaveMarginThreshold()" style="padding:4px 10px;font-size:.75rem;margin:0;">Save</button>
+            <button class="btn btn-sm" onclick="dashCancelThresholdEdit()" style="padding:4px 8px;font-size:.75rem;margin:0;background:transparent;border:1px solid var(--border);color:var(--muted);">✕</button>
+          </div>
+          <button id="dash-threshold-edit-btn" onclick="dashEditThreshold()" class="btn btn-sm" style="display:none;padding:4px 10px;font-size:.75rem;margin:0;">Edit</button>
+        </div>
+      </div>
+      <div id="dash-margin-no-contract" style="display:none;text-align:center;padding:40px 20px;color:var(--muted);font-size:.85rem;">Set a contract amount to enable the margin chart.</div>
+      <div id="dash-margin-chart-box" style="position:relative;height:220px;">
+        <canvas id="dash-margin-chart"></canvas>
+      </div>
+    </div>
+
     <!-- No job selected placeholder -->
     <div id="dash-no-job" style="text-align:center;padding:60px 20px;color:var(--muted);">
       <div style="font-size:2.5rem;margin-bottom:12px;">📊</div>
@@ -1917,6 +1941,7 @@ firebase.auth().onAuthStateChanged(async user => {
   document.getElementById('pending-screen').style.display = 'none';
   // Load all Firestore data before revealing the app (loading screen stays up during this)
   try { await loadAllData(); } catch(e) { console.error('Data load error:', e); }
+  dashLoadMarginThreshold().catch(() => {});
   document.getElementById('loading-screen').style.display = 'none';
   document.getElementById('app-screen').style.display     = 'block';
   updateUserPill();
@@ -3273,6 +3298,9 @@ function dashRenderJobCards(jobName) {
     marginPctEl.textContent = '—';
     marginPctEl.className   = 'value';
   }
+
+  // Margin trend chart
+  dashRenderMarginChart(jobName);
 }
 
 function dashRenderTable() {
@@ -3432,6 +3460,221 @@ async function dashVerifyPin() {
     errEl.textContent = 'Error verifying PIN: ' + e.message;
     errEl.style.display = '';
   }
+}
+
+// ═══════════════════════════
+//  MARGIN TREND CHART
+// ═══════════════════════════
+let _dashMarginChart    = null;
+let _dashMarginThreshold = 20; // default %, loaded from Firestore
+
+async function dashLoadMarginThreshold() {
+  try {
+    const snap = await db.collection('settings').doc('dashMarginThreshold').get();
+    if (snap.exists && snap.data().pct != null) _dashMarginThreshold = Number(snap.data().pct);
+  } catch(_) {}
+}
+
+function dashRenderMarginChart(jobName) {
+  const wrap = document.getElementById('dash-margin-chart-wrap');
+  if (!wrap) return;
+
+  const hasJob = !!jobName;
+  wrap.style.display = hasJob ? '' : 'none';
+  if (!hasJob) return;
+
+  // Threshold UI
+  const threshDisp = document.getElementById('dash-threshold-display');
+  if (threshDisp) threshDisp.textContent = _dashMarginThreshold.toFixed(1) + '%';
+  const editBtn = document.getElementById('dash-threshold-edit-btn');
+  if (editBtn) editBtn.style.display = canEditDashboard() ? '' : 'none';
+
+  const noContract = document.getElementById('dash-margin-no-contract');
+  const chartBox   = document.getElementById('dash-margin-chart-box');
+
+  // Data build
+  const totalBudget = dashGetTotalBudget(jobName);
+  const contract    = dashGetContract(jobName);
+  const contractAmt = contract ? (contract.contractAmount || 0) : 0;
+
+  if (contractAmt <= 0) {
+    if (noContract) noContract.style.display = '';
+    if (chartBox)   chartBox.style.display   = 'none';
+    if (_dashMarginChart) { _dashMarginChart.destroy(); _dashMarginChart = null; }
+    return;
+  }
+  if (noContract) noContract.style.display = 'none';
+  if (chartBox)   chartBox.style.display   = '';
+
+  const startingMargin = contractAmt - totalBudget;
+
+  // Approved, manually-submitted burns for this job only
+  const approvedBurns = (_cache.changeorders || [])
+    .filter(c => c.jobId === jobName &&
+                 c.workOrderNumber === '503 - Burn' &&
+                 c.status === 'approved' &&
+                 !c.autoCreatedFromBudget)
+    .slice().sort((a, b) => (a.reviewedAt || a.submittedAt || '').localeCompare(b.reviewedAt || b.submittedAt || ''));
+
+  // Build time-series points: [Start, ...events]
+  const points = [{
+    label: 'Start',
+    sublabel: 'Initial margin',
+    dateRaw: '',
+    margin: startingMargin,
+    pct: startingMargin / contractAmt * 100,
+  }];
+  let running = startingMargin;
+  approvedBurns.forEach(c => {
+    const corb = (_cache.corbudgets || []).find(b => b.changeOrderId === c.id);
+    const amt  = corb ? corbInternalAmount(corb) : (c.burnAmount || 0);
+    if (!amt) return;
+    running -= amt;
+    const dateRaw = c.reviewedAt || c.submittedAt || '';
+    points.push({
+      label: `Burn #${c.burnNumber || '?'}`,
+      sublabel: (c.description || '').trim() || '',
+      dateRaw,
+      amount: amt,
+      margin: running,
+      pct: running / contractAmt * 100,
+    });
+  });
+
+  const fmt = (iso) => {
+    if (!iso) return 'Start';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Los_Angeles' });
+  };
+  const labels = points.map((p, i) => i === 0 ? 'Start' : fmt(p.dateRaw));
+  const data   = points.map(p => parseFloat(p.pct.toFixed(2)));
+  const thr    = _dashMarginThreshold;
+
+  // Destroy previous chart instance before creating a new one
+  if (_dashMarginChart) { _dashMarginChart.destroy(); _dashMarginChart = null; }
+
+  const canvas = document.getElementById('dash-margin-chart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, 0, 0, 220);
+  grad.addColorStop(0, 'rgba(201,168,76,0.18)');
+  grad.addColorStop(1, 'rgba(201,168,76,0.0)');
+
+  _dashMarginChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Margin %',
+          data,
+          tension: 0.3,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          pointBackgroundColor: data.map(v => v >= thr ? '#22c55e' : '#ef4444'),
+          pointBorderColor: data.map(v => v >= thr ? '#22c55e' : '#ef4444'),
+          borderColor: '#c9a84c',
+          backgroundColor: grad,
+          fill: true,
+          segment: {
+            borderColor: (ctx2) => {
+              const y0 = ctx2.p0.parsed.y, y1 = ctx2.p1.parsed.y;
+              return (y0 >= thr && y1 >= thr) ? '#22c55e' : '#ef4444';
+            },
+          },
+          borderWidth: 2,
+        },
+        {
+          label: 'Threshold',
+          data: labels.map(() => thr),
+          borderColor: 'rgba(201,168,76,0.55)',
+          borderWidth: 1.5,
+          borderDash: [5, 4],
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(17,22,38,0.96)',
+          borderColor: 'rgba(201,168,76,0.3)',
+          borderWidth: 1,
+          titleColor: '#e2e8f0',
+          bodyColor: '#94a3b8',
+          padding: 12,
+          callbacks: {
+            title: (items) => {
+              const i = items[0].dataIndex;
+              if (i === 0) return 'Starting Margin';
+              return fmt(points[i].dateRaw);
+            },
+            label: (item) => {
+              if (item.datasetIndex === 1) return null; // hide threshold tooltip
+              const p = points[item.dataIndex];
+              const lines = [];
+              if (p.label !== 'Start') lines.push(`Event: ${p.label}${p.sublabel ? ' — ' + p.sublabel : ''}`);
+              if (p.amount) lines.push(`Pulled from margin: −${fm(p.amount)}`);
+              lines.push(`Margin: ${fm(p.margin)}  (${p.pct.toFixed(1)}%)`);
+              return lines;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#64748b', font: { size: 10 }, maxRotation: 0 },
+          grid:  { color: 'rgba(255,255,255,0.04)' },
+        },
+        y: {
+          ticks: {
+            color: '#64748b',
+            font: { size: 10 },
+            callback: v => v.toFixed(0) + '%',
+          },
+          grid: { color: 'rgba(255,255,255,0.06)' },
+        },
+      },
+    },
+  });
+}
+
+function dashEditThreshold() {
+  const inp  = document.getElementById('dash-threshold-input');
+  const wrap = document.getElementById('dash-threshold-edit-wrap');
+  const btn  = document.getElementById('dash-threshold-edit-btn');
+  if (!inp || !wrap) return;
+  inp.value = _dashMarginThreshold;
+  wrap.style.display = 'flex';
+  if (btn) btn.style.display = 'none';
+  inp.focus(); inp.select();
+}
+
+function dashCancelThresholdEdit() {
+  document.getElementById('dash-threshold-edit-wrap').style.display = 'none';
+  document.getElementById('dash-threshold-edit-btn').style.display  = '';
+}
+
+async function dashSaveMarginThreshold() {
+  const inp = document.getElementById('dash-threshold-input');
+  if (!inp) return;
+  const val = parseFloat(inp.value);
+  if (isNaN(val) || val < 0 || val > 100) { alert('Enter a percentage between 0 and 100.'); return; }
+  _dashMarginThreshold = val;
+  try { await db.collection('settings').doc('dashMarginThreshold').set({ pct: val, updatedAt: new Date().toISOString() }); } catch(_) {}
+  dashCancelThresholdEdit();
+  const disp = document.getElementById('dash-threshold-display');
+  if (disp) disp.textContent = val.toFixed(1) + '%';
+  // Re-render chart with new threshold
+  dashRenderMarginChart(_dashSelectedJob);
 }
 
 // ═══════════════════════════
