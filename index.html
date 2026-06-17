@@ -5078,7 +5078,7 @@ function diClearFilter(type) {
 function diClearEmployees() {
   if (!confirm('Clear all employee names for this crew?')) return;
   const crew = _diActiveCrew;
-  (_diData[crew] || []).forEach(r => { r.employee = ''; });
+  (_diData[crew] || []).forEach(r => { r.employee = ''; r.empNum = ''; });
   diRenderCrewTable();
   diAutoSaveDraft();
 }
