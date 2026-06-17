@@ -9096,64 +9096,65 @@ async function psCompileWeeklyPaysheet(weekEnding) {
     ? `${diInputs.length} daily input${diInputs.length !== 1 ? 's' : ''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy paysheet${legacyDailySheets.length !== 1 ? 's' : ''}` : ''}`
     : `${legacyDailySheets.length} legacy daily paysheet${legacyDailySheets.length !== 1 ? 's' : ''}`;
 
-  if (!confirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly summaries?\n\nThis creates one separate paysheet per crew with all areas/employees combined and ready for % Split, Amount, and signatures.\n(Any existing compiled paysheets for each crew this week will be overwritten.)`)) return;
+  if (!confirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly summaries?\n\nEach daily input submission becomes its own crew tab — one paysheet per crew lead.\n(Any existing compiled paysheet for this week will be overwritten.)`)) return;
 
   const crews = {};
+  const _normEmp = name => (name || '').trim().replace(/\s+/g, ' ');
+  let crewIdx = 0;
 
-  // Determine max crew number from actual data rather than UI tab count (_psCrewCount),
-  // so crews that aren't currently open as tabs still get compiled.
-  const _maxCrewFromData = Math.max(
-    1,
-    ...diInputs.flatMap(p => (p.crews || []).map(cr => cr.crewNum || 1)),
-    ...legacyDailySheets.flatMap(p => Object.keys(p.crews || {}).map(Number))
-  );
+  // ── New format: each daily input submission → one crew tab ──
+  // Sort oldest → newest so crew numbering is stable across recompiles
+  const sortedInputs = [...diInputs].sort((a, b) => (a.submittedAt || '').localeCompare(b.submittedAt || ''));
+  sortedInputs.forEach(p => {
+    (p.crews || []).forEach(crew => {
+      crewIdx++;
+      const c       = crewIdx;
+      const areaMap = {};
+      const empSet  = new Set();
+      const header  = _psEmptyHeader();
 
-  for (let c = 1; c <= _maxCrewFromData; c++) {
-    const areaMap = {};   // key: area|||code → aggregated row
-    const empSet  = new Set(); // normalized (trim + collapse spaces) names — ensures one row per person
-    const _normEmp = name => (name || '').trim().replace(/\s+/g, ' ');
-    let   header  = _psEmptyHeader();
+      header.foreman   = p.submittedBy || '';
+      header.crewName  = (crew.crewLeadName || '').trim();
+      // Fall back to first named employee if crew lead name was blank
+      if (!header.crewName) {
+        const firstEmp = (crew.entries || []).find(e => (e.employee || '').trim());
+        if (firstEmp) header.crewName = firstEmp.employee.trim();
+      }
 
-    // ── New format: daily input records (crews[].entries[]) ──
-    diInputs.forEach(p => {
-      (p.crews || []).forEach(crew => {
-        if (crew.crewNum !== c) return;
-        // Take crew lead name for header; fall back to first employee name
-        // so that old daily inputs without crewLeadName still get a useful tab label.
-        if (!header.crewName && crew.crewLeadName) {
-          header.crewName = crew.crewLeadName.trim();
+      (crew.entries || []).forEach(e => {
+        if (e.employee) empSet.add(_normEmp(e.employee));
+        if (e.area || e.costCode) {
+          const key = (e.area||'') + '|||' + (e.costCode||'');
+          if (!areaMap[key]) areaMap[key] = { area: e.area||'', costCode: e.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: '' };
+          if (!areaMap[key].notes && e.description) areaMap[key].notes = e.description;
         }
-        if (!header.foreman && p.submittedBy) header.foreman = p.submittedBy;
-        // If crewLeadName was blank, use the first named employee as the crew identifier
-        if (!header.crewName) {
-          const firstEmp = (crew.entries || []).find(e => (e.employee || '').trim());
-          if (firstEmp) header.crewName = firstEmp.employee.trim();
-        }
-        (crew.entries || []).forEach(e => {
-          if (e.employee) empSet.add(_normEmp(e.employee));
-          // Primary area + labor code
-          if (e.area || e.costCode) {
-            const key = (e.area||'') + '|||' + (e.costCode||'');
-            if (!areaMap[key]) areaMap[key] = { area: e.area||'', costCode: e.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: '' };
-            if (!areaMap[key].notes && e.description) areaMap[key].notes = e.description;
-          }
-          // Extra labor codes for the same area
-          (e.extraEntries || []).forEach(ex => {
-            if (!ex.costCode) return;
-            const exKey = (e.area||'') + '|||' + (ex.costCode||'');
-            if (!areaMap[exKey]) areaMap[exKey] = { area: e.area||'', costCode: ex.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: ex.description||'' };
-          });
+        (e.extraEntries || []).forEach(ex => {
+          if (!ex.costCode) return;
+          const exKey = (e.area||'') + '|||' + (ex.costCode||'');
+          if (!areaMap[exKey]) areaMap[exKey] = { area: e.area||'', costCode: ex.costCode||'', ptd: 0, weAmount: 0, pctComplete: '', notes: ex.description||'' };
         });
       });
-    });
 
-    // ── Legacy format: type='daily' paysheets (crews[c].rows + splits) ──
-    legacyDailySheets.forEach(p => {
-      const sc = p.crews && p.crews[String(c)];
+      if (!Object.keys(areaMap).length && !empSet.size) { crewIdx--; return; }
+
+      header.weekEnding = weekEnding;
+      header.foremanSig = '';
+      const rows   = _psPadRows(Object.values(areaMap));
+      const splits = [...empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
+      while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
+      crews[String(c)] = { header, rows, splits };
+    });
+  });
+
+  // ── Legacy format: type='daily' paysheets ──
+  legacyDailySheets.forEach(p => {
+    Object.entries(p.crews || {}).forEach(([, sc]) => {
       if (!sc) return;
-      if (!header.crewName && sc.header && sc.header.crewName) {
-        header = Object.assign(_psEmptyHeader(), sc.header, { foremanSig: '' });
-      }
+      crewIdx++;
+      const c       = crewIdx;
+      const areaMap = {};
+      const empSet  = new Set();
+      const header  = sc.header ? Object.assign(_psEmptyHeader(), sc.header, { foremanSig: '' }) : _psEmptyHeader();
       (sc.rows || []).forEach(r => {
         if (!r.area && !r.costCode) return;
         const key = (r.area||'') + '|||' + (r.costCode||'');
@@ -9163,23 +9164,15 @@ async function psCompileWeeklyPaysheet(weekEnding) {
         if (!areaMap[key].notes && r.notes) areaMap[key].notes = r.notes;
       });
       (sc.splits || []).forEach(s => { if (s.employee) empSet.add(_normEmp(s.employee)); });
+      if (!Object.keys(areaMap).length && !empSet.size) { crewIdx--; return; }
+      header.weekEnding = weekEnding;
+      header.foremanSig = '';
+      const rows   = _psPadRows(Object.values(areaMap));
+      const splits = [...empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
+      while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
+      crews[String(c)] = { header, rows, splits };
     });
-
-    // Skip crew if no data
-    if (!Object.keys(areaMap).length && !empSet.size) continue;
-
-    header.weekEnding = weekEnding;
-    header.foremanSig = ''; // signatures must be drawn manually after compilation
-
-    // Pad rows to a full page boundary so there are no jagged partial pages
-    const rows = _psPadRows(Object.values(areaMap));
-
-    // signatureData always starts empty — signatures must be drawn manually after compilation
-    const splits = [...empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
-    while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
-
-    crews[String(c)] = { header, rows, splits };
-  }
+  });
 
   if (!Object.keys(crews).length) { alert('No crew data found to compile.'); return; }
 
@@ -9215,8 +9208,8 @@ async function psCompileWeeklyPaysheet(weekEnding) {
 
   renderPSLoadList();
   try { renderDiWeekCompile(); } catch(_) {}
-  const crewSummary = Object.entries(crews).map(([k, d]) => `  • Crew ${k}: ${d.header.crewName || '(unnamed)'}`).join('\n');
-  alert(`Weekly summary compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''} (crews 1–${_maxCrewFromData}).\n\n${crewCount} crew${crewCount !== 1 ? 's' : ''} compiled into one paysheet:\n${crewSummary}`);
+  const crewSummary = Object.entries(crews).map(([k, d]) => `  • Tab ${k}: ${d.header.crewName || '(unnamed)'}`).join('\n');
+  alert(`Weekly summary compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''}.\n\n${crewCount} crew paysheet${crewCount !== 1 ? 's' : ''} saved — one tab per crew lead:\n${crewSummary}`);
 }
 
 /** Create a blank supplemental weekly paysheet for an already-compiled week and load it. */
