@@ -1993,8 +1993,8 @@ firebase.auth().onAuthStateChanged(async user => {
   // Load all Firestore data before revealing the app (loading screen stays up during this)
   try { await loadAllData(); } catch(e) { console.error('Data load error:', e); }
   dashLoadMarginThreshold().catch(() => {});
-  // One-time: convert any legacy combined weekly paysheets into per-foreman docs.
-  psSplitCombinedPaysheets().catch(() => {});
+  // One-time: regroup any older weekly paysheets into one-per-foreman (submitter).
+  psRegroupPaysheetsBySubmitter().catch(() => {});
   document.getElementById('loading-screen').style.display = 'none';
   document.getElementById('app-screen').style.display     = 'block';
   updateUserPill();
@@ -9593,16 +9593,16 @@ async function savePaysheetToCloud(silent, opts = {}) {
       const _psJob   = (_optsMeta && _optsMeta.job) || jobName;
       if (_oldWeek && _newWeek && _oldWeek !== _newWeek) {
         // Move ONLY this foreman's daily inputs:
-        //  • per-foreman doc → match this foreman's crew-lead key for the old week
-        //    (deterministic, only their inputs — never another foreman's),
+        //  • per-foreman doc → match this foreman's SUBMITTER email for the old
+        //    week (deterministic, only their inputs — never another foreman's),
         //  • else use the exact compiled source IDs,
         //  • else (legacy combined doc) fall back to job + old week.
-        const _fmKeyMove = (_optsMeta && _optsMeta.foremanKey) || '';
+        const _fmEmail = (_optsMeta && _optsMeta.foreman) || '';
         const _srcIds = (_optsMeta && Array.isArray(_optsMeta.sourceDailyInputIds) && _optsMeta.sourceDailyInputIds.length)
           ? _optsMeta.sourceDailyInputIds : null;
-        const _diToMove = _fmKeyMove
+        const _diToMove = _fmEmail
           ? (_cache.dailyInputs || []).filter(d => d.job === _psJob && d.weekEnding === _oldWeek &&
-              (d.crews || []).some(c => ((c.crewLeadName || '').trim().toLowerCase().replace(/\s+/g, ' ')) === _fmKeyMove))
+              (d.submittedBy || '').toLowerCase() === _fmEmail.toLowerCase())
           : _srcIds
             ? (_cache.dailyInputs || []).filter(d => _srcIds.includes(d.id))
             : (_cache.dailyInputs || []).filter(d => d.job === _psJob && d.weekEnding === _oldWeek);
@@ -9875,80 +9875,99 @@ async function psConfirmPullInputs() {
   }
 }
 
-// ─── One-time migration: split legacy COMBINED weekly docs into per-foreman docs ───
-// Older compiles stored every foreman in ONE document (crews:{1,2,3,...}). The
-// app now uses one separate document per foreman. This converts any combined doc
-// it finds. Idempotent (only targets docs with >1 crew) and create-before-delete
-// so nothing is lost if it's interrupted. Admin-triggered.
+// ─── One-time migration: regroup existing weekly paysheets BY SUBMITTER ───
+// Converts older shapes (one combined doc for the week, or one doc per crew lead)
+// into one document PER FOREMAN (submitter), with a tab per crew lead they
+// submitted. Idempotent (skips weeks already in per-submitter form), atomic per
+// week (create + delete in one batch, so nothing is lost if interrupted),
+// supplemental paysheets are left untouched. Admin-triggered.
 let _psSplitRan = false;
-async function psSplitCombinedPaysheets() {
+async function psRegroupPaysheetsBySubmitter() {
   if (!isAdmin() || _psSplitRan) return;
-  const combined = (_cache.paysheets || []).filter(p =>
-    p.type === 'weekly' && p.crews &&
-    Object.keys(p.crews).filter(k => /^\d+$/.test(k)).length > 1
+  const weekly = (_cache.paysheets || []).filter(p =>
+    p.type === 'weekly' && p.job && p.weekEnding &&
+    !p.isSupplemental && !(p.id && p.id.includes('_add_'))   // leave supplemental paysheets alone
   );
-  if (!combined.length) { _psSplitRan = true; return; }
+  if (!weekly.length) { _psSplitRan = true; return; }
 
-  // The dailyinput collection is normally loaded by a live listener, which may
-  // not have populated the cache yet — fetch it directly so per-foreman source
-  // ids are computed correctly.
-  let _diForSplit = _cache.dailyInputs;
-  if (!_diForSplit || !_diForSplit.length) {
-    try { const s = await db.collection('dailyinput').get(); _diForSplit = s.docs.map(d => d.data()); }
-    catch(_) { _diForSplit = []; }
+  // dailyinput may not be cached yet (live listener) — fetch directly for src ids.
+  let _diAll = _cache.dailyInputs;
+  if (!_diAll || !_diAll.length) {
+    try { const s = await db.collection('dailyinput').get(); _diAll = s.docs.map(d => d.data()); }
+    catch(_) { _diAll = []; }
   }
 
-  let created = 0, removed = 0;
-  for (const doc of combined) {
-    const job = doc.job, week = doc.weekEnding;
-    if (!job || !week) continue;
-    const crewKeys = Object.keys(doc.crews).filter(k => /^\d+$/.test(k));
+  const byJW = {};
+  weekly.forEach(p => { const k = p.job + '|||' + p.weekEnding; (byJW[k] = byJW[k] || []).push(p); });
+
+  let changed = 0;
+  for (const k of Object.keys(byJW)) {
+    const docs = byJW[k];
+    const ix = k.indexOf('|||');
+    const job = k.slice(0, ix), week = k.slice(ix + 3);
+
+    // Already per-submitter? Each doc tagged with a single submitter, no dup submitters.
+    const subs = docs.map(d => (d.foreman || '').toLowerCase());
+    const allTagged = docs.every(d => d.foreman && Object.keys(d.crews || {}).filter(ck => /^\d+$/.test(ck))
+      .every(ck => (((d.crews[ck].header || {}).foreman) || '').toLowerCase() === (d.foreman || '').toLowerCase()));
+    if (allTagged && new Set(subs).size === subs.length) continue;
+
+    // Gather all crews → group by submitter → dedup crew leads (keep the richer).
+    const bySub = {};
+    const richness = c => (c.rows || []).filter(r => r.area || r.costCode || r.weAmount).length + (c.splits || []).filter(s => s.employee).length;
+    docs.forEach(d => {
+      Object.keys(d.crews || {}).filter(ck => /^\d+$/.test(ck)).forEach(ck => {
+        const crew = d.crews[ck];
+        if (!crew) return;
+        const sub    = ((crew.header && crew.header.foreman) || d.foreman || d.savedBy || '').trim();
+        const subKey = sub.toLowerCase() || '_unknown_';
+        const leadName = (crew.header && (crew.header.crewName || '').trim()) || '';
+        const leadKey  = (leadName.toLowerCase().replace(/\s+/g, ' ')) || ('crew_' + ck);
+        const b = bySub[subKey] = bySub[subKey] || { foreman: sub, leads: {}, approvedAt: null, approvedBy: null };
+        if (!b.leads[leadKey] || richness(crew) > richness(b.leads[leadKey])) b.leads[leadKey] = crew;
+        if (crew.approvedAt) { b.approvedAt = crew.approvedAt; b.approvedBy = crew.approvedBy || null; }
+      });
+    });
+
     const newDocs = [];
-    for (const ck of crewKeys) {
-      const crew = doc.crews[ck];
-      if (!crew) continue;
-      const leadName = (crew.header && (crew.header.crewName || '').trim()) || '';
-      const key   = (leadName.toLowerCase().replace(/\s+/g, ' ')) || ('crew' + ck);
-      const docId = (job + '_' + week + '_' + key).replace(/[^\w-]/g, '_');
-      const srcIds = (_diForSplit || [])
-        .filter(d => d.job === job && (d.crews || []).some(c => ((c.crewLeadName || '').trim().toLowerCase().replace(/\s+/g, ' ')) === key))
-        .map(d => d.id);
+    Object.keys(bySub).forEach(subKey => {
+      const b = bySub[subKey];
+      const leadKeys = Object.keys(b.leads);
+      if (!leadKeys.length) return;
+      const crews = {}, crewNames = [];
+      leadKeys.forEach((lk, i) => {
+        const crew = b.leads[lk];
+        crew.header = Object.assign({}, crew.header || {}, { foreman: b.foreman, weekEnding: week });
+        crews[String(i + 1)] = crew;
+        crewNames.push((crew.header.crewName || '').trim() || ('Crew ' + (i + 1)));
+      });
+      const docId  = (job + '_' + week + '_' + subKey).replace(/[^\w-]/g, '_');
+      const srcIds = (_diAll || []).filter(di => di.job === job && (di.submittedBy || '').toLowerCase() === subKey).map(di => di.id);
       newDocs.push({
         id: docId, job, weekEnding: week, type: 'weekly',
-        foremanKey: key,
-        crewName:  leadName,
-        crewNames: [leadName || ('Crew ' + ck)],
-        crewCount: 1,
-        crews: { '1': crew },
-        sourceDailyInputIds: srcIds,
-        savedAt: doc.savedAt || new Date().toISOString(),
-        savedBy: doc.savedBy || 'migration',
-        ...(crew.approvedAt ? { approvedAt: crew.approvedAt, approvedBy: crew.approvedBy || null } : {}),
-        ...(doc.isSupplemental ? { isSupplemental: true } : {}),
+        foremanKey: subKey, foreman: b.foreman,
+        crewName: crewNames[0] || '', crewNames, crewCount: crewNames.length,
+        crews, sourceDailyInputIds: srcIds,
+        savedAt: new Date().toISOString(), savedBy: 'migration',
+        ...(b.approvedAt ? { approvedAt: b.approvedAt, approvedBy: b.approvedBy } : {}),
       });
-    }
+    });
     if (!newDocs.length) continue;
+
     try {
-      // Create the per-foreman docs first…
+      const newIds = new Set(newDocs.map(n => n.id));
       const batch = db.batch();
       newDocs.forEach(nd => batch.set(db.collection('paysheets').doc(nd.id), nd));
+      docs.filter(d => !newIds.has(d.id)).forEach(d => batch.delete(db.collection('paysheets').doc(d.id)));
       await batch.commit();
-      newDocs.forEach(nd => {
-        const i = _cache.paysheets.findIndex(p => p.id === nd.id);
-        if (i !== -1) _cache.paysheets[i] = nd; else _cache.paysheets.push(nd);
-        created++;
-      });
-      // …then delete the combined doc (unless a new id collided with it).
-      if (!newDocs.some(nd => nd.id === doc.id)) {
-        await db.collection('paysheets').doc(doc.id).delete();
-        _cache.paysheets = _cache.paysheets.filter(p => p.id !== doc.id);
-        removed++;
-      }
-    } catch (e) { console.error('psSplitCombinedPaysheets: failed for', doc.id, e); }
+      docs.forEach(d => { _cache.paysheets = _cache.paysheets.filter(p => p.id !== d.id); });
+      newDocs.forEach(nd => _cache.paysheets.push(nd));
+      changed += newDocs.length;
+    } catch (e) { console.error('psRegroupPaysheetsBySubmitter: failed for', k, e); }
   }
   _psSplitRan = true;
-  if (created) {
-    console.log(`psSplitCombinedPaysheets: created ${created} per-foreman docs, removed ${removed} combined docs`);
+  if (changed) {
+    console.log('psRegroupPaysheetsBySubmitter: rebuilt', changed, 'per-submitter paysheets');
     try { renderPSLoadList(); } catch(_) {}
     try { renderDiWeekCompile(); } catch(_) {}
     try { renderDiWeekSelect(); } catch(_) {}
@@ -10060,54 +10079,73 @@ async function psCompileWeeklyPaysheet(weekEnding) {
     _cache.paysheets = _cache.paysheets.filter(p => p.id !== old.id);
   }
 
-  // Build ONE SEPARATE weekly paysheet PER crew lead (foreman). Each is its own
-  // document, labeled with the foreman's name, so changing one foreman's date
-  // never affects another.
-  const nowIso  = new Date().toISOString();
-  const savedBy = _currentUser ? _currentUser.email : 'unknown';
-  const savedNames = [];
-
+  // Group the crew-lead tabs by the FOREMAN who submitted them, so each foreman
+  // gets ONE paysheet containing a tab per crew lead they submitted (merged
+  // across all their daily inputs for the week).
+  const byForeman = {}; // submitterKey -> { foreman, leadKeys: [] }
   for (const key of crewOrder) {
     const g = crewByName[key];
     if (!Object.keys(g.areaMap).length && !g.empSet.size) continue;
-    const header = Object.assign(_psEmptyHeader(), {
-      crewName:   g.leadName,
-      foreman:    g.foreman,
-      weekEnding,
-      foremanSig: '',
-    });
-    const rows   = _psPadRows(Object.values(g.areaMap));
-    const splits = [...g.empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
-    while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
+    const subKey = (g.foreman || '').trim().toLowerCase() || '_unknown_';
+    if (!byForeman[subKey]) byForeman[subKey] = { foreman: g.foreman || '', leadKeys: [] };
+    byForeman[subKey].leadKeys.push(key);
+  }
 
-    const docId = (activeJob + '_' + weekEnding + '_' + key).replace(/[^\w-]/g, '_');
+  const nowIso  = new Date().toISOString();
+  const savedBy = _currentUser ? _currentUser.email : 'unknown';
+  const savedSummary = [];
+
+  for (const subKey of Object.keys(byForeman)) {
+    const fm = byForeman[subKey];
+    const crews = {};
+    const crewNames = [];
+    const srcSet = new Set();
+    fm.leadKeys.forEach((key, i) => {
+      const g = crewByName[key];
+      const header = Object.assign(_psEmptyHeader(), {
+        crewName:   g.leadName,
+        foreman:    fm.foreman,
+        weekEnding,
+        foremanSig: '',
+      });
+      const rows   = _psPadRows(Object.values(g.areaMap));
+      const splits = [...g.empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
+      while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
+      crews[String(i + 1)] = { header, rows, splits };
+      crewNames.push(g.leadName || ('Crew ' + (i + 1)));
+      (g.srcIds || new Set()).forEach(id => srcSet.add(id));
+    });
+    if (!crewNames.length) continue;
+
+    const docId = (activeJob + '_' + weekEnding + '_' + subKey).replace(/[^\w-]/g, '_');
     const doc = {
       id:        docId,
       job:       activeJob,
       weekEnding,
       type:      'weekly',
-      foremanKey: key,                       // stable per-foreman id used by date-moves
-      crewName:  g.leadName,
-      crewNames: [g.leadName || 'Crew'],
-      crewCount: 1,
-      crews:     { '1': { header, rows, splits } },
-      // Daily inputs this foreman's paysheet was built from, so date-moves carry
-      // exactly the right inputs. Only the pay-week assignment moves.
-      sourceDailyInputIds: [...(g.srcIds || [])],
+      foremanKey: subKey,          // submitter-based stable id used by date-moves
+      foreman:   fm.foreman,       // submitter email — who this paysheet belongs to
+      crewName:  crewNames[0] || '',
+      crewNames,
+      crewCount: crewNames.length,
+      crews,
+      // Daily inputs this foreman submitted, so date-moves carry exactly their
+      // inputs. Only the pay-week assignment moves.
+      sourceDailyInputIds: [...srcSet],
       savedAt:   nowIso,
       savedBy,
     };
     await db.collection('paysheets').doc(docId).set(doc);
     const idx = _cache.paysheets.findIndex(p => p.id === docId);
     if (idx !== -1) _cache.paysheets[idx] = doc; else _cache.paysheets.push(doc);
-    savedNames.push(g.leadName || '(unnamed)');
+    savedSummary.push(`${fm.foreman || '(unknown foreman)'} — ${crewNames.length} tab${crewNames.length !== 1 ? 's' : ''}: ${crewNames.join(', ')}`);
   }
 
-  if (!savedNames.length) { alert('No crew data found to compile.'); return; }
+  if (!savedSummary.length) { alert('No crew data found to compile.'); return; }
 
   renderPSLoadList();
   try { renderDiWeekCompile(); } catch(_) {}
-  alert(`Weekly paysheets compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''}.\n\n${savedNames.length} separate foreman paysheet${savedNames.length !== 1 ? 's' : ''} created:\n${savedNames.map(n => '  • ' + n).join('\n')}`);
+  alert(`Weekly paysheets compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''}.\n\n${savedSummary.length} foreman paysheet${savedSummary.length !== 1 ? 's' : ''} (one per submitter):\n${savedSummary.map(s => '  • ' + s).join('\n')}`);
 }
 
 /** Create a blank supplemental weekly paysheet for an already-compiled week and load it. */
