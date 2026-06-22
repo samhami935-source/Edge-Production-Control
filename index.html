@@ -9480,7 +9480,7 @@ async function savePaysheetToCloud(silent, opts = {}) {
 
     // MOVE: now that the new doc is saved, remove the original so the paysheet
     // is relocated (not duplicated). Also clear its synced payroll entries so no
-    // orphans remain under the old doc id. Never touches dailyinput records.
+    // orphans remain under the old doc id.
     if (_movedFromDocId) {
       try { await db.collection('paysheets').doc(_movedFromDocId).delete(); } catch(_) {}
       _cache.paysheets = (_cache.paysheets || []).filter(p => p.id !== _movedFromDocId);
@@ -9492,6 +9492,27 @@ async function savePaysheetToCloud(silent, opts = {}) {
         _cache.payroll = (_cache.payroll || []).filter(e => e.sourceDocId !== _movedFromDocId);
         try { applyPayrollFilters(); } catch(_) {}
       }
+
+      // Re-file the daily inputs that belong to this paysheet's week so they
+      // follow the paysheet to the new week bucket. ONLY the pay-week ASSIGNMENT
+      // (weekEnding) changes — the original entry date/time (date, submittedAt,
+      // submittedTime) is left exactly as entered, so the Submission Log timestamp
+      // is unchanged. Matched by the paysheet's own job + original week.
+      const _oldWeek = (_optsMeta && _optsMeta.weekEnding) || '';
+      const _newWeek = weekEnd || '';
+      const _psJob   = (_optsMeta && _optsMeta.job) || jobName;
+      if (_oldWeek && _newWeek && _oldWeek !== _newWeek) {
+        const _diToMove = (_cache.dailyInputs || []).filter(d => d.job === _psJob && d.weekEnding === _oldWeek);
+        if (_diToMove.length) {
+          const _dib = db.batch();
+          _diToMove.forEach(d => _dib.update(db.collection('dailyinput').doc(d.id), { weekEnding: _newWeek }));
+          try {
+            await _dib.commit();
+            _diToMove.forEach(d => { d.weekEnding = _newWeek; }); // immediate cache update; live listener also reconciles
+          } catch(err) { console.warn('[paysheet move] daily-input re-file failed', err); }
+        }
+      }
+
       // Keep the loaded-paysheet context pointing at the moved doc.
       if (_psCurrentDocId === _movedFromDocId) _psCurrentDocId = docId;
       try { renderDiWeekSelect(); } catch(_) {}
