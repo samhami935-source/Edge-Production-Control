@@ -1763,6 +1763,16 @@ async function loadAllData() {
 function isAdmin()   { return _currentUserRole === 'admin'; }
 function isPM()      { return ['project_manager','vp_operations','operations_manager','estimating_manager'].includes(_currentUserRole); }
 function isForeman() { return ['foreman','pickup_foreman'].includes(_currentUserRole); }
+
+// A foreman "owns" a weekly paysheet if any of its crews was submitted under
+// their own login email (header.foreman). Used to show foremen only their own
+// paysheets in the lists. Admins/PMs are never restricted by this.
+function _psForemanOwnsPaysheet(p) {
+  if (!_currentUser || !p) return false;
+  const email = _currentUser.email;
+  const crews = p.crews || {};
+  return Object.keys(crews).some(k => crews[k] && crews[k].header && (crews[k].header.foreman || '') === email);
+}
 function isAccounting() { return _currentUserRole === 'accounting'; }
 function isVP()      { return _currentUserRole === 'vp_operations'; }
 function canEdit()   { return isAdmin() || isPM(); }
@@ -6361,6 +6371,8 @@ function renderDiWeekCompile() {
 
   const sheets = (_cache.paysheets || [])
     .filter(p => p.weekEnding === we && (!activeJob || p.job === activeJob))
+    // Foremen see only their own paysheets here; admins/PMs see all.
+    .filter(p => !isForeman() || _psForemanOwnsPaysheet(p))
     .sort((a, b) => (a.crewNum || 0) - (b.crewNum || 0) || (a.savedAt || '').localeCompare(b.savedAt || ''));
 
   if (!sheets.length) { psLog.style.display = 'none'; psLog.innerHTML = ''; return; }
@@ -10387,11 +10399,12 @@ function renderPSLoadList() {
   const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
 
   // Base paysheet list for the current user.
-  // Foremen only see their own daily paysheets + all compiled weekly summaries.
+  // Foremen only see their OWN paysheets — their own daily paysheets, plus only
+  // the weekly paysheets they submitted (not other foremen's).
   // Paysheets inside locked folders that the user cannot access are hidden.
   const all = (_cache.paysheets || [])
     .filter(p => !activeJob || (p.job || '') === activeJob)
-    .filter(p => !isForeman() || !_currentUser || (p.savedBy || '') === _currentUser.email || p.type === 'weekly')
+    .filter(p => !isForeman() || !_currentUser || (p.savedBy || '') === _currentUser.email || (p.type === 'weekly' && _psForemanOwnsPaysheet(p)))
     .filter(p => _canViewFolder(p.weekEnding || ''))
     .slice().sort((a,b) => (b.savedAt||'').localeCompare(a.savedAt||''));
 
