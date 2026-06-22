@@ -9413,17 +9413,29 @@ async function savePaysheetToCloud(silent, opts = {}) {
   // if the user switched job or week after loading, derive a fresh docId instead.
   const _optsMeta = opts.docId ? (_cache.paysheets||[]).find(p => p.id === opts.docId) : null;
   const _useOptsDocId = opts.docId && (!_optsMeta || (_optsMeta.job === jobName && _optsMeta.weekEnding === weekEnd));
+  // Preserve the compiled-doc naming scheme (job_week_weekly) when editing a
+  // compiled weekly paysheet, so changing the Week Ending derives the CANONICAL
+  // id for the target week. Without this, the save produced "job_week" (no
+  // suffix), which a later compile treats as a stray and deletes — making the
+  // edited paysheet disappear.
+  const _wkSuffix = (!isDailyType && opts.docId && /_weekly$/.test(opts.docId)) ? '_weekly' : '';
   const docId = _useOptsDocId
     ? opts.docId
     : isDailyType
       ? (opts.submissionId
           ? 'daily_' + opts.submissionId.replace(/[^\w-]/g, '_')
           : `daily_${(jobName + '_' + (opts.dailyDate || weekEnd) + '_' + Date.now()).replace(/[^\w-]/g, '_')}`)
-      : (jobName + '_' + weekEnd).replace(/[^\w-]/g, '_');
+      : (jobName + '_' + weekEnd + _wkSuffix).replace(/[^\w-]/g, '_');
+
+  // MOVE semantics: editing a loaded paysheet and changing its week/job derives a
+  // NEW docId. Remember the original so we can delete it after the new one saves,
+  // so the paysheet MOVES to the new week instead of leaving a stale copy behind.
+  const _movedFromDocId = (!isDailyType && opts.docId && _optsMeta && opts.docId !== docId) ? opts.docId : null;
 
   // Preserve approval fields — .set() is a full overwrite and would strip approvedAt/approvedBy,
-  // causing the paysheet to vanish from the Accounting tab.
-  const _existingCached = (_cache.paysheets || []).find(p => p.id === docId);
+  // causing the paysheet to vanish from the Accounting tab. On a move, carry them
+  // from the original doc (the new docId doesn't exist in cache yet).
+  const _existingCached = (_cache.paysheets || []).find(p => p.id === docId) || (_movedFromDocId ? _optsMeta : null);
   const crews = {};
   for (let c = 1; c <= _psCrewCount; c++) {
     crews[String(c)] = {
@@ -9460,6 +9472,27 @@ async function savePaysheetToCloud(silent, opts = {}) {
     const idx = _cache.paysheets.findIndex(p => p.id === docId);
     if (idx !== -1) _cache.paysheets[idx] = doc; else _cache.paysheets.push(doc);
     _psCurrentType = type;
+
+    // MOVE: now that the new doc is saved, remove the original so the paysheet
+    // is relocated (not duplicated). Also clear its synced payroll entries so no
+    // orphans remain under the old doc id. Never touches dailyinput records.
+    if (_movedFromDocId) {
+      try { await db.collection('paysheets').doc(_movedFromDocId).delete(); } catch(_) {}
+      _cache.paysheets = (_cache.paysheets || []).filter(p => p.id !== _movedFromDocId);
+      const _oldPay = (_cache.payroll || []).filter(e => e.sourceDocId === _movedFromDocId);
+      if (_oldPay.length) {
+        const _b = db.batch();
+        _oldPay.forEach(e => _b.delete(db.collection('payroll').doc(String(e.id))));
+        try { await _b.commit(); } catch(_) {}
+        _cache.payroll = (_cache.payroll || []).filter(e => e.sourceDocId !== _movedFromDocId);
+        try { applyPayrollFilters(); } catch(_) {}
+      }
+      // Keep the loaded-paysheet context pointing at the moved doc.
+      if (_psCurrentDocId === _movedFromDocId) _psCurrentDocId = docId;
+      try { renderDiWeekCompile(); } catch(_) {}
+      try { renderPSLoadList(); } catch(_) {}
+    }
+
     if (typeof diRenderLogRows === 'function') diRenderLogRows(); // refresh log so supplemental paysheets update
     if (!silent) alert(`Paysheet saved — "${jobName}" · Week Ending ${_fmtWeekDate(weekEnd)}`);
     return doc;
