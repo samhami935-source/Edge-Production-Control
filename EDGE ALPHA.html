@@ -7322,21 +7322,29 @@ function psUpdateTitle() {
     : `${type}`;
 }
 
-// Stable, readable-on-dark color derived from a foreman key (email or name),
-// so the same foreman is always the same color. Purely cosmetic.
-function _psTabColor(key) {
-  const s = (key || '').trim();
-  if (!s) return 'var(--green)';
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return `hsl(${h % 360}, 70%, 62%)`;
-}
+// Curated, well-separated, readable-on-dark palette for foreman/crew tabs.
+// Yellow/gold is intentionally excluded so tabs never clash with the gold
+// SELECTED-tab highlight.
+const _PS_TAB_PALETTE = ['#60a5fa','#f87171','#34d399','#a78bfa','#f472b6','#22d3ee','#fb923c','#4ade80','#e879f9','#2dd4bf','#fca5a5','#818cf8'];
 
 function psRenderCrewTabs() {
   const wrap = document.getElementById('ps-crew-tab-bar');
   if (!wrap) return;
   wrap.innerHTML = '';
   const _weeklyForemanView = isForeman() && _psCurrentType === 'weekly';
+
+  // Assign each distinct crew/foreman NAME its own palette color, in tab order,
+  // so two different foremen are always visually distinct (same name keeps its
+  // color). Keyed off the visible name — not the email — which is what tells
+  // foremen apart on screen.
+  const _colorByName = {};
+  let _colorIdx = 0;
+  const _tabColorFor = (name) => {
+    const k = (name || '').trim().toLowerCase();
+    if (!k) return _PS_TAB_PALETTE[0];
+    if (!(k in _colorByName)) _colorByName[k] = _PS_TAB_PALETTE[_colorIdx++ % _PS_TAB_PALETTE.length];
+    return _colorByName[k];
+  };
   for (let c=1; c<=_psCrewCount; c++) {
     // Foreman on weekly paysheet: only show their own crew tab(s)
     if (_weeklyForemanView && _currentUser && (_psState[c].header.foreman || '') !== _currentUser.email) continue;
@@ -7346,8 +7354,8 @@ function psRenderCrewTabs() {
     const tabLabel = (_diCrewLeadNames && _diCrewLeadNames[c] && _diCrewLeadNames[c].trim())
       ? _diCrewLeadNames[c].trim()
       : ((_psState[c].header.crewName && _psState[c].header.crewName.trim()) || `Crew ${c}`);
-    // Per-foreman color (stable from foreman email, else the visible label)
-    const _fmColor = _psTabColor((_psState[c].header.foreman || '').trim() || tabLabel);
+    // Per-foreman color, keyed off the visible name so distinct foremen differ.
+    const _fmColor = _tabColorFor(tabLabel);
     const btn = document.createElement('button');
     btn.className = 'btn-sm' + (isActive ? '' : ' btn-outline');
     btn.style.cssText = isActive
