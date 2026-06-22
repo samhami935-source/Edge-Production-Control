@@ -20,8 +20,14 @@ exports.setUserPassword = functions.https.onCall(async (data, context) => {
   }
 
   // 2. Caller must be an admin (verified server-side against Firestore).
-  const callerSnap = await admin.firestore().collection('users').doc(context.auth.uid).get();
-  const callerRole = callerSnap.exists ? callerSnap.data().role : null;
+  let callerRole = null;
+  try {
+    const callerSnap = await admin.firestore().collection('users').doc(context.auth.uid).get();
+    callerRole = callerSnap.exists ? callerSnap.data().role : null;
+  } catch (e) {
+    console.error('setUserPassword: failed reading caller role', e);
+    throw new functions.https.HttpsError('internal', 'Could not verify your admin role: ' + e.message);
+  }
   if (callerRole !== 'admin') {
     throw new functions.https.HttpsError('permission-denied', 'Admin access required.');
   }
@@ -36,7 +42,21 @@ exports.setUserPassword = functions.https.onCall(async (data, context) => {
     );
   }
 
-  // 4. Set the password.
-  await admin.auth().updateUser(uid, { password: newPassword });
-  return { success: true };
+  // 4. Set the password — map Admin SDK auth errors to clear messages.
+  try {
+    await admin.auth().updateUser(uid, { password: newPassword });
+    return { success: true };
+  } catch (e) {
+    console.error('setUserPassword: updateUser failed for uid=' + uid, e);
+    if (e && e.code === 'auth/user-not-found') {
+      throw new functions.https.HttpsError(
+        'not-found',
+        'This account has no matching login (its user record may predate the auth account). Have them sign up once, or delete and recreate the account.'
+      );
+    }
+    if (e && e.code === 'auth/invalid-password') {
+      throw new functions.https.HttpsError('invalid-argument', 'Password rejected: must be at least 6 characters.');
+    }
+    throw new functions.https.HttpsError('internal', 'Could not set password: ' + (e.message || String(e)));
+  }
 });
