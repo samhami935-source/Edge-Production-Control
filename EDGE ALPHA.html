@@ -1386,6 +1386,27 @@
   </div>
 </div>
 
+<!-- Pull Daily Inputs Modal (admin: multiselect inputs to re-file into a paysheet's week) -->
+<div class="modal-overlay" id="ps-pull-modal" onclick="if(event.target===this)psPullClose()">
+  <div class="modal" style="width:640px;max-width:96vw;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <h2 style="margin:0;font-size:1.1rem;">⤵ Pull Daily Inputs</h2>
+      <button class="btn btn-outline" style="margin:0;padding:4px 12px;font-size:.82rem;" onclick="psPullClose()">✕ Close</button>
+    </div>
+    <p id="ps-pull-sub" style="margin-bottom:12px;"></p>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+      <button class="btn btn-outline" style="margin:0;padding:5px 12px;font-size:.8rem;" onclick="psPullToggleAll(true)">Select all</button>
+      <button class="btn btn-outline" style="margin:0;padding:5px 12px;font-size:.8rem;" onclick="psPullToggleAll(false)">Clear</button>
+      <span id="ps-pull-count" style="font-size:.8rem;color:var(--muted);margin-left:auto;"></span>
+    </div>
+    <div id="ps-pull-list" style="overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;display:flex;flex-direction:column;gap:6px;"></div>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="btn btn-outline" style="margin:0;" onclick="psPullClose()">Cancel</button>
+      <button class="btn" style="margin:0;background:var(--accent);color:#000;" onclick="psConfirmPullInputs()">Move selected</button>
+    </div>
+  </div>
+</div>
+
 <!-- Crew Sets Modal (save + load) -->
 <div class="modal-overlay" id="di-crewsets-modal" onclick="if(event.target===this)diCloseCrewSetsModal()">
   <div class="modal" style="width:500px;max-width:96vw;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;">
@@ -9689,7 +9710,9 @@ function _psInitSigCanvas(canvas) {
 // paysheet's week and records them as its source inputs so future date-changes
 // carry them. Only the pay-week ASSIGNMENT changes — original entry date/time is
 // never modified.
-async function psPullInputsToWeek(paysheetId) {
+let _psPullCtx = null; // { paysheetId, targetWeek, job, items:[dailyInputDoc,...] }
+
+function psPullInputsToWeek(paysheetId) {
   if (!isAdmin()) { alert('Admin access required.'); return; }
   const p = (_cache.paysheets || []).find(x => x.id === paysheetId);
   if (!p) { alert('Paysheet not found.'); return; }
@@ -9697,46 +9720,83 @@ async function psPullInputsToWeek(paysheetId) {
   const job        = p.job;
   if (!targetWeek || !job) { alert('This paysheet is missing a job or week.'); return; }
 
-  // Group this job's daily inputs that live under some OTHER week.
-  const byWeek = {};
-  (_cache.dailyInputs || []).forEach(d => {
-    if (d.job === job && d.weekEnding && d.weekEnding !== targetWeek) {
-      (byWeek[d.weekEnding] = byWeek[d.weekEnding] || []).push(d);
-    }
-  });
-  const weeks = Object.keys(byWeek).sort((a, b) => b.localeCompare(a));
-  if (!weeks.length) { alert(`No daily inputs for "${job}" found under any other week to pull in.`); return; }
+  // Candidate daily inputs: this job's inputs filed under some OTHER week.
+  const items = (_cache.dailyInputs || [])
+    .filter(d => d.job === job && d.weekEnding && d.weekEnding !== targetWeek)
+    .sort((a, b) => (b.weekEnding || '').localeCompare(a.weekEnding || '') || (b.submittedAt || '').localeCompare(a.submittedAt || ''));
+  if (!items.length) { alert(`No daily inputs for "${job}" found under any other week to pull in.`); return; }
 
-  let chosen;
-  if (weeks.length === 1) {
-    chosen = weeks[0];
-  } else {
-    const list = weeks.map((w, i) => `${i + 1}. ${_fmtWeekDate(w)} (${byWeek[w].length} input${byWeek[w].length !== 1 ? 's' : ''})`).join('\n');
-    const ans  = prompt(`Pull daily inputs for "${job}" into Week Ending ${_fmtWeekDate(targetWeek)}.\n\nWhich week are they currently filed under? Enter the number:\n\n${list}`);
-    if (ans == null) return;
-    const idx = parseInt(String(ans).trim(), 10) - 1;
-    if (isNaN(idx) || idx < 0 || idx >= weeks.length) { alert('Invalid selection.'); return; }
-    chosen = weeks[idx];
-  }
+  _psPullCtx = { paysheetId, targetWeek, job, items };
+  const sub = document.getElementById('ps-pull-sub');
+  if (sub) sub.innerHTML = `Select the daily inputs to move into <strong style="color:var(--accent);">${eh(_fmtWeekDate(targetWeek))}</strong> for "${eh(job)}". Original entry dates/times are kept — only the pay-week assignment changes.`;
+  psPullRenderList();
+  document.getElementById('ps-pull-modal').classList.add('open');
+}
 
-  const toMove = byWeek[chosen];
-  if (!confirm(`Move ${toMove.length} daily input${toMove.length !== 1 ? 's' : ''} for "${job}" from Week Ending ${_fmtWeekDate(chosen)} to ${_fmtWeekDate(targetWeek)}?\n\nOriginal entry dates/timestamps are NOT changed — only the pay-week assignment.`)) return;
+function psPullRenderList() {
+  const list = document.getElementById('ps-pull-list');
+  if (!list || !_psPullCtx) return;
+  list.innerHTML = _psPullCtx.items.map((d, i) => {
+    const dateStr  = d.date || (d.submittedAt ? d.submittedAt.slice(0, 10) : '');
+    const timeStr  = d.submittedTime || (d.submittedAt ? new Date(d.submittedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '');
+    const empCount = (d.crews || []).reduce((n, c) => n + (c.entries || []).filter(e => (e.employee || '').trim()).length, 0);
+    const leads    = (d.crews || []).map(c => (c.crewLeadName || '').trim()).filter(Boolean).join(', ');
+    return `<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:pointer;">
+      <input type="checkbox" class="ps-pull-cb" data-i="${i}" checked onchange="psPullUpdateCount()" style="width:16px;height:16px;flex:none;accent-color:var(--accent);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:.86rem;font-weight:600;">${eh(dateStr)} <span style="color:var(--muted);font-weight:400;">· ${eh(timeStr)}</span></div>
+        <div style="font-size:.76rem;color:var(--muted);">${leads ? eh(leads) + ' · ' : ''}${empCount} employee${empCount !== 1 ? 's' : ''} · currently ${eh(_fmtWeekDate(d.weekEnding))}</div>
+      </div>
+    </label>`;
+  }).join('');
+  psPullUpdateCount();
+}
+
+function psPullToggleAll(state) {
+  document.querySelectorAll('#ps-pull-list .ps-pull-cb').forEach(cb => { cb.checked = state; });
+  psPullUpdateCount();
+}
+
+function psPullUpdateCount() {
+  const n  = document.querySelectorAll('#ps-pull-list .ps-pull-cb:checked').length;
+  const el = document.getElementById('ps-pull-count');
+  if (el) el.textContent = `${n} selected`;
+}
+
+function psPullClose() {
+  const m = document.getElementById('ps-pull-modal');
+  if (m) m.classList.remove('open');
+  _psPullCtx = null;
+}
+
+async function psConfirmPullInputs() {
+  if (!isAdmin() || !_psPullCtx) return;
+  const { paysheetId, targetWeek, job, items } = _psPullCtx;
+  const sel = [...document.querySelectorAll('#ps-pull-list .ps-pull-cb:checked')]
+    .map(cb => items[parseInt(cb.dataset.i, 10)])
+    .filter(Boolean);
+  if (!sel.length) { alert('Select at least one daily input to move.'); return; }
+  if (!confirm(`Move ${sel.length} daily input${sel.length !== 1 ? 's' : ''} for "${job}" to Week Ending ${_fmtWeekDate(targetWeek)}?\n\nOriginal entry dates/timestamps are NOT changed — only the pay-week assignment.`)) return;
 
   try {
     const batch = db.batch();
-    toMove.forEach(d => batch.update(db.collection('dailyinput').doc(d.id), { weekEnding: targetWeek }));
+    sel.forEach(d => batch.update(db.collection('dailyinput').doc(d.id), { weekEnding: targetWeek }));
     await batch.commit();
-    toMove.forEach(d => { d.weekEnding = targetWeek; }); // immediate cache update; live listener also reconciles
+    sel.forEach(d => { d.weekEnding = targetWeek; }); // immediate cache update; live listener also reconciles
 
     // Record them as this paysheet's source inputs so future date-changes carry them.
-    const ids = [...new Set([...(p.sourceDailyInputIds || []), ...toMove.map(d => d.id)])];
-    await db.collection('paysheets').doc(paysheetId).update({ sourceDailyInputIds: ids });
-    p.sourceDailyInputIds = ids;
+    const p = (_cache.paysheets || []).find(x => x.id === paysheetId);
+    if (p) {
+      const ids = [...new Set([...(p.sourceDailyInputIds || []), ...sel.map(d => d.id)])];
+      await db.collection('paysheets').doc(paysheetId).update({ sourceDailyInputIds: ids });
+      p.sourceDailyInputIds = ids;
+    }
 
+    psPullClose();
     try { renderDiWeekSelect(); } catch(_) {}
     try { renderDiWeekCompile(); } catch(_) {}
     try { diRenderLogRows(); } catch(_) {}
-    alert(`Moved ${toMove.length} daily input${toMove.length !== 1 ? 's' : ''} to Week Ending ${_fmtWeekDate(targetWeek)}.`);
+    alert(`Moved ${sel.length} daily input${sel.length !== 1 ? 's' : ''} to Week Ending ${_fmtWeekDate(targetWeek)}.`);
   } catch(e) {
     alert('Pull failed: ' + e.message);
   }
