@@ -23,6 +23,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -1652,6 +1653,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db      = firebase.firestore();
 const storage = firebase.storage();
+const fns     = firebase.functions(); // Cloud Functions (admin-set-password)
 
 let _currentUserRole = null;
 let _currentUser     = null;
@@ -2041,7 +2043,7 @@ async function openUsersModal() {
         <td>
           ${u.uid===_currentUser.uid
             ? '<span style="color:var(--accent);font-size:.78rem;">You</span>'
-            : `<button class="btn-sm btn-danger" onclick="deleteUser('${u.uid}','${eh(u.email||u.uid)}')">Delete</button>`}
+            : `<button class="btn-sm" style="margin-right:6px;" onclick="adminSetPassword('${u.uid}','${eh(u.email||u.uid)}')">Set Password</button><button class="btn-sm btn-danger" onclick="deleteUser('${u.uid}','${eh(u.email||u.uid)}')">Delete</button>`}
         </td>
       </tr>`).join('');
     body.innerHTML = `<table class="users-table">
@@ -2050,6 +2052,26 @@ async function openUsersModal() {
     </table>`;
   } catch(e) {
     body.innerHTML = `<div style="color:var(--red);text-align:center;padding:20px;">Error: ${eh(e.message)}</div>`;
+  }
+}
+
+// Admin sets a user's password directly (no email link) via the setUserPassword
+// Cloud Function. The Admin SDK runs server-side because the browser SDK cannot
+// change another user's password. The function re-verifies admin role server-side.
+async function adminSetPassword(uid, email) {
+  if (!isAdmin()) { alert('Admin access required.'); return; }
+  const pw = prompt(`Set a NEW password for "${email}".\n\nEnter the new password (at least 6 characters):`);
+  if (pw == null) return;
+  if (pw.length < 6) { alert('Password must be at least 6 characters.'); return; }
+  const confirmPw = prompt('Re-enter the new password to confirm:');
+  if (confirmPw == null) return;
+  if (pw !== confirmPw) { alert('Passwords do not match. Nothing was changed.'); return; }
+  try {
+    const setPw = fns.httpsCallable('setUserPassword');
+    await setPw({ uid, newPassword: pw });
+    alert(`✅ Password updated for "${email}".\n\nThey can now sign in with the new password.`);
+  } catch(e) {
+    alert('Failed to set password: ' + (e.message || e) + '\n\nIf this mentions the function not being found, the Cloud Function still needs to be deployed.');
   }
 }
 
