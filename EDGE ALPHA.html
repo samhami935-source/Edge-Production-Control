@@ -7333,17 +7333,19 @@ function psRenderCrewTabs() {
   wrap.innerHTML = '';
   const _weeklyForemanView = isForeman() && _psCurrentType === 'weekly';
 
-  // Assign each distinct crew/foreman NAME its own palette color, in tab order,
-  // so two different foremen are always visually distinct (same name keeps its
-  // color). Keyed off the visible name — not the email — which is what tells
-  // foremen apart on screen.
-  const _colorByName = {};
+  // Assign each distinct FOREMAN its own palette color, in tab order, so the
+  // same foreman always shares one color across all their crews and different
+  // foremen are always visually distinct. Keyed off the foreman email (the
+  // foreman's identity); falls back to the visible name when no email is set.
+  // Sequential palette assignment avoids the hue-clustering that email hashing
+  // caused (shared @domain suffixes collided on the same color).
+  const _colorByForeman = {};
   let _colorIdx = 0;
-  const _tabColorFor = (name) => {
-    const k = (name || '').trim().toLowerCase();
+  const _tabColorFor = (key) => {
+    const k = (key || '').trim().toLowerCase();
     if (!k) return _PS_TAB_PALETTE[0];
-    if (!(k in _colorByName)) _colorByName[k] = _PS_TAB_PALETTE[_colorIdx++ % _PS_TAB_PALETTE.length];
-    return _colorByName[k];
+    if (!(k in _colorByForeman)) _colorByForeman[k] = _PS_TAB_PALETTE[_colorIdx++ % _PS_TAB_PALETTE.length];
+    return _colorByForeman[k];
   };
   for (let c=1; c<=_psCrewCount; c++) {
     // Foreman on weekly paysheet: only show their own crew tab(s)
@@ -7354,8 +7356,8 @@ function psRenderCrewTabs() {
     const tabLabel = (_diCrewLeadNames && _diCrewLeadNames[c] && _diCrewLeadNames[c].trim())
       ? _diCrewLeadNames[c].trim()
       : ((_psState[c].header.crewName && _psState[c].header.crewName.trim()) || `Crew ${c}`);
-    // Per-foreman color, keyed off the visible name so distinct foremen differ.
-    const _fmColor = _tabColorFor(tabLabel);
+    // Per-foreman color, keyed off the foreman email (falls back to the name).
+    const _fmColor = _tabColorFor((_psState[c].header.foreman || '').trim() || tabLabel);
     const btn = document.createElement('button');
     btn.className = 'btn-sm' + (isActive ? '' : ' btn-outline');
     btn.style.cssText = isActive
