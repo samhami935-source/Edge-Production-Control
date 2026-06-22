@@ -6330,7 +6330,7 @@ function renderDiWeekCompile() {
           <div style="font-size:.74rem;color:var(--muted);">Saved ${savedStr}${p.savedBy ? ' · ' + eh(p.savedBy) : ''}</div>
         </div>
         <button class="btn" style="font-size:.78rem;padding:5px 12px;white-space:nowrap;margin-top:0;" onclick="loadPaysheetFromCloud('${safeId}')">Load</button>
-        ${canManagePSFolders() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;white-space:nowrap;margin-top:0;color:var(--muted);border-color:var(--border);" onclick="psPullInputsToWeek('${safeId}')" title="Re-file daily inputs from another week into this paysheet's week (keeps original entry timestamps)">⤵ Pull inputs</button>` : ''}
+        ${isAdmin() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;white-space:nowrap;margin-top:0;color:var(--muted);border-color:var(--border);" onclick="psPullInputsToWeek('${safeId}')" title="Re-file daily inputs from another week into this paysheet's week (keeps original entry timestamps)">⤵ Pull inputs</button>` : ''}
         ${canManagePSFolders() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;border-color:#ef4444;color:#ef4444;white-space:nowrap;margin-top:0;" onclick="deleteSavedPaysheet('${safeId}',event)">Delete</button>` : ''}
       </div>`;
     }).join('');
@@ -9690,7 +9690,7 @@ function _psInitSigCanvas(canvas) {
 // carry them. Only the pay-week ASSIGNMENT changes — original entry date/time is
 // never modified.
 async function psPullInputsToWeek(paysheetId) {
-  if (!canManagePSFolders()) { alert('Admin access required.'); return; }
+  if (!isAdmin()) { alert('Admin access required.'); return; }
   const p = (_cache.paysheets || []).find(x => x.id === paysheetId);
   if (!p) { alert('Paysheet not found.'); return; }
   const targetWeek = p.weekEnding;
