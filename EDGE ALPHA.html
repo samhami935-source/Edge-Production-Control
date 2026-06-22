@@ -6379,9 +6379,12 @@ function renderDiWeekCompile() {
 
   psLog.style.display = '';
   psLog.innerHTML =
-    `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:var(--surface2);border-bottom:1px solid var(--border);">
+    `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 14px;background:var(--surface2);border-bottom:1px solid var(--border);">
       <span style="font-size:.76rem;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.06em;">★ Compiled Paysheets — Week Ending ${_fmtWeekDate(we)}</span>
-      <span style="font-size:.74rem;color:var(--muted);">${sheets.length} paysheet${sheets.length !== 1 ? 's' : ''}</span>
+      <span style="display:flex;align-items:center;gap:10px;">
+        ${!isForeman() ? `<button class="btn" style="font-size:.72rem;padding:4px 10px;margin:0;background:#1a56db;color:#fff;border:none;white-space:nowrap;" onclick="psExportCompiledWeekPDF('${we}')">⬇ Export all PDF</button>` : ''}
+        <span style="font-size:.74rem;color:var(--muted);">${sheets.length} paysheet${sheets.length !== 1 ? 's' : ''}</span>
+      </span>
     </div>` +
     sheets.map(p => {
       const savedStr   = p.savedAt ? new Date(p.savedAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) + ' ' + new Date(p.savedAt).toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' }) : '';
@@ -6405,6 +6408,7 @@ function renderDiWeekCompile() {
           <div style="font-size:.74rem;color:var(--muted);">Saved ${savedStr}${p.savedBy ? ' · ' + eh(p.savedBy) : ''}</div>
         </div>
         <button class="btn" style="font-size:.78rem;padding:5px 12px;white-space:nowrap;margin-top:0;" onclick="loadPaysheetFromCloud('${safeId}')">Load</button>
+        ${!isForeman() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;white-space:nowrap;margin-top:0;border-color:#1a56db;color:#60a5fa;" onclick="psExportOnePaysheetPDF('${safeId}')" title="Export this foreman's paysheet to PDF">⬇ PDF</button>` : ''}
         ${isAdmin() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;white-space:nowrap;margin-top:0;color:var(--muted);border-color:var(--border);" onclick="psPullInputsToWeek('${safeId}')" title="Re-file daily inputs from another week into this paysheet's week (keeps original entry timestamps)">⤵ Pull inputs</button>` : ''}
         ${canManagePSFolders() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;border-color:#ef4444;color:#ef4444;white-space:nowrap;margin-top:0;" onclick="deleteSavedPaysheet('${safeId}',event)">Delete</button>` : ''}
       </div>`;
@@ -8761,12 +8765,12 @@ function psExportPDF() {
 // Takes an array of paysheet docs and a filename label, renders each to a PDF
 // page and bundles them all into a downloaded ZIP.
 // Uses jsPDF native drawing — no html2canvas, no per-page delays.
-async function _psExportSheetsAsZip(sheets, zipLabel) {
-  if (typeof JSZip === 'undefined') { alert('ZIP library not loaded — please wait a moment and try again.'); return; }
+async function _psExportSheetsAsZip(sheets, zipLabel, asSinglePDF) {
+  if (!asSinglePDF && typeof JSZip === 'undefined') { alert('ZIP library not loaded — please wait a moment and try again.'); return; }
   if (typeof window.jspdf === 'undefined') { alert('PDF library not loaded — please wait a moment and try again.'); return; }
   if (!sheets.length) { alert('No paysheets found to export.'); return; }
 
-  _diShowToast('Generating ZIP…');
+  _diShowToast(asSinglePDF ? 'Generating PDF…' : 'Generating ZIP…');
   await new Promise(r => setTimeout(r, 30)); // let toast render
 
   const savedFiles = getSavedCSVFiles();
@@ -9002,6 +9006,34 @@ async function _psExportSheetsAsZip(sheets, zipLabel) {
     }
   }
 
+  const _hasPrintableCrew = (doc) => Object.keys(doc.crews || {})
+    .filter(k => /^\d+$/.test(k))
+    .some(k => {
+      const cd = doc.crews[k]; if (!cd) return false;
+      const rows   = (cd.rows   || []).filter(r => (r.area || r.costCode || r.weAmount || r.ptd) && (isAdmin() || r.costCode !== '999'));
+      const splits = (cd.splits || []).filter(s => s.employee);
+      return rows.length || splits.length;
+    });
+
+  // Single combined PDF mode — all sheets in one downloadable .pdf (no ZIP).
+  if (asSinglePDF) {
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+    let first = true, made = 0;
+    for (const doc of sheets) {
+      if (!_hasPrintableCrew(doc)) continue;
+      try {
+        if (!first) pdf.addPage();
+        buildDocPDF(doc, pdf);
+        made++; first = false;
+      } catch (e) { console.warn('PDF export skipped paysheet:', doc.id, e); }
+    }
+    if (!made) { alert('No exportable paysheet data found.'); return; }
+    const safeLabel = (zipLabel || 'Paysheets').replace(/[^a-zA-Z0-9 _,]/g, '').trim().replace(/\s+/g, '_');
+    pdf.save(safeLabel + '.pdf');
+    _diShowToast(`Exported ${made} paysheet${made !== 1 ? 's' : ''} to PDF`);
+    return;
+  }
+
   const zip = new JSZip();
   const _usedNames = {};
   let fileCount = 0, skipCount = 0;
@@ -9053,6 +9085,27 @@ async function psExportFolderZip(weekEnding) {
   const sheets    = (_cache.paysheets || []).filter(p => p.weekEnding === weekEnding && (!activeJob || p.job === activeJob));
   if (!sheets.length) { alert('No paysheets found for this folder.'); return; }
   await _psExportSheetsAsZip(sheets, _fmtWeekDate(weekEnding));
+}
+
+// Export ALL compiled weekly paysheets for a week into ONE combined PDF.
+async function psExportCompiledWeekPDF(weekEnding) {
+  if (!_canViewFolder(weekEnding)) { alert('This folder is locked. Request access from your manager to export it.'); return; }
+  const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
+  let sheets = (_cache.paysheets || []).filter(p =>
+    p.weekEnding === weekEnding && p.type === 'weekly' && (!activeJob || p.job === activeJob));
+  if (isForeman()) sheets = sheets.filter(p => _psForemanOwnsPaysheet(p)); // foremen export only their own
+  if (!sheets.length) { alert('No compiled paysheets to export for this week.'); return; }
+  const jobSlug = activeJob ? '_' + activeJob.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_') : '';
+  await _psExportSheetsAsZip(sheets, `Weekly_Paysheets${jobSlug}_${_fmtWeekDate(weekEnding)}`, true);
+}
+
+// Export a single foreman's compiled paysheet (all their crew tabs) to one PDF.
+async function psExportOnePaysheetPDF(docId) {
+  const p = (_cache.paysheets || []).find(x => x.id === docId);
+  if (!p) { alert('Paysheet not found.'); return; }
+  const jobSlug = (p.job || 'NoJob').replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
+  const who     = (p.foreman ? p.foreman.split('@')[0] : (p.crewName || 'foreman')).replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
+  await _psExportSheetsAsZip([p], `Weekly_${jobSlug}_${_fmtWeekDate(p.weekEnding)}_${who}`, true);
 }
 
 // ─── Submission Log PDF export ─────────────────────────────────────────────
