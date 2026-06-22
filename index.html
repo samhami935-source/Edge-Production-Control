@@ -1983,6 +1983,8 @@ firebase.auth().onAuthStateChanged(async user => {
   // Load all Firestore data before revealing the app (loading screen stays up during this)
   try { await loadAllData(); } catch(e) { console.error('Data load error:', e); }
   dashLoadMarginThreshold().catch(() => {});
+  // One-time: convert any legacy combined weekly paysheets into per-foreman docs.
+  psSplitCombinedPaysheets().catch(() => {});
   document.getElementById('loading-screen').style.display = 'none';
   document.getElementById('app-screen').style.display     = 'block';
   updateUserPill();
@@ -9480,11 +9482,11 @@ async function savePaysheetToCloud(silent, opts = {}) {
   // if the user switched job or week after loading, derive a fresh docId instead.
   const _optsMeta = opts.docId ? (_cache.paysheets||[]).find(p => p.id === opts.docId) : null;
   const _useOptsDocId = opts.docId && (!_optsMeta || (_optsMeta.job === jobName && _optsMeta.weekEnding === weekEnd));
-  // Preserve the compiled-doc naming scheme (job_week_weekly) when editing a
-  // compiled weekly paysheet, so changing the Week Ending derives the CANONICAL
-  // id for the target week. Without this, the save produced "job_week" (no
-  // suffix), which a later compile treats as a stray and deletes — making the
-  // edited paysheet disappear.
+  // Per-foreman weekly paysheets are keyed job_week_<foremanKey>. When editing
+  // one and changing the Week Ending, derive the SAME foreman's id for the new
+  // week so only that foreman moves. Legacy combined docs (no foremanKey) keep
+  // the older job_week_weekly scheme.
+  const _fmKey    = (!isDailyType && _optsMeta && _optsMeta.foremanKey) ? _optsMeta.foremanKey : '';
   const _wkSuffix = (!isDailyType && opts.docId && /_weekly$/.test(opts.docId)) ? '_weekly' : '';
   const docId = _useOptsDocId
     ? opts.docId
@@ -9492,12 +9494,24 @@ async function savePaysheetToCloud(silent, opts = {}) {
       ? (opts.submissionId
           ? 'daily_' + opts.submissionId.replace(/[^\w-]/g, '_')
           : `daily_${(jobName + '_' + (opts.dailyDate || weekEnd) + '_' + Date.now()).replace(/[^\w-]/g, '_')}`)
-      : (jobName + '_' + weekEnd + _wkSuffix).replace(/[^\w-]/g, '_');
+      : _fmKey
+        ? (jobName + '_' + weekEnd + '_' + _fmKey).replace(/[^\w-]/g, '_')
+        : (jobName + '_' + weekEnd + _wkSuffix).replace(/[^\w-]/g, '_');
 
   // MOVE semantics: editing a loaded paysheet and changing its week/job derives a
   // NEW docId. Remember the original so we can delete it after the new one saves,
   // so the paysheet MOVES to the new week instead of leaving a stale copy behind.
   const _movedFromDocId = (!isDailyType && opts.docId && _optsMeta && opts.docId !== docId) ? opts.docId : null;
+
+  // BLOCK + WARN: if moving onto a week that ALREADY has this foreman's paysheet,
+  // refuse rather than overwrite it (this was the data-loss bug).
+  if (_movedFromDocId && (_cache.paysheets || []).some(p => p.id === docId)) {
+    if (!silent) {
+      const _who = (_optsMeta && _optsMeta.crewName) || 'this foreman';
+      alert(`"${_who}" already has a paysheet for Week Ending ${_fmtWeekDate(weekEnd)}.\n\nMove blocked so it isn't overwritten. Delete or merge the existing one first if you really want to move this here.`);
+    }
+    return;
+  }
 
   // Preserve approval fields — .set() is a full overwrite and would strip approvedAt/approvedBy,
   // causing the paysheet to vanish from the Accounting tab. On a move, carry them
@@ -9566,13 +9580,20 @@ async function savePaysheetToCloud(silent, opts = {}) {
       const _newWeek = weekEnd || '';
       const _psJob   = (_optsMeta && _optsMeta.job) || jobName;
       if (_oldWeek && _newWeek && _oldWeek !== _newWeek) {
-        // Prefer the exact compiled source IDs (robust); fall back to job + old
-        // week for legacy paysheets compiled before source-ID tracking existed.
+        // Move ONLY this foreman's daily inputs:
+        //  • per-foreman doc → match this foreman's crew-lead key for the old week
+        //    (deterministic, only their inputs — never another foreman's),
+        //  • else use the exact compiled source IDs,
+        //  • else (legacy combined doc) fall back to job + old week.
+        const _fmKeyMove = (_optsMeta && _optsMeta.foremanKey) || '';
         const _srcIds = (_optsMeta && Array.isArray(_optsMeta.sourceDailyInputIds) && _optsMeta.sourceDailyInputIds.length)
           ? _optsMeta.sourceDailyInputIds : null;
-        const _diToMove = _srcIds
-          ? (_cache.dailyInputs || []).filter(d => _srcIds.includes(d.id))
-          : (_cache.dailyInputs || []).filter(d => d.job === _psJob && d.weekEnding === _oldWeek);
+        const _diToMove = _fmKeyMove
+          ? (_cache.dailyInputs || []).filter(d => d.job === _psJob && d.weekEnding === _oldWeek &&
+              (d.crews || []).some(c => ((c.crewLeadName || '').trim().toLowerCase().replace(/\s+/g, ' ')) === _fmKeyMove))
+          : _srcIds
+            ? (_cache.dailyInputs || []).filter(d => _srcIds.includes(d.id))
+            : (_cache.dailyInputs || []).filter(d => d.job === _psJob && d.weekEnding === _oldWeek);
         if (_diToMove.length) {
           const _dib = db.batch();
           _diToMove.forEach(d => _dib.update(db.collection('dailyinput').doc(d.id), { weekEnding: _newWeek }));
@@ -9842,6 +9863,86 @@ async function psConfirmPullInputs() {
   }
 }
 
+// ─── One-time migration: split legacy COMBINED weekly docs into per-foreman docs ───
+// Older compiles stored every foreman in ONE document (crews:{1,2,3,...}). The
+// app now uses one separate document per foreman. This converts any combined doc
+// it finds. Idempotent (only targets docs with >1 crew) and create-before-delete
+// so nothing is lost if it's interrupted. Admin-triggered.
+let _psSplitRan = false;
+async function psSplitCombinedPaysheets() {
+  if (!isAdmin() || _psSplitRan) return;
+  const combined = (_cache.paysheets || []).filter(p =>
+    p.type === 'weekly' && p.crews &&
+    Object.keys(p.crews).filter(k => /^\d+$/.test(k)).length > 1
+  );
+  if (!combined.length) { _psSplitRan = true; return; }
+
+  // The dailyinput collection is normally loaded by a live listener, which may
+  // not have populated the cache yet — fetch it directly so per-foreman source
+  // ids are computed correctly.
+  let _diForSplit = _cache.dailyInputs;
+  if (!_diForSplit || !_diForSplit.length) {
+    try { const s = await db.collection('dailyinput').get(); _diForSplit = s.docs.map(d => d.data()); }
+    catch(_) { _diForSplit = []; }
+  }
+
+  let created = 0, removed = 0;
+  for (const doc of combined) {
+    const job = doc.job, week = doc.weekEnding;
+    if (!job || !week) continue;
+    const crewKeys = Object.keys(doc.crews).filter(k => /^\d+$/.test(k));
+    const newDocs = [];
+    for (const ck of crewKeys) {
+      const crew = doc.crews[ck];
+      if (!crew) continue;
+      const leadName = (crew.header && (crew.header.crewName || '').trim()) || '';
+      const key   = (leadName.toLowerCase().replace(/\s+/g, ' ')) || ('crew' + ck);
+      const docId = (job + '_' + week + '_' + key).replace(/[^\w-]/g, '_');
+      const srcIds = (_diForSplit || [])
+        .filter(d => d.job === job && (d.crews || []).some(c => ((c.crewLeadName || '').trim().toLowerCase().replace(/\s+/g, ' ')) === key))
+        .map(d => d.id);
+      newDocs.push({
+        id: docId, job, weekEnding: week, type: 'weekly',
+        foremanKey: key,
+        crewName:  leadName,
+        crewNames: [leadName || ('Crew ' + ck)],
+        crewCount: 1,
+        crews: { '1': crew },
+        sourceDailyInputIds: srcIds,
+        savedAt: doc.savedAt || new Date().toISOString(),
+        savedBy: doc.savedBy || 'migration',
+        ...(crew.approvedAt ? { approvedAt: crew.approvedAt, approvedBy: crew.approvedBy || null } : {}),
+        ...(doc.isSupplemental ? { isSupplemental: true } : {}),
+      });
+    }
+    if (!newDocs.length) continue;
+    try {
+      // Create the per-foreman docs first…
+      const batch = db.batch();
+      newDocs.forEach(nd => batch.set(db.collection('paysheets').doc(nd.id), nd));
+      await batch.commit();
+      newDocs.forEach(nd => {
+        const i = _cache.paysheets.findIndex(p => p.id === nd.id);
+        if (i !== -1) _cache.paysheets[i] = nd; else _cache.paysheets.push(nd);
+        created++;
+      });
+      // …then delete the combined doc (unless a new id collided with it).
+      if (!newDocs.some(nd => nd.id === doc.id)) {
+        await db.collection('paysheets').doc(doc.id).delete();
+        _cache.paysheets = _cache.paysheets.filter(p => p.id !== doc.id);
+        removed++;
+      }
+    } catch (e) { console.error('psSplitCombinedPaysheets: failed for', doc.id, e); }
+  }
+  _psSplitRan = true;
+  if (created) {
+    console.log(`psSplitCombinedPaysheets: created ${created} per-foreman docs, removed ${removed} combined docs`);
+    try { renderPSLoadList(); } catch(_) {}
+    try { renderDiWeekCompile(); } catch(_) {}
+    try { renderDiWeekSelect(); } catch(_) {}
+  }
+}
+
 // ─── Compile Weekly Paysheet ───
 // Aggregates all daily inputs (and legacy daily paysheets) in a folder into one compiled paysheet per crew.
 async function psCompileWeeklyPaysheet(weekEnding) {
@@ -9868,7 +9969,7 @@ async function psCompileWeeklyPaysheet(weekEnding) {
     ? `${diInputs.length} daily input${diInputs.length !== 1 ? 's' : ''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy paysheet${legacyDailySheets.length !== 1 ? 's' : ''}` : ''}`
     : `${legacyDailySheets.length} legacy daily paysheet${legacyDailySheets.length !== 1 ? 's' : ''}`;
 
-  if (!confirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly summaries?\n\nOne paysheet tab per crew lead — all their entries across the week are combined.\n(Any existing compiled paysheet for this week will be overwritten.)`)) return;
+  if (!confirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly paysheets?\n\nOne SEPARATE paysheet per foreman/crew lead — each labeled with their name.\n(Any existing compiled paysheets for this week will be rebuilt.)`)) return;
 
   // Group by crew lead name so all of a foreman's entries across multiple daily inputs
   // land in one tab, regardless of how many submission docs there are.
@@ -9890,10 +9991,11 @@ async function psCompileWeeklyPaysheet(weekEnding) {
       }
       const key = _normName(leadName) || ('_anon_' + crewOrder.length);
       if (!crewByName[key]) {
-        crewByName[key] = { leadName, foreman: p.submittedBy || '', areaMap: {}, empSet: new Set() };
+        crewByName[key] = { leadName, foreman: p.submittedBy || '', areaMap: {}, empSet: new Set(), srcIds: new Set() };
         crewOrder.push(key);
       }
       const g = crewByName[key];
+      g.srcIds.add(p.id); // daily input that fed this foreman — carried on date-moves
       (crew.entries || []).forEach(e => {
         if (e.employee) g.empSet.add(_normEmp(e.employee));
         if (e.area || e.costCode) {
@@ -9917,7 +10019,7 @@ async function psCompileWeeklyPaysheet(weekEnding) {
       const leadName = (sc.header && sc.header.crewName) ? sc.header.crewName.trim() : '';
       const key = _normName(leadName) || ('_legacy_' + crewOrder.length);
       if (!crewByName[key]) {
-        crewByName[key] = { leadName, foreman: (sc.header && sc.header.foreman) || '', areaMap: {}, empSet: new Set() };
+        crewByName[key] = { leadName, foreman: (sc.header && sc.header.foreman) || '', areaMap: {}, empSet: new Set(), srcIds: new Set() };
         crewOrder.push(key);
       }
       const g = crewByName[key];
@@ -9933,12 +10035,29 @@ async function psCompileWeeklyPaysheet(weekEnding) {
     });
   });
 
-  // Build crews object: one tab per unique crew lead name
-  const crews = {};
-  crewOrder.forEach((key, i) => {
+  if (!_cache.paysheets) _cache.paysheets = [];
+
+  // Remove ALL existing weekly docs for this job+week (old combined doc AND any
+  // prior per-foreman docs) so a recompile is clean — then recreate one doc per
+  // foreman below.
+  const oldWeekly = (_cache.paysheets || []).filter(p =>
+    p.job === activeJob && p.weekEnding === weekEnding && p.type === 'weekly'
+  );
+  for (const old of oldWeekly) {
+    try { await db.collection('paysheets').doc(old.id).delete(); } catch(_) {}
+    _cache.paysheets = _cache.paysheets.filter(p => p.id !== old.id);
+  }
+
+  // Build ONE SEPARATE weekly paysheet PER crew lead (foreman). Each is its own
+  // document, labeled with the foreman's name, so changing one foreman's date
+  // never affects another.
+  const nowIso  = new Date().toISOString();
+  const savedBy = _currentUser ? _currentUser.email : 'unknown';
+  const savedNames = [];
+
+  for (const key of crewOrder) {
     const g = crewByName[key];
-    if (!Object.keys(g.areaMap).length && !g.empSet.size) return;
-    const c      = i + 1;
+    if (!Object.keys(g.areaMap).length && !g.empSet.size) continue;
     const header = Object.assign(_psEmptyHeader(), {
       crewName:   g.leadName,
       foreman:    g.foreman,
@@ -9948,49 +10067,35 @@ async function psCompileWeeklyPaysheet(weekEnding) {
     const rows   = _psPadRows(Object.values(g.areaMap));
     const splits = [...g.empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
     while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
-    crews[String(c)] = { header, rows, splits };
-  });
 
-  if (!Object.keys(crews).length) { alert('No crew data found to compile.'); return; }
-
-  if (!_cache.paysheets) _cache.paysheets = [];
-
-  const crewNames  = Object.entries(crews).map(([k, d]) => d.header.crewName || `Crew ${k}`);
-  const crewCount  = Object.keys(crews).length;
-  const combinedId = (activeJob + '_' + weekEnding + '_weekly').replace(/[^\w-]/g, '_');
-
-  // Delete any old per-crew docs for this week so they don't linger in the load list
-  const oldPerCrew = (_cache.paysheets || []).filter(p =>
-    p.job === activeJob && p.weekEnding === weekEnding && p.type === 'weekly' && p.id !== combinedId
-  );
-  for (const old of oldPerCrew) {
-    try { await db.collection('paysheets').doc(old.id).delete(); } catch(_) {}
-    _cache.paysheets = _cache.paysheets.filter(p => p.id !== old.id);
+    const docId = (activeJob + '_' + weekEnding + '_' + key).replace(/[^\w-]/g, '_');
+    const doc = {
+      id:        docId,
+      job:       activeJob,
+      weekEnding,
+      type:      'weekly',
+      foremanKey: key,                       // stable per-foreman id used by date-moves
+      crewName:  g.leadName,
+      crewNames: [g.leadName || 'Crew'],
+      crewCount: 1,
+      crews:     { '1': { header, rows, splits } },
+      // Daily inputs this foreman's paysheet was built from, so date-moves carry
+      // exactly the right inputs. Only the pay-week assignment moves.
+      sourceDailyInputIds: [...(g.srcIds || [])],
+      savedAt:   nowIso,
+      savedBy,
+    };
+    await db.collection('paysheets').doc(docId).set(doc);
+    const idx = _cache.paysheets.findIndex(p => p.id === docId);
+    if (idx !== -1) _cache.paysheets[idx] = doc; else _cache.paysheets.push(doc);
+    savedNames.push(g.leadName || '(unnamed)');
   }
 
-  const combinedDoc = {
-    id:       combinedId,
-    job:      activeJob,
-    weekEnding,
-    type:     'weekly',
-    crewCount,
-    crewNames,
-    // Record which daily inputs this paysheet was compiled from, so if its date
-    // is later changed those exact inputs follow it reliably (independent of the
-    // 300-row cache or week-matching). Only the pay-week assignment moves.
-    sourceDailyInputIds: diInputs.map(d => d.id),
-    savedAt:  new Date().toISOString(),
-    savedBy:  _currentUser ? _currentUser.email : 'unknown',
-    crews,
-  };
-  await db.collection('paysheets').doc(combinedId).set(combinedDoc);
-  const idx = _cache.paysheets.findIndex(p => p.id === combinedId);
-  if (idx !== -1) _cache.paysheets[idx] = combinedDoc; else _cache.paysheets.push(combinedDoc);
+  if (!savedNames.length) { alert('No crew data found to compile.'); return; }
 
   renderPSLoadList();
   try { renderDiWeekCompile(); } catch(_) {}
-  const crewSummary = Object.entries(crews).map(([k, d]) => `  • Tab ${k}: ${d.header.crewName || '(unnamed)'}`).join('\n');
-  alert(`Weekly summary compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''}.\n\n${crewCount} crew paysheet${crewCount !== 1 ? 's' : ''} saved — one tab per crew lead:\n${crewSummary}`);
+  alert(`Weekly paysheets compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''}.\n\n${savedNames.length} separate foreman paysheet${savedNames.length !== 1 ? 's' : ''} created:\n${savedNames.map(n => '  • ' + n).join('\n')}`);
 }
 
 /** Create a blank supplemental weekly paysheet for an already-compiled week and load it. */
