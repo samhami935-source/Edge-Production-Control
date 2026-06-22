@@ -7322,6 +7322,16 @@ function psUpdateTitle() {
     : `${type}`;
 }
 
+// Stable, readable-on-dark color derived from a foreman key (email or name),
+// so the same foreman is always the same color. Purely cosmetic.
+function _psTabColor(key) {
+  const s = (key || '').trim();
+  if (!s) return 'var(--green)';
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360}, 70%, 62%)`;
+}
+
 function psRenderCrewTabs() {
   const wrap = document.getElementById('ps-crew-tab-bar');
   if (!wrap) return;
@@ -7333,16 +7343,18 @@ function psRenderCrewTabs() {
     const hasData = _psState[c].rows.some(r => r.area || r.costCode || r.weAmount) ||
                     _psState[c].splits.some(s => s.employee || s.empNum);
     const isActive = c === _psActiveCrew;
+    const tabLabel = (_diCrewLeadNames && _diCrewLeadNames[c] && _diCrewLeadNames[c].trim())
+      ? _diCrewLeadNames[c].trim()
+      : ((_psState[c].header.crewName && _psState[c].header.crewName.trim()) || `Crew ${c}`);
+    // Per-foreman color (stable from foreman email, else the visible label)
+    const _fmColor = _psTabColor((_psState[c].header.foreman || '').trim() || tabLabel);
     const btn = document.createElement('button');
     btn.className = 'btn-sm' + (isActive ? '' : ' btn-outline');
     btn.style.cssText = isActive
       ? 'background:var(--accent);color:#000;border-color:var(--accent);font-weight:700;position:relative;'
-      : 'position:relative;' + (hasData ? 'border-color:var(--green);color:var(--green);' : '');
-    const tabLabel = (_diCrewLeadNames && _diCrewLeadNames[c] && _diCrewLeadNames[c].trim())
-      ? _diCrewLeadNames[c].trim()
-      : ((_psState[c].header.crewName && _psState[c].header.crewName.trim()) || `Crew ${c}`);
+      : 'position:relative;border-color:' + _fmColor + ';color:' + _fmColor + ';';
     btn.innerHTML = tabLabel + (hasData && !isActive
-      ? '<span style="position:absolute;top:3px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--green);"></span>'
+      ? '<span style="position:absolute;top:3px;right:4px;width:6px;height:6px;border-radius:50%;background:' + _fmColor + ';"></span>'
       : '');
     btn.onclick = () => psSwitchCrew(c);
     wrap.appendChild(btn);
@@ -7366,13 +7378,22 @@ function psRenderCrewTabs() {
         <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="psSaveWeeklySummaryForeman()">💾 Save My Entries</button>`;
     } else {
       // Management view: Edit + Export PDF + Approve + Save Paysheet
-      const _acctDoc      = _psCurrentDocId ? (_cache.paysheets||[]).find(p => p.id === _psCurrentDocId) : null;
-      const _acctApproved = _acctDoc && _acctDoc.approvedAt;
+      // Per-crew approval: read the ACTIVE crew's approval state from the loaded doc.
+      // Legacy docs (doc-level approvedAt, no per-crew flags) count as approved.
+      const _acctDoc   = _psCurrentDocId ? (_cache.paysheets||[]).find(p => p.id === _psCurrentDocId) : null;
+      const _crewObj   = _acctDoc && _acctDoc.crews ? _acctDoc.crews[String(_psActiveCrew)] : null;
+      const _anyCrewFlag = _acctDoc && _acctDoc.crews && Object.values(_acctDoc.crews).some(cr => cr && cr.approvedAt);
+      const _crewApprovedAt = (_crewObj && _crewObj.approvedAt)
+        || (_acctDoc && _acctDoc.approvedAt && !_anyCrewFlag ? _acctDoc.approvedAt : null);
+      const _apprDate = _crewApprovedAt ? new Date(_crewApprovedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
       const _approveBtn   = isAdmin()
-        ? (_acctApproved
-            ? `<span style="font-size:.78rem;color:var(--green);font-weight:700;white-space:nowrap;padding:0 4px;">✓ Approved ${new Date(_acctDoc.approvedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>`
+        ? (_crewApprovedAt
+            ? `<span style="font-size:.78rem;color:var(--green);font-weight:700;white-space:nowrap;padding:0 4px;">✓ Approved ${_apprDate}</span>
+               <button class="btn btn-outline" style="white-space:nowrap;font-size:.72rem;padding:4px 10px;color:var(--muted);border-color:var(--border);" onclick="psUnapprovePaysheet()">Un-approve</button>`
             : `<button class="btn" style="background:#1a56db;color:#fff;white-space:nowrap;border:none;" onclick="psApprovePaysheet()">✓ Approve for Accounting</button>`)
-        : '';
+        : (_crewApprovedAt
+            ? `<span style="font-size:.78rem;color:var(--green);font-weight:700;white-space:nowrap;padding:0 4px;">✓ Approved ${_apprDate}</span>`
+            : `<span style="font-size:.78rem;color:var(--muted);font-weight:600;white-space:nowrap;padding:0 4px;">Not approved</span>`);
       actWrap.innerHTML = `
         <span id="ps-autosave-status" style="font-size:.78rem;font-weight:600;white-space:nowrap;padding:0 4px;"></span>
         <button class="btn btn-outline" style="white-space:nowrap;color:var(--muted);border-color:var(--border);" onclick="openLoadPaysheetModal()" title="Load saved daily or weekly paysheets">📂 Saved Paysheets</button>
@@ -8210,45 +8231,111 @@ function psDeleteRow(i) {
   psUpdateTotal();
 }
 
-// ─── Admin: Approve weekly paysheet for Accounting tab ───
-async function psApprovePaysheet() {
+// ─── Admin: Approve a SINGLE crew's weekly paysheet for the Accounting tab ───
+// Approval is per-crew: each foreman/crew tab is approved on its own. The
+// doc-level approvedAt/approvedBy is kept as a derived "≥1 crew approved" flag
+// so the Accounting dropdowns (which filter on it) keep working unchanged.
+async function psApprovePaysheet(crew) {
   if (!isAdmin()) { alert('Admin access required to approve paysheets.'); return; }
   if (!_psCurrentDocId) { alert('No paysheet loaded. Load a saved weekly summary first.'); return; }
   if (_psCurrentType !== 'weekly') { alert('Only weekly summary paysheets can be approved for accounting.'); return; }
 
+  const c   = crew || _psActiveCrew;
   const doc = (_cache.paysheets||[]).find(p => p.id === _psCurrentDocId);
   if (!doc) { alert('Paysheet not found. Please save it to the cloud first.'); return; }
+  const crewObj = doc.crews && doc.crews[String(c)];
+  if (!crewObj) { alert('This crew tab has no saved data. Save the paysheet first.'); return; }
 
-  const jobName = doc.job      || '';
-  const weekEnd = doc.weekEnding || '';
-  if (!confirm(`Approve weekly summary for "${jobName}" — Week Ending ${_fmtWeekDate(weekEnd)} for Accounting?\n\nThis will:\n• Publish employee pay to the Accounting tab\n• Auto-create Payroll entries for each labor code\n\nYou can re-approve after editing to update payroll entries.`)) return;
+  const jobName   = doc.job      || '';
+  const weekEnd   = doc.weekEnding || '';
+  const crewLabel = (crewObj.header && (crewObj.header.crewName || '').trim()) || (`Crew ${c}`);
+  if (!confirm(`Approve the "${crewLabel}" paysheet for "${jobName}" — Week Ending ${_fmtWeekDate(weekEnd)} for Accounting?\n\nThis will:\n• Publish this crew's employee pay to the Accounting tab\n• Auto-create Payroll entries for this crew's labor codes\n\nOther crews are unaffected. You can re-approve after editing to update payroll entries.`)) return;
 
   const approvedAt = new Date().toISOString();
   const approvedBy = _currentUser ? _currentUser.email : 'unknown';
 
   try {
-    await db.collection('paysheets').doc(_psCurrentDocId).update({ approvedAt, approvedBy });
+    await db.collection('paysheets').doc(_psCurrentDocId).update({
+      [`crews.${c}.approvedAt`]: approvedAt,
+      [`crews.${c}.approvedBy`]: approvedBy,
+      approvedAt,                // doc-level derived: latest crew approval
+      approvedBy,
+    });
 
-    // Update local cache
-    const idx = (_cache.paysheets||[]).findIndex(p => p.id === _psCurrentDocId);
-    if (idx !== -1) {
-      _cache.paysheets[idx].approvedAt = approvedAt;
-      _cache.paysheets[idx].approvedBy = approvedBy;
-    }
+    // Update local cache (doc === _cache.paysheets[idx], same object reference)
+    if (!doc.crews) doc.crews = {};
+    if (!doc.crews[String(c)]) doc.crews[String(c)] = {};
+    doc.crews[String(c)].approvedAt = approvedAt;
+    doc.crews[String(c)].approvedBy = approvedBy;
+    doc.approvedAt = approvedAt;
+    doc.approvedBy = approvedBy;
 
-    // Sync W/E Earned amounts → Payroll entries (one per labor code row)
-    const approvedDoc = (_cache.paysheets||[]).find(p => p.id === _psCurrentDocId);
-    const syncCount   = await psApproveSync(approvedDoc);
+    // Sync W/E Earned amounts → Payroll entries for THIS crew only
+    const syncCount = await psApproveSync(doc, [c]);
 
     psRenderCrewTabs(); // re-render action buttons to show Approved status
     // Keep Accounting tab selects fresh so the approved week/job appears
     // immediately when the user switches tabs (avoids stale dropdown state).
     acctPopulateWeekSelect();
     acctPopulateJobSelect();
-    alert(`Paysheet approved.\n\n${syncCount} payroll entr${syncCount === 1 ? 'y' : 'ies'} created/updated in the Payroll tab.`);
+    alert(`"${crewLabel}" paysheet approved.\n\n${syncCount} payroll entr${syncCount === 1 ? 'y' : 'ies'} created/updated in the Payroll tab.`);
   } catch(e) {
     alert('Approval failed: ' + e.message);
   }
+}
+
+// ─── Admin: Un-approve a SINGLE crew's weekly paysheet ───
+// Clears the crew's approval and removes only that crew's payroll entries.
+async function psUnapprovePaysheet(crew) {
+  if (!isAdmin()) { alert('Admin access required.'); return; }
+  if (!_psCurrentDocId) return;
+  const c   = crew || _psActiveCrew;
+  const doc = (_cache.paysheets||[]).find(p => p.id === _psCurrentDocId);
+  if (!doc) return;
+  const crewObj   = doc.crews && doc.crews[String(c)];
+  const crewLabel = (crewObj && crewObj.header && (crewObj.header.crewName || '').trim()) || (`Crew ${c}`);
+  if (!confirm(`Un-approve the "${crewLabel}" paysheet?\n\nThis removes this crew's payroll entries from the Accounting tab. Other crews are unaffected.`)) return;
+
+  try {
+    // Clear this crew's approval in cache first so the doc-level flag can be recomputed.
+    if (crewObj) { crewObj.approvedAt = null; crewObj.approvedBy = null; }
+    const stillApproved = Object.values(doc.crews || {}).some(cr => cr && cr.approvedAt);
+
+    const update = {
+      [`crews.${c}.approvedAt`]: null,
+      [`crews.${c}.approvedBy`]: null,
+    };
+    if (!stillApproved) { update.approvedAt = null; update.approvedBy = null; }
+    await db.collection('paysheets').doc(_psCurrentDocId).update(update);
+    if (!stillApproved) { doc.approvedAt = null; doc.approvedBy = null; }
+
+    // Remove this crew's synced payroll entries.
+    await psRemoveCrewPayroll(doc.id, c);
+
+    psRenderCrewTabs();
+    acctPopulateWeekSelect();
+    acctPopulateJobSelect();
+    alert(`"${crewLabel}" paysheet un-approved.`);
+  } catch(e) {
+    alert('Un-approve failed: ' + e.message);
+  }
+}
+
+// Delete payroll entries belonging to one crew of a paysheet doc.
+// Matches by sourceCrew tag or the deterministic entry-ID prefix (legacy entries
+// have no sourceCrew but their ID is ps_<docId>_c<crew>_r<row>).
+async function psRemoveCrewPayroll(docId, crew) {
+  const prefix   = ('ps_' + docId + '_c' + crew + '_').replace(/[^\w-]/g, '_');
+  const belongs  = (e) => e.sourceDocId === docId && (e.sourceCrew === Number(crew) || String(e.id).startsWith(prefix));
+  const existing = _cache.payroll || [];
+  const toDelete = existing.filter(belongs);
+  if (!toDelete.length) return 0;
+  const batch = db.batch();
+  toDelete.forEach(e => batch.delete(db.collection('payroll').doc(String(e.id))));
+  await batch.commit();
+  _cache.payroll = existing.filter(e => !belongs(e));
+  try { applyPayrollFilters(); } catch(_) {}
+  return toDelete.length;
 }
 
 // ─── Budget lookup helper ───
@@ -8288,7 +8375,12 @@ function _prLookupBudget(jobName, area, costCode, description) {
 // from the CSV so Remaining/Budget columns display correctly.
 // Uses deterministic IDs so re-syncing always upserts — never duplicates.
 // Only touches entries tagged source='paysheet_sync' + sourceDocId=doc.id.
-async function psApproveSync(doc) {
+// Sync approved weekly-paysheet rows → Payroll entries, scoped per crew.
+//   targetCrews: array of crew numbers to (re)sync. If omitted, defaults to
+//   every approved crew (legacy docs with doc-level approvedAt but no per-crew
+//   flags → all crews). Only the target crews' payroll entries are touched;
+//   other crews' entries are left intact.
+async function psApproveSync(doc, targetCrews) {
   if (!doc) throw new Error('psApproveSync: no doc provided');
 
   const docId      = doc.id         || '';
@@ -8299,15 +8391,27 @@ async function psApproveSync(doc) {
   if (!jobName)    throw new Error('psApproveSync: paysheet has no job — select a job and save first');
   if (!weekEnding) throw new Error('psApproveSync: paysheet has no Week Ending — fill in the header and save first');
 
+  // Resolve which crews to (re)sync.
+  let crewList;
+  if (Array.isArray(targetCrews) && targetCrews.length) {
+    crewList = targetCrews.map(Number);
+  } else {
+    const keys         = Object.keys(doc.crews || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
+    const anyCrewFlag  = keys.some(k => doc.crews[String(k)] && doc.crews[String(k)].approvedAt);
+    crewList = anyCrewFlag
+      ? keys.filter(k => doc.crews[String(k)] && doc.crews[String(k)].approvedAt)  // only approved crews
+      : (doc.approvedAt ? keys : []);                                              // legacy: all crews
+  }
+
   const now     = new Date();
   const timeStr = now.toTimeString().slice(0, 5);
 
   // ── Build payroll entries — one per valid paysheet row ──
   const newEntries = [];
 
-  for (let c = 1; c <= _psCrewCount; c++) {
+  crewList.forEach(c => {
     const crew = doc.crews && doc.crews[String(c)];
-    if (!crew || !crew.rows) continue;
+    if (!crew || !crew.rows) return;
 
     crew.rows.forEach((row, i) => {
       const area     = (row.area     || '').trim();
@@ -8369,6 +8473,7 @@ async function psApproveSync(doc) {
         price:       weAmount, // W/E Earned → Amount Paid
         source:      'paysheet_sync',
         sourceDocId: docId,
+        sourceCrew:  Number(c),
         weekEnding,
       };
       if (isCOR && corBudgetId) {
@@ -8379,28 +8484,22 @@ async function psApproveSync(doc) {
       }
       newEntries.push(entry);
     });
-  }
+  });
 
-  // ── Nothing to post — no valid rows found ──
-  if (!newEntries.length) {
-    console.log('psApproveSync: no rows with area + labor code + W/E Earned in', docId);
-    // Still clean up any stale sync entries from a prior approval
-    const existing = _cache.payroll || [];
-    const toDelete  = existing.filter(e => e.sourceDocId === docId);
-    if (toDelete.length) {
-      const batch = db.batch();
-      toDelete.forEach(e => batch.delete(db.collection('payroll').doc(String(e.id))));
-      await batch.commit();
-      _cache.payroll = existing.filter(e => e.sourceDocId !== docId);
-      try { applyPayrollFilters(); } catch(_) {}
-    }
+  // ── Remove old sync entries for the TARGET crews only; keep everything else ──
+  // Match by sourceCrew tag or the deterministic entry-ID prefix (legacy entries
+  // have no sourceCrew). Other crews of this doc are left untouched.
+  const prefixes = crewList.map(c => ('ps_' + docId + '_c' + c + '_').replace(/[^\w-]/g, '_'));
+  const belongs  = (e) => e.sourceDocId === docId &&
+    (crewList.includes(Number(e.sourceCrew)) || prefixes.some(p => String(e.id).startsWith(p)));
+  const existing = _cache.payroll || [];
+  const toKeep   = existing.filter(e => !belongs(e));
+  const toDelete = existing.filter(e =>  belongs(e));
+
+  if (!newEntries.length && !toDelete.length) {
+    console.log('psApproveSync: nothing to sync/clean for', docId, 'crews', crewList);
     return 0;
   }
-
-  // ── Remove old sync entries for this paysheet, keep everything else ──
-  const existing = _cache.payroll || [];
-  const toKeep   = existing.filter(e => e.sourceDocId !== docId);
-  const toDelete = existing.filter(e => e.sourceDocId === docId);
 
   // ── Atomic batch write to Firestore ──
   const batch = db.batch();
@@ -9237,6 +9336,11 @@ async function psSaveWeeklySummaryForeman(silent = false) {
     });
 
     mergedCrews[String(c)] = { header: mergedHeader, rows: mergedRows, splits: mergedSplits };
+    // Preserve per-crew approval through foreman merge-saves.
+    if (existing.approvedAt) {
+      mergedCrews[String(c)].approvedAt = existing.approvedAt;
+      mergedCrews[String(c)].approvedBy = existing.approvedBy || null;
+    }
   }
 
   // Compose updated doc — preserve original savedBy/savedAt; add last-edit metadata
@@ -9307,6 +9411,9 @@ async function savePaysheetToCloud(silent, opts = {}) {
           : `daily_${(jobName + '_' + (opts.dailyDate || weekEnd) + '_' + Date.now()).replace(/[^\w-]/g, '_')}`)
       : (jobName + '_' + weekEnd).replace(/[^\w-]/g, '_');
 
+  // Preserve approval fields — .set() is a full overwrite and would strip approvedAt/approvedBy,
+  // causing the paysheet to vanish from the Accounting tab.
+  const _existingCached = (_cache.paysheets || []).find(p => p.id === docId);
   const crews = {};
   for (let c = 1; c <= _psCrewCount; c++) {
     crews[String(c)] = {
@@ -9314,10 +9421,13 @@ async function savePaysheetToCloud(silent, opts = {}) {
       rows:   _psState[c].rows.map(r => Object.assign({}, r)),
       splits: _psState[c].splits.map(s => Object.assign({}, s)),
     };
+    // Carry over per-crew approval so re-saving an approved crew doesn't reset it.
+    const _exCrew = _existingCached && _existingCached.crews && _existingCached.crews[String(c)];
+    if (_exCrew && _exCrew.approvedAt) {
+      crews[String(c)].approvedAt = _exCrew.approvedAt;
+      crews[String(c)].approvedBy = _exCrew.approvedBy || null;
+    }
   }
-  // Preserve approval fields — .set() is a full overwrite and would strip approvedAt/approvedBy,
-  // causing the paysheet to vanish from the Accounting tab.
-  const _existingCached = (_cache.paysheets || []).find(p => p.id === docId);
   const doc = {
     id: docId,
     job: jobName,
@@ -11156,11 +11266,15 @@ function acctGetData(weekEnding, jobFilter) {
     // Aggregate employees within this single job
     const empMap = new Map(); // lowercase name → { displayName, amount }
     docs.forEach(doc => {
+      // Per-crew approval: include only approved crews. Legacy docs (doc-level
+      // approvedAt, no per-crew flags) count all their crews as approved.
+      const _anyCrewFlag = Object.values(doc.crews || {}).some(cr => cr && cr.approvedAt);
       // Iterate every crew stored in the doc rather than relying on the
       // in-memory _psCrewCount which may not reflect this doc's crew count.
       Object.keys(doc.crews || {}).forEach(ck => {
         const crew = doc.crews[ck];
         if (!crew) return;
+        if (_anyCrewFlag ? !crew.approvedAt : !doc.approvedAt) return; // skip unapproved crews
         (crew.splits || []).forEach(s => {
           const name   = (s.employee || '').trim();
           const amount = parseFloat(s.amount) || 0;
