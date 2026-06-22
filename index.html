@@ -6243,11 +6243,16 @@ let _diLogDocs   = [];   // cached from real-time listener
 let _diLogUnsub  = null; // firestore unsubscribe handle
 let _diWeekFilter = '';  // currently selected pay-week ending date (YYYY-MM-DD), or '' for all
 
-// Populate the Pay Week dropdown from actual daily input data.
+// Populate the Pay Week dropdown from daily input data AND compiled weekly
+// paysheets, so a paysheet moved/edited to a week with no daily inputs of its
+// own still appears in the dropdown.
 function renderDiWeekSelect() {
   const sel = document.getElementById('di-week-select');
   if (!sel) return;
-  const weeks = [...new Set((_cache.dailyInputs || []).map(d => d.weekEnding).filter(Boolean))]
+  const weeks = [...new Set([
+    ...(_cache.dailyInputs || []).map(d => d.weekEnding),
+    ...(_cache.paysheets || []).filter(p => p.type === 'weekly').map(p => p.weekEnding),
+  ].filter(Boolean))]
     .sort((a, b) => b.localeCompare(a));
   const prev = sel.value;
   sel.innerHTML = '<option value="">— All weeks —</option>' +
@@ -9489,6 +9494,7 @@ async function savePaysheetToCloud(silent, opts = {}) {
       }
       // Keep the loaded-paysheet context pointing at the moved doc.
       if (_psCurrentDocId === _movedFromDocId) _psCurrentDocId = docId;
+      try { renderDiWeekSelect(); } catch(_) {}
       try { renderDiWeekCompile(); } catch(_) {}
       try { renderPSLoadList(); } catch(_) {}
     }
