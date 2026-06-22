@@ -2,7 +2,7 @@
   "name": "d9-edge-functions",
   "description": "Cloud Functions for D9 Edge (admin-set-password)",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "dependencies": {
