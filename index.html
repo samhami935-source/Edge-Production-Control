@@ -9232,7 +9232,10 @@ function psUpdateTotal() {
     pctEl.parentElement.style.color = pct > 100 ? '#ef4444' : pct >= 80 ? '#c9a84c' : '#333';
   });
   psRenderCrewTable();
-  psScheduleAutoSave();
+  // Route to the correct auto-save path by role: management → psScheduleAutoSave,
+  // foreman → psScheduleForemanAutoSave. (psScheduleAutoSave alone bails for
+  // foremen, so editing W/E amounts wasn't auto-saving for them.)
+  psScheduleAnyAutoSave();
 }
 
 function _psGetTotal() {
@@ -9613,6 +9616,9 @@ async function savePaysheetToCloud(silent, opts = {}) {
     ...(_existingCached && _existingCached.isSupplemental ? { isSupplemental: true } : {}),
     // Preserve the compiled source daily-input IDs so date-changes keep carrying them
     ...(_existingCached && _existingCached.sourceDailyInputIds ? { sourceDailyInputIds: _existingCached.sourceDailyInputIds } : {}),
+    // Preserve per-foreman identity so date-moves + ownership keep working after a re-save
+    ...(_existingCached && _existingCached.foremanKey ? { foremanKey: _existingCached.foremanKey } : {}),
+    ...(_existingCached && _existingCached.foreman    ? { foreman:    _existingCached.foreman } : {}),
   };
   try {
     await db.collection('paysheets').doc(docId).set(doc);
