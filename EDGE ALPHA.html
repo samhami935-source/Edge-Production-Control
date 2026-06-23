@@ -8765,9 +8765,49 @@ function psExportPDF() {
 // Takes an array of paysheet docs and a filename label, renders each to a PDF
 // page and bundles them all into a downloaded ZIP.
 // Uses jsPDF native drawing — no html2canvas, no per-page delays.
+// Persist the currently-open weekly paysheet's live edits before an export so the
+// PDF reflects exactly what's on screen — covers values typed but not yet flushed
+// by the 3s auto-save debounce. No-op when no weekly paysheet is open.
+async function _psFlushOpenPaysheet() {
+  if (!_psCurrentDocId || _psCurrentType !== 'weekly') return;
+  try {
+    if (isForeman()) await psSaveWeeklySummaryForeman(true);
+    else             await savePaysheetToCloud(true, { docId: _psCurrentDocId });
+  } catch (_) {}
+}
+
+// Re-pull each sheet fresh from Firestore right before export so the PDF includes
+// W/E Earned / split amounts a foreman saved — even if those were entered after
+// this session's cache loaded (e.g. on the foreman's own device). Falls back to
+// the in-memory copy on any read error so an export never fails outright.
+async function _psRefreshSheets(sheets) {
+  const out = [];
+  for (const s of sheets) {
+    if (!s || !s.id) { out.push(s); continue; }
+    try {
+      const snap = await db.collection('paysheets').doc(s.id).get();
+      if (snap.exists) {
+        const fresh = Object.assign({ id: s.id }, snap.data());
+        const idx = (_cache.paysheets || []).findIndex(p => p.id === s.id);
+        if (idx !== -1) _cache.paysheets[idx] = fresh;
+        out.push(fresh);
+        continue;
+      }
+    } catch (_) {}
+    out.push(s);
+  }
+  return out;
+}
+
 async function _psExportSheetsAsZip(sheets, zipLabel, asSinglePDF) {
   if (!asSinglePDF && typeof JSZip === 'undefined') { alert('ZIP library not loaded — please wait a moment and try again.'); return; }
   if (typeof window.jspdf === 'undefined') { alert('PDF library not loaded — please wait a moment and try again.'); return; }
+  if (!sheets.length) { alert('No paysheets found to export.'); return; }
+
+  // Make sure the export reflects the latest entries, not a stale cache:
+  // 1) flush any open paysheet's unsaved edits, 2) re-pull every sheet from Firestore.
+  await _psFlushOpenPaysheet();
+  sheets = await _psRefreshSheets(sheets);
   if (!sheets.length) { alert('No paysheets found to export.'); return; }
 
   _diShowToast(asSinglePDF ? 'Generating PDF…' : 'Generating ZIP…');
@@ -8934,7 +8974,14 @@ async function _psExportSheetsAsZip(sheets, zipLabel, asSinglePDF) {
         else if (jobName && row.area && row.costCode)
           budgetVal = psGetAreaCodeData(jobName, row.area, row.costCode).budget || 0;
 
-        const ptdVal  = (isCOR && corb) ? computeCorPaid(corb) : (parseFloat(row.ptd) || 0);
+        // PTD matches the on-screen render exactly: COR rows = live paid-to-date;
+        // regular WEEKLY rows = live lookup from daily inputs / payroll (not the
+        // unset row.ptd, which is only used for manually-entered DAILY rows).
+        const ptdVal  = (isCOR && corb)
+          ? computeCorPaid(corb)
+          : (!isDaily && jobName && row.area && row.costCode)
+            ? (psGetAreaCodeData(jobName, row.area, row.costCode).ptd || 0)
+            : (parseFloat(row.ptd) || 0);
         const weAmt   = parseFloat(row.weAmount) || 0;
         const rem     = budgetVal - ptdVal;
         const pct     = budgetVal > 0 ? ((ptdVal + weAmt) / budgetVal * 100) : 0;
