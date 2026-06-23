@@ -6776,7 +6776,7 @@ function _diPsLogDetailHTML(p) {
           ${rows.map(r => `<tr style="border-top:1px solid rgba(255,255,255,.04);">
             <td style="${tdStyle}">${eh(r.area||'—')}</td>
             <td style="${tdStyle}color:var(--muted);text-align:center;">${eh(r.costCode||'—')}</td>
-            <td style="${tdStyle}color:#22c55e;text-align:right;">$${(parseFloat(r.weAmount)||0).toFixed(2)}</td>
+            <td style="${tdStyle}color:#22c55e;text-align:right;">$${(parseFloat(r.weAmount)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
             <td style="${tdStyle}color:var(--muted);font-style:${r.notes?'normal':'italic'};">${eh(r.notes||'')}</td>
           </tr>`).join('')}
         </table>
@@ -7953,10 +7953,10 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
       <td style="border:1px solid #000;padding:2px 5px;">
         <div style="display:flex;align-items:center;gap:2px;">
           <span style="font-weight:700;">$</span>
-          <input type="text" inputmode="decimal" style="${n2}" value="${row.weAmount ? parseFloat(row.weAmount).toFixed(2) : ''}" placeholder="0.00"
+          <input type="text" inputmode="decimal" style="${n2}" value="${row.weAmount ? _psAmtComma(row.weAmount) : ''}" placeholder="0.00"
             onfocus="this.select()"
             oninput="_ps().rows[${i}].weAmount=this.value.replace(/[^0-9.]/g,'');psUpdateTotal()"
-            onblur="const v=parseFloat(this.value)||0;_ps().rows[${i}].weAmount=v||'';this.value=v?v.toFixed(2):'';" />
+            onblur="const v=parseFloat(this.value.replace(/,/g,''))||0;_ps().rows[${i}].weAmount=v||'';this.value=v?_psAmtComma(v):'';" />
         </div>
       </td>
       <td style="border:1px solid #000;padding:4px 8px;text-align:center;font-size:12px;font-weight:700;color:${pctColor};">
@@ -7980,10 +7980,10 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
     <td style="border:1px solid #000;padding:2px 5px;">
       <div style="display:flex;align-items:center;gap:2px;">
         <span style="font-weight:700;">$</span>
-        <input type="text" inputmode="decimal" style="${n}" value="${row.weAmount ? parseFloat(row.weAmount).toFixed(2) : ''}" placeholder="0.00"
+        <input type="text" inputmode="decimal" style="${n}" value="${row.weAmount ? _psAmtComma(row.weAmount) : ''}" placeholder="0.00"
           onfocus="this.select()"
           oninput="_ps().rows[${i}].weAmount=this.value.replace(/[^0-9.]/g,'');psUpdateTotal()"
-          onblur="const v=parseFloat(this.value)||0;_ps().rows[${i}].weAmount=v||'';this.value=v?v.toFixed(2):'';" />
+          onblur="const v=parseFloat(this.value.replace(/,/g,''))||0;_ps().rows[${i}].weAmount=v||'';this.value=v?_psAmtComma(v):'';" />
       </div>
     </td>
     <td style="border:1px solid #000;padding:4px 8px;text-align:center;font-size:12px;font-weight:700;color:${pctColor};">
@@ -9212,6 +9212,14 @@ function _psSetAutoSaveStatus(state) {
 }
 // ────────────────────────────────────────────────────────────────────────────
 
+// Format an amount with thousands separators for DISPLAY in the paysheet inputs.
+// Storage stays plain numeric (no commas) — oninput strips commas before saving —
+// so every calculation, save, PDF and accounting feature is unaffected.
+function _psAmtComma(v) {
+  const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+  return isFinite(n) ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+}
+
 function psUpdateTotal() {
   const total   = _ps().rows.reduce((s, r) => s + (parseFloat(r.weAmount) || 0), 0);
   const el      = document.getElementById('ps-total-display');
@@ -9249,7 +9257,7 @@ function psSplitPctChanged(i, val) {
   const amount = ((pct / 100) * total).toFixed(2);
   _ps().splits[i].amount = amount;
   const amtEl = document.getElementById('ps-split-amt-' + i);
-  if (amtEl) amtEl.value = amount;
+  if (amtEl) amtEl.value = _psAmtComma(amount);
   _psUpdateSplitTotalsDisplay();
   psScheduleAnyAutoSave();
 }
@@ -9261,7 +9269,7 @@ function _psRecalcSplitAmounts(total) {
     const pct    = parseFloat(s.pctSplit) || 0;
     s.amount     = ((pct / 100) * total).toFixed(2);
     const amtEl  = document.getElementById('ps-split-amt-' + i);
-    if (amtEl) amtEl.value = s.amount;
+    if (amtEl) amtEl.value = _psAmtComma(s.amount);
   });
   _psUpdateSplitTotalsDisplay();
 }
@@ -9336,8 +9344,9 @@ function psRenderCrewTable() {
       <td style="border:1px solid #000;padding:2px 5px;">
         <div style="display:flex;align-items:center;gap:2px;">
           <span style="font-weight:700;">$</span>
-          <input type="number" id="ps-split-amt-${i}" style="${inp}text-align:right;" value="${s.amount||''}" placeholder="0.00"
-            min="0" step="0.01" oninput="psSplitAmtChanged(${i},this.value)" />
+          <input type="text" inputmode="decimal" id="ps-split-amt-${i}" style="${inp}text-align:right;" value="${s.amount ? _psAmtComma(s.amount) : ''}" placeholder="0.00"
+            oninput="psSplitAmtChanged(${i},this.value.replace(/[^0-9.]/g,''))"
+            onblur="const v=parseFloat(this.value.replace(/,/g,''))||0;this.value=v?_psAmtComma(v):'';" />
         </div>
       </td>
       <td style="border:1px solid #000;padding:2px 4px;text-align:center;">
