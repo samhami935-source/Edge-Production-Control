@@ -6317,15 +6317,26 @@ let _diLogDocs   = [];   // cached from real-time listener
 let _diLogUnsub  = null; // firestore unsubscribe handle
 let _diWeekFilter = '';  // currently selected pay-week ending date (YYYY-MM-DD), or '' for all
 
+// Active job for paysheet scoping. Prefer the hidden ps-job-select (canonical),
+// but fall back to the visible ACTIVE JOB selector so scoping stays correct even
+// if the two ever get momentarily out of sync.
+function _psActiveJob() {
+  return (document.getElementById('ps-job-select') || {}).value
+      || (document.getElementById('di-job-select') || {}).value
+      || '';
+}
+
 // Populate the Pay Week dropdown from daily input data AND compiled weekly
 // paysheets, so a paysheet moved/edited to a week with no daily inputs of its
-// own still appears in the dropdown.
+// own still appears in the dropdown. Scoped to the ACTIVE JOB so weeks belonging
+// to other jobs don't appear while a job is selected.
 function renderDiWeekSelect() {
   const sel = document.getElementById('di-week-select');
   if (!sel) return;
+  const activeJob = _psActiveJob();
   const weeks = [...new Set([
-    ...(_cache.dailyInputs || []).map(d => d.weekEnding),
-    ...(_cache.paysheets || []).filter(p => p.type === 'weekly').map(p => p.weekEnding),
+    ...(_cache.dailyInputs || []).filter(d => !activeJob || d.job === activeJob).map(d => d.weekEnding),
+    ...(_cache.paysheets || []).filter(p => p.type === 'weekly' && (!activeJob || p.job === activeJob)).map(p => p.weekEnding),
   ].filter(Boolean))]
     .sort((a, b) => b.localeCompare(a));
   const prev = sel.value;
@@ -6348,14 +6359,14 @@ function renderDiWeekCompile() {
   if (isAdmin()) _renderPayWeekSettingsBody();
 
   const we        = _diWeekFilter;
-  const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
+  const activeJob = _psActiveJob();
 
   // ── Compile button ──
   if (!we || !canCompilePaysheet()) {
     wrap.style.display = 'none';
     wrap.innerHTML = '';
   } else {
-    const hasDone = (_cache.paysheets || []).some(p => p.type === 'weekly' && p.weekEnding === we && (!activeJob || p.job === activeJob));
+    const hasDone = !!activeJob && (_cache.paysheets || []).some(p => p.type === 'weekly' && p.weekEnding === we && p.job === activeJob);
     wrap.style.display = 'flex';
     wrap.innerHTML =
       `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">📋 Compile into Weekly Paysheet</button>` +
@@ -6370,8 +6381,10 @@ function renderDiWeekCompile() {
   if (!psLog) return;
   if (!we) { psLog.style.display = 'none'; psLog.innerHTML = ''; return; }
 
-  const sheets = (_cache.paysheets || [])
-    .filter(p => p.weekEnding === we && (!activeJob || p.job === activeJob))
+  // Scope strictly to the ACTIVE JOB: require an exact job match so other jobs'
+  // paysheets never leak in. With no active job selected, nothing is shown.
+  const sheets = !activeJob ? [] : (_cache.paysheets || [])
+    .filter(p => p.weekEnding === we && p.job === activeJob)
     // Foremen see only their own paysheets here; admins/PMs see all.
     .filter(p => !isForeman() || _psForemanOwnsPaysheet(p))
     .sort((a, b) => (a.crewNum || 0) - (b.crewNum || 0) || (a.savedAt || '').localeCompare(b.savedAt || ''));
@@ -7702,6 +7715,7 @@ function onJobChanged() {
   diSwitchJobData(jobName);
   // Update daily input
   diRenderCrewTable();
+  renderDiWeekSelect();  // re-scope the Pay Week dropdown to the new job's weeks
   diRenderLogRows(); // re-filter existing live data for the new job
   diLoadDraftIfExists();
   diUpdateLockState();
@@ -9222,9 +9236,11 @@ async function psExportFolderZip(weekEnding) {
 // Export ALL compiled weekly paysheets for a week into ONE combined PDF.
 async function psExportCompiledWeekPDF(weekEnding) {
   if (!_canViewFolder(weekEnding)) { alert('This folder is locked. Request access from your manager to export it.'); return; }
-  const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
+  // Scope strictly to the ACTIVE JOB so the export never includes other jobs.
+  const activeJob = _psActiveJob();
+  if (!activeJob) { alert('Select a job first — export is scoped to the active job.'); return; }
   let sheets = (_cache.paysheets || []).filter(p =>
-    p.weekEnding === weekEnding && p.type === 'weekly' && (!activeJob || p.job === activeJob));
+    p.weekEnding === weekEnding && p.type === 'weekly' && p.job === activeJob);
   if (isForeman()) sheets = sheets.filter(p => _psForemanOwnsPaysheet(p)); // foremen export only their own
   if (!sheets.length) { alert('No compiled paysheets to export for this week.'); return; }
   const jobSlug = activeJob ? '_' + activeJob.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_') : '';
