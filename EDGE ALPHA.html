@@ -1147,8 +1147,9 @@
 
         <!-- Daily Log -->
         <div style="margin-top:16px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
             <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Submission Log</div>
+            <div id="di-compile-selected-bar" style="display:none;align-items:center;gap:8px;"></div>
           </div>
           <div id="di-log-wrap" style="overflow-x:auto;position:relative;">
             <table style="min-width:700px;width:100%;border-collapse:collapse;font-size:.82rem;">
@@ -6397,6 +6398,9 @@ function renderDiWeekCompile() {
         ? p.crewNames.map(n => eh(n)).join(' · ')
         : (p.crewName ? eh(p.crewName) : '');
       const crewCount  = p.crewCount || (p.crewNames && p.crewNames.length) || (p.crewName ? 1 : '');
+      // Foreman label uses the REAL foreman field (submitter), not the crew string,
+      // so each paysheet is clearly tagged with whose it is.
+      const foremanLabel = p.foreman ? eh(p.foreman) : (p.crewName ? eh(p.crewName) : '');
       return `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid var(--border);flex-wrap:wrap;">
         <div style="flex:1;min-width:120px;">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
@@ -6404,7 +6408,8 @@ function renderDiWeekCompile() {
             <span style="font-weight:600;font-size:.88rem;">${eh(p.job || '')}</span>
             ${crewCount ? `<span style="font-size:.76rem;color:var(--muted);">${crewCount} crew${crewCount !== 1 ? 's' : ''}</span>` : ''}
           </div>
-          ${crewLine ? `<div style="font-size:.78rem;color:var(--accent);font-weight:600;margin-bottom:2px;">${crewLine}</div>` : ''}
+          ${foremanLabel ? `<div style="font-size:.82rem;color:var(--green);font-weight:700;margin-bottom:2px;">👤 ${foremanLabel}</div>` : ''}
+          ${crewLine ? `<div style="font-size:.74rem;color:var(--muted);font-weight:500;margin-bottom:2px;">Crews: ${crewLine}</div>` : ''}
           <div style="font-size:.74rem;color:var(--muted);">Saved ${savedStr}${p.savedBy ? ' · ' + eh(p.savedBy) : ''}</div>
         </div>
         <button class="btn" style="font-size:.78rem;padding:5px 12px;white-space:nowrap;margin-top:0;" onclick="loadPaysheetFromCloud('${safeId}')">Load</button>
@@ -6453,6 +6458,83 @@ function diLoadLog() {
 
 // Per-column filter state for submission log
 let _diLogFilters = { date:'', job:'', crew:'', foreman:'', empCount:'' };
+
+// Multi-select state for "Compile selected" — holds daily-input doc ids checked in
+// the submission log. Compiling these reuses the existing compile path (only the
+// source set is narrowed). Empty set ⇒ existing per-week compile is unchanged.
+let _diSelectedInputs = new Set();
+
+function diToggleSelectInput(id) {
+  if (_diSelectedInputs.has(id)) _diSelectedInputs.delete(id);
+  else _diSelectedInputs.add(id);
+  _renderCompileSelectedBar();
+}
+
+function diClearSelectedInputs() {
+  _diSelectedInputs.clear();
+  try { diRenderLogRows(); } catch(_) {}
+}
+
+function _renderCompileSelectedBar() {
+  const bar = document.getElementById('di-compile-selected-bar');
+  if (!bar) return;
+  const n = _diSelectedInputs.size;
+  if (n && canCompilePaysheet()) {
+    bar.style.display = 'flex';
+    bar.innerHTML =
+      `<button class="btn" style="margin:0;padding:5px 14px;font-size:.76rem;background:var(--green);color:#000;" onclick="psCompileSelectedInputs()">📋 Compile ${n} selected</button>
+       <button class="btn btn-outline" style="margin:0;padding:5px 10px;font-size:.76rem;" onclick="diClearSelectedInputs()">✕ Clear selection</button>`;
+  } else {
+    bar.style.display = 'none';
+    bar.innerHTML = '';
+  }
+}
+
+// Compile ONLY the selected submission-log daily inputs. Groups the selection by
+// job + week (never merges across jobs/weeks) and runs the SAME compile path once
+// per group, scoped to just those inputs. Other foremen's paysheets are untouched.
+async function psCompileSelectedInputs() {
+  if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can compile weekly paysheets.'); return; }
+  if (!_diSelectedInputs.size) { alert('Select one or more daily inputs in the Submission Log first.'); return; }
+
+  const inputs = (_cache.dailyInputs || []).filter(d => _diSelectedInputs.has(d.id));
+  if (!inputs.length) { alert('The selected daily inputs are no longer available. Refresh and try again.'); return; }
+
+  // Group by job + week so we never merge across jobs or weeks.
+  const groups = {};
+  inputs.forEach(d => {
+    const jb = d.job || '', wk = d.weekEnding || '';
+    if (!jb || !wk) return;
+    const key = jb + '|||' + wk;
+    (groups[key] = groups[key] || { job: jb, week: wk, ids: [] }).ids.push(d.id);
+  });
+  const groupKeys = Object.keys(groups);
+  if (!groupKeys.length) { alert('The selected inputs are missing a job or week and cannot be compiled.'); return; }
+
+  const groupDesc = groupKeys.map(k => {
+    const g = groups[k];
+    return `  • ${g.job} — Week Ending ${_fmtWeekDate(g.week)} (${g.ids.length} input${g.ids.length !== 1 ? 's' : ''})`;
+  }).join('\n');
+  const totalSel = inputs.length;
+  if (!confirm(`Compile ${totalSel} selected daily input${totalSel !== 1 ? 's' : ''} into weekly paysheets?\n\n${groupKeys.length} group${groupKeys.length !== 1 ? 's' : ''} (by job + week):\n${groupDesc}\n\nOne SEPARATE paysheet per foreman. Other foremen's paysheets for these weeks are left untouched.`)) return;
+
+  const summaries = [];
+  for (const k of groupKeys) {
+    const g = groups[k];
+    const res = await psCompileWeeklyPaysheet(g.week, { job: g.job, selectedIds: g.ids, skipConfirm: true, skipAlert: true });
+    if (Array.isArray(res) && res.length) {
+      summaries.push(`${g.job} — ${_fmtWeekDate(g.week)}:\n` + res.map(s => '   • ' + s).join('\n'));
+    }
+  }
+
+  diClearSelectedInputs();
+  renderPSLoadList();
+  try { renderDiWeekCompile(); } catch(_) {}
+  try { diRenderLogRows(); } catch(_) {}
+  alert(summaries.length
+    ? `Compiled selected inputs into weekly paysheets:\n\n${summaries.join('\n\n')}`
+    : 'No crew data found in the selected inputs to compile.');
+}
 
 function diRenderLogRows() {
   const tbody    = document.getElementById('di-log-tbody');
@@ -6609,7 +6691,8 @@ function diRenderLogRows() {
       return `<button class="btn-sm" onclick="loadPaysheetFromCloud('${docId.replace(/'/g,"\\'")}')" style="font-size:.72rem;padding:3px 8px;">${label}</button>`;
     }).join('');
     return `<tr style="border-top:1px solid var(--border);${rowBg}">
-      <td style="padding:4px 6px;width:28px;text-align:center;">
+      <td style="padding:4px 4px;white-space:nowrap;text-align:center;">
+        ${canCompilePaysheet() ? `<input type="checkbox" onclick="event.stopPropagation();diToggleSelectInput('${r.id.replace(/'/g,"\\'")}')" ${_diSelectedInputs.has(r.id)?'checked':''} title="Select to compile" style="cursor:pointer;vertical-align:middle;margin:0 3px 0 0;" />` : ''}
         <button onclick="diToggleLogDetail('${safeId}')" id="ditog_${safeId}"
           style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.78rem;padding:2px 5px;border-radius:3px;transition:transform .15s;transform:${isOpen?'rotate(90deg)':''}"
           title="Show details">▶</button>
@@ -6632,6 +6715,8 @@ function diRenderLogRows() {
 
   // Keep compile button in sync with current week selection
   try { renderDiWeekCompile(); } catch(_) {}
+  // Keep the "Compile selected" bar in sync with the current selection
+  try { _renderCompileSelectedBar(); } catch(_) {}
 }
 
 function diClearLogFilters() {
@@ -9612,7 +9697,7 @@ async function savePaysheetToCloud(silent, opts = {}) {
   // the older job_week_weekly scheme.
   const _fmKey    = (!isDailyType && _optsMeta && _optsMeta.foremanKey) ? _optsMeta.foremanKey : '';
   const _wkSuffix = (!isDailyType && opts.docId && /_weekly$/.test(opts.docId)) ? '_weekly' : '';
-  const docId = _useOptsDocId
+  let docId = _useOptsDocId
     ? opts.docId
     : isDailyType
       ? (opts.submissionId
@@ -9627,14 +9712,18 @@ async function savePaysheetToCloud(silent, opts = {}) {
   // so the paysheet MOVES to the new week instead of leaving a stale copy behind.
   const _movedFromDocId = (!isDailyType && opts.docId && _optsMeta && opts.docId !== docId) ? opts.docId : null;
 
-  // BLOCK + WARN: if moving onto a week that ALREADY has this foreman's paysheet,
-  // refuse rather than overwrite it (this was the data-loss bug).
-  if (_movedFromDocId && (_cache.paysheets || []).some(p => p.id === docId)) {
-    if (!silent) {
-      const _who = (_optsMeta && _optsMeta.crewName) || 'this foreman';
-      alert(`"${_who}" already has a paysheet for Week Ending ${_fmtWeekDate(weekEnd)}.\n\nMove blocked so it isn't overwritten. Delete or merge the existing one first if you really want to move this here.`);
+  // COEXIST, NEVER MERGE: moving onto a week where THIS foreman already has a
+  // paysheet must NOT overwrite it and must NOT be blocked. Give the moved sheet a
+  // unique id so BOTH (or all) stay as separate, independently listed per-foreman
+  // entries. Different foremen never collide here (different foremanKey), so this
+  // only ever affects the same foreman having more than one sheet in a week.
+  if (_movedFromDocId) {
+    const _baseId = docId;
+    let _n = 2;
+    while ((_cache.paysheets || []).some(p => p.id === docId)) {
+      docId = (_baseId + '_' + _n).replace(/[^\w-]/g, '_');
+      _n++;
     }
-    return;
   }
 
   // Preserve approval fields — .set() is a full overwrite and would strip approvedAt/approvedBy,
@@ -10091,31 +10180,40 @@ async function psRegroupPaysheetsBySubmitter() {
 
 // ─── Compile Weekly Paysheet ───
 // Aggregates all daily inputs (and legacy daily paysheets) in a folder into one compiled paysheet per crew.
-async function psCompileWeeklyPaysheet(weekEnding) {
+async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
   if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can compile weekly paysheets.'); return; }
-  const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
+  const activeJob = opts.job || (document.getElementById('ps-job-select') || {}).value || '';
   if (!activeJob) { alert('Please select a job before compiling.'); return; }
 
+  // SUBSET MODE: when opts.selectedIds is provided (multi-select "Compile selected"),
+  // narrow the SOURCE SET to just those daily inputs. Everything below is the SAME
+  // compile path — grouping per crew lead, then per foreman — only the inputs change.
+  const _selIds = (opts.selectedIds && opts.selectedIds.length) ? new Set(opts.selectedIds) : null;
+
   // Primary source: new daily input records (sourceType='dailyInput')
-  const diInputs = (_cache.dailyInputs || []).filter(p =>
+  let diInputs = (_cache.dailyInputs || []).filter(p =>
     p.weekEnding === weekEnding && p.job === activeJob
   );
   // Backward compat: legacy type='daily' paysheets saved before this update
-  const legacyDailySheets = (_cache.paysheets || []).filter(p =>
+  let legacyDailySheets = (_cache.paysheets || []).filter(p =>
     p.weekEnding === weekEnding && p.type === 'daily' && p.job === activeJob
   );
+  if (_selIds) {
+    diInputs          = diInputs.filter(p => _selIds.has(p.id));
+    legacyDailySheets = legacyDailySheets.filter(p => _selIds.has(p.id));
+  }
 
   const totalSources = diInputs.length + legacyDailySheets.length;
   if (!totalSources) {
-    alert(`No daily inputs found for this week.\nSubmit at least one Daily Input for Week Ending ${_fmtWeekDate(weekEnding)} first.`);
-    return;
+    if (!opts.skipAlert) alert(`No daily inputs found for this week.\nSubmit at least one Daily Input for Week Ending ${_fmtWeekDate(weekEnding)} first.`);
+    return opts.skipAlert ? [] : undefined;
   }
 
   const srcLabel = diInputs.length
     ? `${diInputs.length} daily input${diInputs.length !== 1 ? 's' : ''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy paysheet${legacyDailySheets.length !== 1 ? 's' : ''}` : ''}`
     : `${legacyDailySheets.length} legacy daily paysheet${legacyDailySheets.length !== 1 ? 's' : ''}`;
 
-  if (!confirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly paysheets?\n\nOne SEPARATE paysheet per foreman/crew lead — each labeled with their name.\n(Any existing compiled paysheets for this week will be rebuilt.)`)) return;
+  if (!opts.skipConfirm && !confirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly paysheets?\n\nOne SEPARATE paysheet per foreman/crew lead — each labeled with their name.\n(Any existing compiled paysheets for this week will be rebuilt.)`)) return;
 
   // Group by crew lead name so all of a foreman's entries across multiple daily inputs
   // land in one tab, regardless of how many submission docs there are.
@@ -10183,12 +10281,25 @@ async function psCompileWeeklyPaysheet(weekEnding) {
 
   if (!_cache.paysheets) _cache.paysheets = [];
 
-  // Remove ALL existing weekly docs for this job+week (old combined doc AND any
-  // prior per-foreman docs) so a recompile is clean — then recreate one doc per
-  // foreman below.
-  const oldWeekly = (_cache.paysheets || []).filter(p =>
+  // Remove existing weekly docs for this job+week so a recompile is clean — then
+  // recreate one doc per foreman below. In SUBSET mode we delete only the docs for
+  // the foremen we're about to rebuild (the submitters present in the selection),
+  // so OTHER foremen's compiled paysheets for this week are preserved.
+  let oldWeekly = (_cache.paysheets || []).filter(p =>
     p.job === activeJob && p.weekEnding === weekEnding && p.type === 'weekly'
   );
+  if (_selIds) {
+    const _scope = new Set();
+    diInputs.forEach(p => { if (p.submittedBy) _scope.add(p.submittedBy.trim().toLowerCase()); });
+    legacyDailySheets.forEach(p => Object.values(p.crews || {}).forEach(sc => {
+      const f = (sc && sc.header && sc.header.foreman) || '';
+      if (f) _scope.add(f.trim().toLowerCase());
+    }));
+    oldWeekly = oldWeekly.filter(p =>
+      _scope.has((p.foremanKey || '').trim().toLowerCase()) ||
+      _scope.has((p.foreman || '').trim().toLowerCase())
+    );
+  }
   for (const old of oldWeekly) {
     try { await db.collection('paysheets').doc(old.id).delete(); } catch(_) {}
     _cache.paysheets = _cache.paysheets.filter(p => p.id !== old.id);
@@ -10256,11 +10367,15 @@ async function psCompileWeeklyPaysheet(weekEnding) {
     savedSummary.push(`${fm.foreman || '(unknown foreman)'} — ${crewNames.length} tab${crewNames.length !== 1 ? 's' : ''}: ${crewNames.join(', ')}`);
   }
 
-  if (!savedSummary.length) { alert('No crew data found to compile.'); return; }
+  if (!savedSummary.length) {
+    if (!opts.skipAlert) alert('No crew data found to compile.');
+    return opts.skipAlert ? [] : undefined;
+  }
 
   renderPSLoadList();
   try { renderDiWeekCompile(); } catch(_) {}
-  alert(`Weekly paysheets compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''}.\n\n${savedSummary.length} foreman paysheet${savedSummary.length !== 1 ? 's' : ''} (one per submitter):\n${savedSummary.map(s => '  • ' + s).join('\n')}`);
+  if (!opts.skipAlert) alert(`Weekly paysheets compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''}.\n\n${savedSummary.length} foreman paysheet${savedSummary.length !== 1 ? 's' : ''} (one per submitter):\n${savedSummary.map(s => '  • ' + s).join('\n')}`);
+  return savedSummary;
 }
 
 /** Create a blank supplemental weekly paysheet for an already-compiled week and load it. */
