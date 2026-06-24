@@ -6317,13 +6317,22 @@ let _diLogDocs   = [];   // cached from real-time listener
 let _diLogUnsub  = null; // firestore unsubscribe handle
 let _diWeekFilter = '';  // currently selected pay-week ending date (YYYY-MM-DD), or '' for all
 
-// Active job for paysheet scoping. Prefer the hidden ps-job-select (canonical),
-// but fall back to the visible ACTIVE JOB selector so scoping stays correct even
-// if the two ever get momentarily out of sync.
+// Active job for paysheet scoping. Use the canonical hidden ps-job-select — the
+// SAME source the Submission Log reads — so the compiled list, count, Export and
+// the log can never show two different jobs. diJobChanged keeps it in sync with
+// the visible ACTIVE JOB selector on every change.
 function _psActiveJob() {
-  return (document.getElementById('ps-job-select') || {}).value
-      || (document.getElementById('di-job-select') || {}).value
-      || '';
+  return (document.getElementById('ps-job-select') || {}).value || '';
+}
+
+// A compiled paysheet counts as approved (for the at-a-glance marker) when any of
+// its crews is approved, or the legacy doc-level approvedAt flag is set. Reuses the
+// existing approval state only — does not change how approval works. Un-approving
+// the last crew clears these, so the marker disappears automatically.
+function _psIsApproved(p) {
+  if (!p) return false;
+  if (p.approvedAt) return true;
+  return Object.values(p.crews || {}).some(c => c && c.approvedAt);
 }
 
 // Populate the Pay Week dropdown from daily input data AND compiled weekly
@@ -6369,7 +6378,7 @@ function renderDiWeekCompile() {
     const hasDone = !!activeJob && (_cache.paysheets || []).some(p => p.type === 'weekly' && p.weekEnding === we && p.job === activeJob);
     wrap.style.display = 'flex';
     wrap.innerHTML =
-      `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">📋 Compile into Weekly Paysheet</button>` +
+      `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileAllUncompiled('${we}')">📋 Compile into Weekly Paysheet</button>` +
       (activeJob
         ? (hasDone
             ? `<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>`
@@ -6419,6 +6428,7 @@ function renderDiWeekCompile() {
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
             ${typeLabel}
             <span style="font-weight:600;font-size:.88rem;">${eh(p.job || '')}</span>
+            ${_psIsApproved(p) ? `<span style="font-size:.7rem;background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.4);padding:1px 7px;border-radius:4px;font-weight:700;white-space:nowrap;">✓ Approved</span>` : ''}
             ${crewCount ? `<span style="font-size:.76rem;color:var(--muted);">${crewCount} crew${crewCount !== 1 ? 's' : ''}</span>` : ''}
           </div>
           ${foremanLabel ? `<div style="font-size:.82rem;color:var(--green);font-weight:700;margin-bottom:2px;">👤 ${foremanLabel}</div>` : ''}
@@ -6691,9 +6701,11 @@ function diRenderLogRows() {
     // ── Regular daily input row ──
     const crewNums  = (r.crews||[]).map(crewLabel).join(', ');
     const empCount  = countEmps(r);
-    // Green row = a weekly paysheet has been generated for this daily input's job+week
-    const hasPaysheet = r.weekEnding && r.job &&
-      (_cache.paysheets||[]).some(p => p.type === 'weekly' && p.weekEnding === r.weekEnding && p.job === r.job);
+    // Green row = THIS specific daily input was actually compiled into a weekly
+    // paysheet — matched by the paysheet's exact sourceDailyInputIds (per-input),
+    // NOT merely sharing a job+week with some paysheet (which lit up every row).
+    const hasPaysheet = (_cache.paysheets||[]).some(p =>
+      p.type === 'weekly' && Array.isArray(p.sourceDailyInputIds) && p.sourceDailyInputIds.includes(r.id));
     const rowBg = hasPaysheet ? 'background:rgba(34,197,94,.08);border-left:3px solid #22c55e;' : '';
     // Build Open buttons — one per crew that has a compiled paysheet doc
     const openBtns = (r.crews||[]).map(crew => {
@@ -10194,6 +10206,59 @@ async function psRegroupPaysheetsBySubmitter() {
   }
 }
 
+// ─── "Compile into Weekly Paysheet" (compile-all) ───
+// Compiles only the NOT-yet-compiled inputs for the active job + selected week.
+// Foremen who are already fully compiled (and their edits/approvals) are left
+// untouched; any foreman with at least one NEW input is rebuilt from ALL their
+// inputs that week, so the new inputs fold in WITHOUT dropping their already-
+// compiled inputs. Reuses the existing compile engine (subset mode) — no new
+// compile logic, only the source set changes.
+async function psCompileAllUncompiled(weekEnding) {
+  if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can compile weekly paysheets.'); return; }
+  const activeJob = _psActiveJob();
+  if (!activeJob) { alert('Select a job first.'); return; }
+
+  const weekInputs = (_cache.dailyInputs || []).filter(d => d.weekEnding === weekEnding && d.job === activeJob);
+  if (!weekInputs.length) {
+    alert(`No daily inputs found for this week.\nSubmit at least one Daily Input for Week Ending ${_fmtWeekDate(weekEnding)} first.`);
+    return;
+  }
+
+  // Daily-input ids already folded into an existing weekly paysheet for this job+week.
+  const compiledIds = new Set();
+  (_cache.paysheets || []).forEach(p => {
+    if (p.type === 'weekly' && p.job === activeJob && p.weekEnding === weekEnding && Array.isArray(p.sourceDailyInputIds)) {
+      p.sourceDailyInputIds.forEach(id => compiledIds.add(id));
+    }
+  });
+
+  const uncompiled = weekInputs.filter(d => !compiledIds.has(d.id));
+  if (!uncompiled.length) {
+    alert(`All daily inputs for Week Ending ${_fmtWeekDate(weekEnding)} are already in a paysheet.\n\nNothing new to compile.`);
+    return;
+  }
+
+  // Foremen (submitters) with ≥1 new input — only these are rebuilt, from ALL of
+  // their inputs that week, so nothing already compiled is lost.
+  const affected = new Set(uncompiled.map(d => (d.submittedBy || '').trim().toLowerCase()));
+  const rebuildIds = weekInputs
+    .filter(d => affected.has((d.submittedBy || '').trim().toLowerCase()))
+    .map(d => d.id);
+
+  const newCount = uncompiled.length;
+  const fmCount  = affected.size;
+  if (!confirm(`Compile ${newCount} new daily input${newCount !== 1 ? 's' : ''} for Week Ending ${_fmtWeekDate(weekEnding)}?\n\n${fmCount} foreman${fmCount !== 1 ? 's' : ''} with new inputs will be (re)built from all their inputs this week. Foremen already fully compiled are left untouched.`)) return;
+
+  const res = await psCompileWeeklyPaysheet(weekEnding, { job: activeJob, selectedIds: rebuildIds, skipConfirm: true, skipAlert: true });
+
+  renderPSLoadList();
+  try { renderDiWeekCompile(); } catch(_) {}
+  try { diRenderLogRows(); } catch(_) {}
+  alert(Array.isArray(res) && res.length
+    ? `Compiled ${newCount} new input${newCount !== 1 ? 's' : ''} for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\n${res.length} foreman paysheet${res.length !== 1 ? 's' : ''} updated:\n${res.map(s => '  • ' + s).join('\n')}`
+    : 'No crew data found to compile.');
+}
+
 // ─── Compile Weekly Paysheet ───
 // Aggregates all daily inputs (and legacy daily paysheets) in a folder into one compiled paysheet per crew.
 async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
@@ -10861,7 +10926,7 @@ function renderPSLoadList() {
           <div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Inputs (${diInputsHere.length})</div>
           ${diInputsHere.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(d => _diLoadRow(d)).join('')}
           <div style="padding:8px 14px 10px 36px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap;">
-            ${canCompilePaysheet() && activeJob ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">
+            ${canCompilePaysheet() && activeJob ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileAllUncompiled('${we}')">
               📋 Compile into Weekly Paysheet
             </button>
             <span style="font-size:.75rem;color:var(--muted);">Compiles all daily inputs into one summary per crew</span>` : ''}
@@ -10885,7 +10950,7 @@ function renderPSLoadList() {
         ${weekly.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--green);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">★ Weekly Summary</div>
           ${weekly.map(p => _psLoadRow(p, we)).join('')}` : ''}
         <div style="padding:8px 14px 10px 36px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap;">
-          ${canCompilePaysheet() && activeJob ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileWeeklyPaysheet('${we}')">
+          ${canCompilePaysheet() && activeJob ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileAllUncompiled('${we}')">
             📋 Compile into Weekly Paysheet
           </button>
           ${hasDone ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:#1a56db;color:#fff;border:none;" onclick="psAddSupplementalPaysheet('${we}')">➕ Add Paysheet</button>` : ''}
