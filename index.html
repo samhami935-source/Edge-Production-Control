@@ -11242,7 +11242,45 @@ async function deleteSavedPaysheet(docId, e) {
       await Promise.all(deletes);
     }
 
+    // WEEKLY paysheet: return its daily inputs to the Submission Log as UNCOMPILED
+    // inputs filed under their PROPER week-ending — recomputed from each input's
+    // ORIGINAL submission timestamp via the Pay Week Schedule (the same calc used at
+    // submit). Only the week ASSIGNMENT (weekEnding) is rewritten; date / submittedAt
+    // / submittedTime are never touched. The "in a paysheet" marker clears on its own
+    // because it keys off this (now-deleted) paysheet's sourceDailyInputIds.
+    if (!isDaily && ps) {
+      // Which inputs were in this paysheet? Prefer its exact source list; for a rare
+      // legacy doc without it, fall back to job + week — but exclude inputs still
+      // claimed by another paysheet so a coexisting sheet is never disturbed.
+      let targetInputs;
+      if (Array.isArray(ps.sourceDailyInputIds) && ps.sourceDailyInputIds.length) {
+        const idset = new Set(ps.sourceDailyInputIds);
+        targetInputs = (_cache.dailyInputs || []).filter(d => idset.has(d.id));
+      } else {
+        const claimedElsewhere = new Set();
+        (_cache.paysheets || []).forEach(p => (p.sourceDailyInputIds || []).forEach(id => claimedElsewhere.add(id)));
+        targetInputs = (_cache.dailyInputs || []).filter(d =>
+          d.job === ps.job && d.weekEnding === ps.weekEnding && !claimedElsewhere.has(d.id));
+      }
+
+      const refiles = [];
+      targetInputs.forEach(d => {
+        // No timestamp to map from → leave its current week untouched (don't drop it).
+        const proper = d.submittedAt ? _calcPayWeekEnding(d.submittedAt) : d.weekEnding;
+        if (proper && proper !== d.weekEnding) {
+          refiles.push(db.collection('dailyinput').doc(d.id).update({ weekEnding: proper }));
+          d.weekEnding = proper; // immediate cache update; live listener also reconciles
+        }
+      });
+      if (refiles.length) {
+        try { await Promise.all(refiles); }
+        catch (err) { console.warn('[delete paysheet] re-file of inputs failed', err); }
+      }
+    }
+
     renderPSLoadList();
+    try { renderDiWeekSelect(); } catch(_) {}
+    try { renderDiWeekCompile(); } catch(_) {}
     diLoadLog();
   } catch(err) { alert('Delete failed: ' + err.message); }
 }
