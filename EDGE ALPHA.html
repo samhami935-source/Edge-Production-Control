@@ -1255,6 +1255,7 @@
         <option value="">All Jobs</option>
       </select>
       <button class="btn btn-outline" style="padding:7px 14px;font-size:.8rem;" onclick="acctRefreshFromFirestore()">⟳ Refresh</button>
+      <button id="acct-backfill-btn" class="btn btn-outline" style="display:none;padding:7px 14px;font-size:.8rem;border-color:#0e7490;color:#22d3ee;" onclick="psBackfillAccountingWeek()" title="Approve + sync every crew of this week's already-approved paysheets (idempotent — no double-count)">⟳ Sync this week</button>
       <button id="acct-cleanup-btn" class="btn btn-outline" style="display:none;padding:7px 14px;font-size:.8rem;border-color:#ef4444;color:#ef4444;" onclick="acctCleanupOrphanedPaysheets()" title="Delete paysheets and daily inputs for jobs that no longer exist">🗑 Clean Up</button>
       <button id="acct-export-pdf-btn" class="btn" style="padding:7px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="acctExportPDF()">⬇ Export PDF</button>
       <button id="acct-export-excel-btn" class="btn" style="padding:7px 14px;font-size:.8rem;background:#16a34a;color:#fff;border:none;" onclick="acctExportExcel()">⬇ Export Excel</button>
@@ -7604,6 +7605,7 @@ function psRenderCrewTabs() {
         <button class="btn btn-outline" style="white-space:nowrap;color:var(--muted);border-color:var(--border);" onclick="openLoadPaysheetModal()" title="Load saved daily or weekly paysheets">📂 Saved Paysheets</button>
         <button class="btn btn-outline" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);" onclick="psEnterEditMode()">✏️ Edit</button>
         ${_approveBtn}
+        ${isAdmin() ? `<button class="btn" style="background:#0e7490;color:#fff;white-space:nowrap;border:none;" onclick="psApproveAllCrews()" title="Approve EVERY crew tab of this paysheet for Accounting in one click">✓ Approve all crews</button>` : ''}
         <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="savePaysheetToCloud(false, {docId: _psCurrentDocId})">💾 Save Paysheet</button>`;
     }
   } else {
@@ -8487,6 +8489,66 @@ async function psApprovePaysheet(crew) {
     alert(`"${crewLabel}" paysheet approved.\n\n${syncCount} payroll entr${syncCount === 1 ? 'y' : 'ies'} created/updated in the Payroll tab.`);
   } catch(e) {
     alert('Approval failed: ' + e.message);
+  }
+}
+
+// ─── Admin: Approve ALL crew tabs of the loaded weekly paysheet at once ───
+// Restores the original "one click = whole paysheet" transfer. In the per-foreman
+// model a paysheet holds many crew tabs, and the per-tab Approve only published the
+// ACTIVE tab — so the rest of the pay never reached Accounting. This approves every
+// crew tab that has data and syncs them all. Reuses psApproveSync (multi-crew).
+async function psApproveAllCrews() {
+  if (!isAdmin()) { alert('Admin access required to approve paysheets.'); return; }
+  if (!_psCurrentDocId) { alert('No paysheet loaded. Load a saved weekly summary first.'); return; }
+  if (_psCurrentType !== 'weekly') { alert('Only weekly summary paysheets can be approved for accounting.'); return; }
+
+  const doc = (_cache.paysheets || []).find(p => p.id === _psCurrentDocId);
+  if (!doc) { alert('Paysheet not found. Please save it to the cloud first.'); return; }
+
+  // Every crew tab that has real data (a row with pay/area, or a named employee).
+  const crewKeys = Object.keys(doc.crews || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
+  const crewsWithData = crewKeys.filter(c => {
+    const crew = doc.crews[String(c)];
+    if (!crew) return false;
+    const hasRow   = (crew.rows   || []).some(r => (parseFloat(r.weAmount) || 0) > 0 || (r.area || '').trim());
+    const hasSplit = (crew.splits || []).some(s => (s.employee || '').trim());
+    return hasRow || hasSplit;
+  });
+  if (!crewsWithData.length) { alert('No crew tabs with data to approve on this paysheet.'); return; }
+
+  const jobName = doc.job || '';
+  const weekEnd = doc.weekEnding || '';
+  if (!confirm(`Approve ALL ${crewsWithData.length} crew tab${crewsWithData.length !== 1 ? 's' : ''} of "${jobName}" — Week Ending ${_fmtWeekDate(weekEnd)} for Accounting?\n\n• Publishes every crew's employee pay to the Accounting tab\n• Auto-creates/updates Payroll entries for all their labor codes`)) return;
+
+  const approvedAt = new Date().toISOString();
+  const approvedBy = _currentUser ? _currentUser.email : 'unknown';
+
+  try {
+    const update = { approvedAt, approvedBy };
+    crewsWithData.forEach(c => {
+      update[`crews.${c}.approvedAt`] = approvedAt;
+      update[`crews.${c}.approvedBy`] = approvedBy;
+    });
+    await db.collection('paysheets').doc(_psCurrentDocId).update(update);
+
+    // Cache (same object reference as _cache.paysheets[idx])
+    if (!doc.crews) doc.crews = {};
+    crewsWithData.forEach(c => {
+      if (!doc.crews[String(c)]) doc.crews[String(c)] = {};
+      doc.crews[String(c)].approvedAt = approvedAt;
+      doc.crews[String(c)].approvedBy = approvedBy;
+    });
+    doc.approvedAt = approvedAt;
+    doc.approvedBy = approvedBy;
+
+    const syncCount = await psApproveSync(doc, crewsWithData);
+
+    psRenderCrewTabs();
+    acctPopulateWeekSelect();
+    acctPopulateJobSelect();
+    alert(`Approved all ${crewsWithData.length} crew tab${crewsWithData.length !== 1 ? 's' : ''}.\n\n${syncCount} payroll entr${syncCount === 1 ? 'y' : 'ies'} created/updated in the Payroll tab.`);
+  } catch (e) {
+    alert('Approve all failed: ' + e.message);
   }
 }
 
@@ -11935,6 +11997,8 @@ function acctInit() {
   if (adminNotice) adminNotice.style.display = isAdmin() ? 'block' : 'none';
   const cleanupBtn = document.getElementById('acct-cleanup-btn');
   if (cleanupBtn) cleanupBtn.style.display = isAdmin() ? '' : 'none';
+  const backfillBtn = document.getElementById('acct-backfill-btn');
+  if (backfillBtn) backfillBtn.style.display = isAdmin() ? '' : 'none';
   acctRender();
 }
 
@@ -12179,6 +12243,64 @@ async function acctRefreshFromFirestore() {
  * Delete all paysheets and daily inputs whose job no longer exists in the
  * uploaded budgets (_cache.jobs).  Admin-only.  Called by the 🗑 Clean Up button.
  */
+// Bring ONE week's already-approved paysheets fully up to date in Accounting:
+// approve + sync every crew tab that has data on each approved sheet for that week.
+// Fixes sheets approved while only the active tab transferred. Idempotent —
+// psApproveSync upserts by deterministic ID and acctGetData reads live, so nothing
+// is double-counted. Scoped strictly to the given week; other weeks are untouched.
+async function psBackfillAccountingWeek(weekEnding) {
+  if (!isAdmin()) { alert('Admin access required.'); return; }
+  const wk = weekEnding || (document.getElementById('acct-week-select') || {}).value || '';
+  if (!wk) { alert('Select a week-ending in the Accounting tab first, then click "Sync this week".'); return; }
+
+  // Only paysheets for THIS week that are ALREADY approved (≥1 crew or doc-level).
+  const sheets = (_cache.paysheets || []).filter(p =>
+    p.type === 'weekly' && p.weekEnding === wk && _psIsApproved(p));
+  if (!sheets.length) { alert(`No approved paysheets found for Week Ending ${_fmtWeekDate(wk)}.`); return; }
+
+  if (!confirm(`Bring Week Ending ${_fmtWeekDate(wk)} up to date in Accounting?\n\nApproves + syncs every crew tab with data on the ${sheets.length} already-approved paysheet${sheets.length !== 1 ? 's' : ''} for this week. Idempotent — no double-counting. Other weeks are untouched.`)) return;
+
+  const approvedBy = _currentUser ? _currentUser.email : 'unknown';
+  let totalEntries = 0, sheetsFixed = 0;
+  try {
+    for (const doc of sheets) {
+      const crewKeys = Object.keys(doc.crews || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
+      const crewsWithData = crewKeys.filter(c => {
+        const crew = doc.crews[String(c)];
+        if (!crew) return false;
+        const hasRow   = (crew.rows   || []).some(r => (parseFloat(r.weAmount) || 0) > 0 || (r.area || '').trim());
+        const hasSplit = (crew.splits || []).some(s => (s.employee || '').trim());
+        return hasRow || hasSplit;
+      });
+      if (!crewsWithData.length) continue;
+
+      // Approve any not-yet-approved crew-with-data (preserve existing approval timestamps).
+      const approvedAt = new Date().toISOString();
+      const update = {};
+      crewsWithData.forEach(c => {
+        if (!doc.crews[String(c)]) doc.crews[String(c)] = {};
+        if (!doc.crews[String(c)].approvedAt) {
+          update[`crews.${c}.approvedAt`] = approvedAt;
+          update[`crews.${c}.approvedBy`] = approvedBy;
+          doc.crews[String(c)].approvedAt = approvedAt;
+          doc.crews[String(c)].approvedBy = approvedBy;
+        }
+      });
+      if (!doc.approvedAt) { update.approvedAt = approvedAt; update.approvedBy = approvedBy; doc.approvedAt = approvedAt; doc.approvedBy = approvedBy; }
+      if (Object.keys(update).length) await db.collection('paysheets').doc(doc.id).update(update);
+
+      totalEntries += await psApproveSync(doc, crewsWithData);
+      sheetsFixed++;
+    }
+    acctPopulateWeekSelect();
+    acctPopulateJobSelect();
+    acctRender();
+    alert(`Week Ending ${_fmtWeekDate(wk)} synced to Accounting.\n\n${sheetsFixed} paysheet${sheetsFixed !== 1 ? 's' : ''} updated · ${totalEntries} payroll entr${totalEntries === 1 ? 'y' : 'ies'} created/updated.\n\n(Re-running is safe — entries are upserted, never duplicated.)`);
+  } catch (e) {
+    alert('Sync failed: ' + e.message);
+  }
+}
+
 async function acctCleanupOrphanedPaysheets() {
   if (!isAdmin()) { alert('Admin only.'); return; }
   const knownJobs = new Set((_cache.jobs || []).map(j => j.name));
