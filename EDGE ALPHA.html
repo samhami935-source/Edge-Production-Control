@@ -11778,9 +11778,51 @@ function purOpenPOAction(id) {
   purOpenPO(id);
 }
 
+// True when launched from the iOS/Android home screen (standalone PWA). In that mode a
+// window.open('_blank') has no browser chrome / back button, so the user gets trapped —
+// we show documents in an in-app viewer with a Close button instead.
+function _isStandalonePWA() {
+  try {
+    return (window.navigator.standalone === true) ||
+           (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  } catch (_) { return false; }
+}
+function _appViewerClose() {
+  const o = document.getElementById('_app-viewer'); if (o) o.remove();
+  document.documentElement.style.overflow = ''; document.body.style.overflow = '';
+}
+// Full-screen in-app document viewer. opts: { title, url?, html?, print? }
+function _appViewer(opts) {
+  opts = opts || {};
+  _appViewerClose();
+  const o = document.createElement('div');
+  o.id = '_app-viewer';
+  o.style.cssText = 'position:fixed;inset:0;z-index:2147483600;background:#1a1a1a;display:flex;flex-direction:column;';
+  const bar = document.createElement('div');
+  bar.style.cssText = 'flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 14px;background:#111;border-bottom:1px solid #2a2a2a;';
+  bar.innerHTML =
+    `<span style="color:#fff;font-weight:700;font-size:.9rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${eh(opts.title||'Document')}</span>
+     <button type="button" id="_app-viewer-print" style="font-size:.82rem;padding:7px 14px;border-radius:8px;border:1px solid #3a3a3a;background:#2a2a2a;color:#fff;font-weight:600;cursor:pointer;">Print</button>
+     <button type="button" id="_app-viewer-close" style="font-size:.82rem;padding:7px 16px;border-radius:8px;border:none;background:#c9a84c;color:#000;font-weight:700;cursor:pointer;">✕ Close</button>`;
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'flex:1 1 auto;width:100%;border:0;background:#fff;';
+  frame.setAttribute('allow', 'fullscreen');
+  if (opts.url) frame.src = opts.url;
+  else if (opts.html != null) frame.srcdoc = opts.html;
+  o.appendChild(bar); o.appendChild(frame);
+  document.body.appendChild(o);
+  document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden';
+  document.getElementById('_app-viewer-close').onclick = _appViewerClose;
+  const pbtn = document.getElementById('_app-viewer-print');
+  if (opts.print === false) pbtn.style.display = 'none';
+  pbtn.onclick = () => { try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (_) { try { window.print(); } catch (e) {} } };
+  return o;
+}
+
 function _purOpenAttachment(id) {
   const doc = (_purLogDocs||[]).find(p => p.id === id);
   if (!doc || !doc.pdfData) { toast('No attachment on this PO.', 'error'); return; }
+  if (_isStandalonePWA()) { _appViewer({ title: doc.pdfName || 'PO Attachment', url: doc.pdfData, print:false }); return; }
   const w = window.open('', '_blank');
   if (!w) { toast('Pop-up blocked — allow pop-ups to view the attachment.', 'error'); return; }
   w.document.write(`<!doctype html><title>${eh(doc.pdfName||'PO Attachment')}</title><body style="margin:0"><iframe src="${doc.pdfData}" style="border:0;width:100vw;height:100vh;"></iframe></body>`);
@@ -11965,6 +12007,7 @@ function _purExportDocPDF(doc) {
     <div class="footbar">Delivery ${doc.deliveryDate?eh(fmtDate(doc.deliveryDate)):''}</div>
     <div class="emailnote">PLEASE EMAIL ORDER CONFIRMATIONS TO: ${eh(doc.emailTo||'')}</div>
   </body></html>`;
+  if (_isStandalonePWA()) { _appViewer({ title: 'PO ' + (doc.poNumber || ''), html }); return; }
   const win = window.open('', '_blank');
   if (!win) { toast('Pop-up blocked — allow pop-ups to export the PO.', 'error'); return; }
   win.document.write(html);
