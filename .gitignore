@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Editor / workspace
+*.code-workspace
+
+# Local backup snapshots of the app (kept locally, never committed)
+*.before*.html
+
+# Node
+node_modules/
