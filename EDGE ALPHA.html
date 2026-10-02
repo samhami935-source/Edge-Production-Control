@@ -483,16 +483,6 @@
       body.theme-clean #user-info-pill button:last-child::before { content:""; display:inline-block; width:1em; height:1em; vertical-align:-0.12em; background-color:currentColor; -webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2024%2024'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'2'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpath%20d%3D'M9%2021H5a2%202%200%200%201-2-2V5a2%202%200%200%201%202-2h4'%2F%3E%3Cpolyline%20points%3D'16%2017%2021%2012%2016%207'%2F%3E%3Cline%20x1%3D'21'%20y1%3D'12'%20x2%3D'9'%20y2%3D'12'%2F%3E%3C%2Fsvg%3E") no-repeat center/contain; mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2024%2024'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'2'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpath%20d%3D'M9%2021H5a2%202%200%200%201-2-2V5a2%202%200%200%201%202-2h4'%2F%3E%3Cpolyline%20points%3D'16%2017%2021%2012%2016%207'%2F%3E%3Cline%20x1%3D'21'%20y1%3D'12'%20x2%3D'9'%20y2%3D'12'%2F%3E%3C%2Fsvg%3E") no-repeat center/contain; }
     }
 
-    /* Floating theme toggle — visible in both themes */
-    #theme-toggle-btn {
-      position:fixed; right:16px; bottom:16px; z-index:100000;
-      padding:9px 16px; border-radius:999px; border:1px solid var(--border);
-      background:var(--surface); color:var(--text); font-size:.8rem; font-weight:700;
-      cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,.28); opacity:.92;
-      transition:opacity .15s, box-shadow .15s, transform .1s;
-    }
-    #theme-toggle-btn:hover { opacity:1; transform:translateY(-1px); }
-
     /* Accounting sub-tab navigation */
     #acct-subtabs { display:flex; gap:8px; margin:0 0 18px; flex-wrap:wrap; }
     .acct-subtab-btn { padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--muted); font-weight:700; font-size:.82rem; cursor:pointer; transition:background-color .15s, color .15s, border-color .15s; }
@@ -556,7 +546,7 @@
     .ico-check{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2024%2024'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'2'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpolyline%20points%3D'20%206%209%2017%204%2012'%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2024%2024'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'2'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpolyline%20points%3D'20%206%209%2017%204%2012'%2F%3E%3C%2Fsvg%3E");}
   </style>
 </head>
-<body>
+<body class="theme-clean">
 
 <!-- Loading Screen -->
 <div id="loading-screen">
@@ -20893,24 +20883,10 @@ function computeCorPaid(corb) {
   }
 </script>
 
-<!-- Opt-in Clean theme toggle (purely visual; original design restored when off) -->
-<button id="theme-toggle-btn" type="button" onclick="toggleCleanTheme()"><span class="ico ico-sparkles" aria-hidden="true"></span> Clean Theme: Off</button>
 <!-- Sidebar collapse toggle (only visible in the sidebar / clean theme) -->
 <button id="sidebar-toggle-btn" type="button" onclick="toggleSidebar()" title="Collapse/expand sidebar" aria-label="Collapse sidebar">«</button>
 <script>
-  function _applyCleanTheme(on) {
-    document.body.classList.toggle('theme-clean', on);
-    var b = document.getElementById('theme-toggle-btn');
-    if (b) b.textContent = on ? 'Clean Theme: On' : 'Clean Theme: Off';
-  }
-  function toggleCleanTheme() {
-    var on = !document.body.classList.contains('theme-clean');
-    _applyCleanTheme(on);
-    try { localStorage.setItem('edgeCleanTheme', on ? '1' : '0'); } catch (e) {}
-  }
-  // Restore the user's saved preference on load (defaults OFF = original design).
-  try { if (localStorage.getItem('edgeCleanTheme') === '1') _applyCleanTheme(true); } catch (e) {}
-
+  // Clean theme is now the permanent design (applied via <body class="theme-clean">).
   function _applySidebarCollapsed(on) {
     document.body.classList.toggle('sidebar-collapsed', on);
     var b = document.getElementById('sidebar-toggle-btn');
