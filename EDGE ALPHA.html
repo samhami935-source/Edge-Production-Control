@@ -1658,13 +1658,13 @@
                   <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);width:30%;">
                     <span style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;">
                       <span>Area Worked</span>
-                      <button id="di-filter-area-btn" onclick="diOpenFilter('area',this)" title="Filter by area" style="background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.5);border-radius:4px;font-size:.7rem;cursor:pointer;padding:2px 7px;color:#c9a84c;line-height:1.4;white-space:nowrap;font-weight:700;text-transform:none;flex-shrink:0;">▼ Filter</button>
+                      <button id="di-filter-area-btn" onclick="diOpenFilter('area',this)" title="Select, search & add multiple areas to rows" style="background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.5);border-radius:4px;font-size:.7rem;cursor:pointer;padding:2px 7px;color:#c9a84c;line-height:1.4;white-space:nowrap;font-weight:700;text-transform:none;flex-shrink:0;">▼ Add</button>
                     </span>
                   </th>
                   <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);width:35%;">
                     <span style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;">
                       <span>Labor Code</span>
-                      <button id="di-filter-code-btn" onclick="diOpenFilter('code',this)" title="Filter by labor code" style="background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.5);border-radius:4px;font-size:.7rem;cursor:pointer;padding:2px 7px;color:#c9a84c;line-height:1.4;white-space:nowrap;font-weight:700;text-transform:none;flex-shrink:0;">▼ Filter</button>
+                      <button id="di-filter-code-btn" onclick="diOpenFilter('code',this)" title="Select, search & add multiple labor codes to rows" style="background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.5);border-radius:4px;font-size:.7rem;cursor:pointer;padding:2px 7px;color:#c9a84c;line-height:1.4;white-space:nowrap;font-weight:700;text-transform:none;flex-shrink:0;">▼ Add</button>
                     </span>
                   </th>
                   <th style="padding:8px 10px;text-align:left;font-size:.72rem;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);">Notes</th>
@@ -7973,6 +7973,7 @@ function _diGetFilterPanel() {
       if (!p.contains(e.target) && !e.target.closest('#di-filter-area-btn, #di-filter-code-btn')) {
         p.style.display = 'none';
         _diActiveFilter = null;
+        _diUpdateFilterBtnState();
       }
     }, true);
   }
@@ -7985,6 +7986,7 @@ function diOpenFilter(type, btn) {
   if (_diActiveFilter === type && panel.style.display !== 'none') {
     panel.style.display = 'none';
     _diActiveFilter = null;
+    _diUpdateFilterBtnState();
     return;
   }
   _diActiveFilter = type;
@@ -8078,6 +8080,7 @@ function diFilterSelectAll(cb) {
       if (input) input.checked = cb.checked;
     }
   });
+  _diUpdateFilterCount();
 }
 
 function diFilterCheckChange(type) {
@@ -8089,6 +8092,7 @@ function diFilterCheckChange(type) {
     .map(l => l.querySelector('input[type="checkbox"]')).filter(Boolean);
   allCb.checked = visible.length > 0 && visible.every(c => c.checked);
   allCb.indeterminate = !allCb.checked && visible.some(c => c.checked);
+  _diUpdateFilterCount();
 }
 
 function diApplyFilter(type) {
@@ -8170,6 +8174,7 @@ function diClearFilter(type) {
   const panel = document.getElementById('_di-filter-panel');
   if (panel) panel.style.display = 'none';
   _diActiveFilter = null;
+  _diUpdateFilterBtnState();
 }
 
 function diClearEmployees() {
@@ -8191,23 +8196,22 @@ function diClearEntries() {
   diAutoSaveDraft();
 }
 
+// "▼ Add" label with an optional count pill (matches the Change Order dropdown badge).
+function _diFilterBtnHTML(n) {
+  return '▼ Add' + (n > 0 ? ` <span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#c9a84c;color:#000;font-size:.62rem;font-weight:800;vertical-align:middle;">${n}</span>` : '');
+}
 function _diUpdateFilterBtnState() {
   const areaBtn = document.getElementById('di-filter-area-btn');
   const codeBtn = document.getElementById('di-filter-code-btn');
-  if (areaBtn) {
-    const on = !!_diFilterAreas;
-    areaBtn.style.background  = on ? '#c9a84c' : 'rgba(201,168,76,.15)';
-    areaBtn.style.color       = on ? '#000' : '#c9a84c';
-    areaBtn.style.borderColor = on ? '#c9a84c' : 'rgba(201,168,76,.5)';
-    areaBtn.textContent       = on ? '▼ Filtered' : '▼ Filter';
-  }
-  if (codeBtn) {
-    const on = !!_diFilterCodes;
-    codeBtn.style.background  = on ? '#c9a84c' : 'rgba(201,168,76,.15)';
-    codeBtn.style.color       = on ? '#000' : '#c9a84c';
-    codeBtn.style.borderColor = on ? '#c9a84c' : 'rgba(201,168,76,.5)';
-    codeBtn.textContent       = on ? '▼ Filtered' : '▼ Filter';
-  }
+  if (areaBtn) { areaBtn.style.background='rgba(201,168,76,.15)'; areaBtn.style.color='#c9a84c'; areaBtn.style.borderColor='rgba(201,168,76,.5)'; areaBtn.innerHTML = _diFilterBtnHTML(0); }
+  if (codeBtn) { codeBtn.style.background='rgba(201,168,76,.15)'; codeBtn.style.color='#c9a84c'; codeBtn.style.borderColor='rgba(201,168,76,.5)'; codeBtn.innerHTML = _diFilterBtnHTML(0); }
+}
+// Live count of checked items in the open panel → shown as a pill on the active button.
+function _diUpdateFilterCount() {
+  const list = document.getElementById('di-filter-list'); if (!list) return;
+  const n = [...list.querySelectorAll('input[type="checkbox"]')].filter(cb => cb.checked).length;
+  const btn = document.getElementById(_diActiveFilter === 'area' ? 'di-filter-area-btn' : _diActiveFilter === 'code' ? 'di-filter-code-btn' : '');
+  if (btn) btn.innerHTML = _diFilterBtnHTML(n);
 }
 
 // ── Area combobox helpers ──
