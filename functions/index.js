@@ -1,4 +1,6 @@
-const functions = require('firebase-functions');
+// Use the v1 API surface (onCall(data, context) + HttpsError) — compatible with
+// the firebase-functions v6 SDK on the Node 22 runtime.
+const functions = require('firebase-functions/v1');
 const admin = require('firebase-admin');
 
 admin.initializeApp();
