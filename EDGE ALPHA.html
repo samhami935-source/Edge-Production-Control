@@ -11818,6 +11818,35 @@ function _appViewer(opts) {
   pbtn.onclick = () => { try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (_) { try { window.print(); } catch (e) {} } };
   return o;
 }
+// Render body HTML (+ a scoped stylesheet) to a real PDF and return a data: URL — same
+// format as an uploaded attachment, so it opens in the native PDF viewer. Uses the shared
+// html2canvas + jsPDF loader (_cwEnsurePdfLib).
+async function _renderPdfDataUrl(bodyHTML, scopedCss, scopeId) {
+  await _cwEnsurePdfLib();
+  const H2C = window.html2canvas;
+  const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  if (!H2C || !JsPDF) throw new Error('PDF engine not available');
+  const wrap = document.createElement('div');
+  wrap.id = scopeId || 'pdf-root';
+  wrap.style.cssText = 'position:fixed;left:0;top:0;z-index:-1;width:816px;background:#fff;';
+  wrap.innerHTML = `<style>${scopedCss}</style>` + bodyHTML;
+  document.body.appendChild(wrap);
+  try {
+    const img = wrap.querySelector('img');
+    if (img && !img.complete) await new Promise(r => { img.onload = r; img.onerror = r; setTimeout(r, 2500); });
+    try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (_) {}
+    await new Promise(r => setTimeout(r, 250));
+    const h = Math.max(wrap.scrollHeight, wrap.offsetHeight, 1);
+    const canvas = await H2C(wrap, { scale:2, useCORS:true, backgroundColor:'#ffffff', width:816, height:h, windowWidth:816, windowHeight:h, scrollX:0, scrollY:0 });
+    const imgData = canvas.toDataURL('image/jpeg', 0.98);
+    const pageW = 816, pageH = 1056;
+    const imgH = canvas.height * (pageW / canvas.width);
+    const pdf = new JsPDF({ unit:'px', format:[pageW, pageH], orientation:'portrait' });
+    if (imgH <= pageH + 2) pdf.addImage(imgData, 'JPEG', 0, 0, pageW, imgH);
+    else { let pos = 0; while (pos < imgH) { pdf.addImage(imgData, 'JPEG', 0, -pos, pageW, imgH); pos += pageH; if (pos < imgH) pdf.addPage(); } }
+    return 'data:application/pdf;base64,' + btoa(pdf.output());
+  } finally { try { wrap.remove(); } catch (_) {} }
+}
 
 function _purOpenAttachment(id) {
   const doc = (_purLogDocs||[]).find(p => p.id === id);
@@ -11953,6 +11982,27 @@ function purExportPDF() {
   if (!(_purCur.poNumber||'').trim()) { toast('Enter a PO number first.', 'error'); return; }
   _purExportDocPDF(_purCollectCurrentDoc());
 }
+// PO print stylesheet. Pass a scope selector (e.g. '#pur-pdf-root') to sandbox the rules
+// for on-page PDF rendering; pass null for the standalone print document.
+function _purPdfCss(scope) {
+  const p = scope ? scope + ' ' : '';
+  const bodySel = scope || 'body';
+  return `
+    ${p}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    ${bodySel}{font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;${scope?'width:816px;padding:28px 34px;':'margin:0;padding:28px 34px;'}}
+    ${p}.logo{text-align:center;margin-bottom:6px;} ${p}.logo img{height:90px;object-fit:contain;}
+    ${p}.bar{background:#c9a84c !important;color:#000;text-align:center;font-weight:700;font-size:1.05rem;padding:6px;letter-spacing:.02em;}
+    ${p}.meta{display:flex;justify-content:space-between;margin:14px 0 10px;}
+    ${p}.box{border:1px solid #000;} ${p}.box div{padding:4px 10px;font-size:.82rem;font-weight:700;border-bottom:1px solid #000;} ${p}.box div:last-child{border-bottom:none;}
+    ${p}table{width:100%;border-collapse:collapse;margin-top:6px;}
+    ${p}th,${p}td{border:1px solid #000;font-size:.8rem;} ${p}th{background:#f2f2f2 !important;padding:5px;font-style:italic;}
+    ${p}td{height:22px;padding:2px 8px;} ${p}td.desc{width:60%;} ${p}td.qty{width:12%;text-align:center;} ${p}td.unit{width:13%;text-align:center;} ${p}td.tot{width:15%;text-align:right;}
+    ${p}.received{margin-top:22px;font-weight:700;font-size:.85rem;}
+    ${p}.delivery{margin-top:16px;font-size:.85rem;} ${p}.delivery b{display:block;margin-bottom:2px;}
+    ${p}.footbar{background:#c9a84c !important;color:#000;text-align:center;font-weight:700;padding:6px;margin-top:26px;}
+    ${p}.emailnote{text-align:center;font-size:.72rem;font-weight:700;margin-top:4px;}
+  `;
+}
 function _purExportDocPDF(doc) {
   if (!doc) { toast('PO not found.', 'error'); return; }
   const logoEl = document.querySelector('.auth-logo img');
@@ -11975,22 +12025,7 @@ function _purExportDocPDF(doc) {
   }
   const grandRow = grand > 0 ? `<div style="text-align:right;font-weight:700;font-size:.9rem;margin-top:6px;">Total: ${fm(grand)}</div>` : '';
   const addrLines = (doc.deliveryAddress||'').split('\n').map(l=>eh(l)).join('<br>');
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>PO ${eh(doc.poNumber||'')}</title>
-  <style>
-    *{box-sizing:border-box;} body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:28px 34px;}
-    .logo{text-align:center;margin-bottom:6px;} .logo img{height:90px;object-fit:contain;}
-    .bar{background:#c9a84c;color:#000;text-align:center;font-weight:700;font-size:1.05rem;padding:6px;letter-spacing:.02em;}
-    .meta{display:flex;justify-content:space-between;margin:14px 0 10px;}
-    .box{border:1px solid #000;} .box div{padding:4px 10px;font-size:.82rem;font-weight:700;border-bottom:1px solid #000;} .box div:last-child{border-bottom:none;}
-    table{width:100%;border-collapse:collapse;margin-top:6px;}
-    th,td{border:1px solid #000;font-size:.8rem;} th{background:#f2f2f2;padding:5px;font-style:italic;}
-    td{height:22px;padding:2px 8px;} td.desc{width:60%;} td.qty{width:12%;text-align:center;} td.unit{width:13%;text-align:center;} td.tot{width:15%;text-align:right;}
-    .received{margin-top:22px;font-weight:700;font-size:.85rem;}
-    .delivery{margin-top:16px;font-size:.85rem;} .delivery b{display:block;margin-bottom:2px;}
-    .footbar{background:#c9a84c;color:#000;text-align:center;font-weight:700;padding:6px;margin-top:26px;}
-    .emailnote{text-align:center;font-size:.72rem;font-weight:700;margin-top:4px;}
-    @media print{ body{padding:14px 22px;} }
-  </style></head><body>
+  const bodyInner = `
     <div class="logo">${logoSrc?`<img src="${logoSrc}" alt="">`:''}</div>
     <div class="bar">Purchase Order</div>
     <div class="meta">
@@ -12005,14 +12040,35 @@ function _purExportDocPDF(doc) {
     <div class="received">Received:_____________________</div>
     <div class="delivery"><b>DELIVERY:</b>${addrLines?('Address: '+addrLines):''}</div>
     <div class="footbar">Delivery ${doc.deliveryDate?eh(fmtDate(doc.deliveryDate)):''}</div>
-    <div class="emailnote">PLEASE EMAIL ORDER CONFIRMATIONS TO: ${eh(doc.emailTo||'')}</div>
-  </body></html>`;
-  if (_isStandalonePWA()) { _appViewer({ title: 'PO ' + (doc.poNumber || ''), html }); return; }
+    <div class="emailnote">PLEASE EMAIL ORDER CONFIRMATIONS TO: ${eh(doc.emailTo||'')}</div>`;
+  const title = 'PO ' + (doc.poNumber || '');
+  // Standalone PWA (iPad home-screen): build a REAL PDF and show it in the in-app viewer —
+  // identical to opening an attached PDF (no window.open trap).
+  if (_isStandalonePWA()) {
+    toast('Preparing PDF…');
+    _renderPdfDataUrl(bodyInner, _purPdfCss('#pur-pdf-root'), 'pur-pdf-root')
+      .then(url => _appViewer({ title, url, print:false }))
+      .catch(e => { console.error('purExportPDF:', e); _appViewer({ title, html:`<!doctype html><html><head><meta charset="utf-8"><title>${eh(title)}</title><style>${_purPdfCss(null)}</style></head><body>${bodyInner}</body></html>` }); });
+    return;
+  }
+  // Desktop: open the generated PDF in a new tab (browser's native PDF viewer — view,
+  // download, print), exactly like opening an attachment. Open the tab now within the
+  // click gesture (so it isn't pop-up blocked), then fill it once the PDF is ready.
   const win = window.open('', '_blank');
-  if (!win) { toast('Pop-up blocked — allow pop-ups to export the PO.', 'error'); return; }
-  win.document.write(html);
-  win.document.close();
-  setTimeout(() => { win.focus(); win.print(); }, 400);
+  if (!win) { toast('Pop-up blocked — allow pop-ups to view the PO PDF.', 'error'); return; }
+  try {
+    win.document.write(`<!doctype html><title>${eh(title)}</title><body style="margin:0;font-family:Arial,Helvetica,sans-serif;color:#666;display:flex;align-items:center;justify-content:center;height:100vh;">Preparing PDF…</body>`);
+    win.document.close();
+  } catch(_) {}
+  _renderPdfDataUrl(bodyInner, _purPdfCss('#pur-pdf-root'), 'pur-pdf-root')
+    .then(url => {
+      try {
+        win.document.open();
+        win.document.write(`<!doctype html><title>${eh(title)}</title><body style="margin:0"><iframe src="${url}" style="border:0;width:100vw;height:100vh;"></iframe></body>`);
+        win.document.close();
+      } catch(_) {}
+    })
+    .catch(e => { console.error('purExportPDF:', e); toast('Could not build the PDF file.', 'error'); try { win.close(); } catch(_) {} });
 }
 
 // ═══════════════════════════════════════════
