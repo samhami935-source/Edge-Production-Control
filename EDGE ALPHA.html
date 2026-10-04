@@ -7978,7 +7978,7 @@ function diRenderCrewTable() {
     const bgStyle  = isCorRow ? 'background:rgba(201,168,76,.07);' : '';
     // Primary row
     let html = `<tr style="border-top:1px solid var(--border);${bgStyle}">
-      <td style="padding:6px 8px;">
+      <td style="padding:6px 8px;vertical-align:top;">
         <div class="di-area-wrap">
           <input class="fi" style="width:100%;padding:6px ${row.area?'28px':'8px'} 6px 8px;font-size:.85rem;" value="${eh(areaDisplayLabel(row.area))}" placeholder="Search area…"
             oninput="diAreaInput(this,${_diActiveCrew},${i})"
@@ -7997,7 +7997,7 @@ function diRenderCrewTable() {
           return `<div style="font-size:.68rem;color:${_c};font-weight:600;margin-top:2px;padding-left:2px;">${_r < 0 ? '('+_v+')' : _v} rem.</div>`;
         })()}
       </td>
-      <td style="padding:6px 8px;">
+      <td style="padding:6px 8px;vertical-align:top;">
         <div class="di-area-wrap">
           <input class="fi" style="width:100%;padding:6px ${row.costCode?'28px':'8px'} 6px 8px;font-size:.85rem;" value="${eh(_diCodeDisplay(row.costCode, row.area, jobName, csvFile))}" placeholder="Search code…"
             oninput="diCodeInput(this,${_diActiveCrew},${i},null)"
@@ -8006,13 +8006,13 @@ function diRenderCrewTable() {
           ${row.costCode ? `<button type="button" class="di-clear-x" onmousedown="event.preventDefault()" onclick="diClearCodeField(${_diActiveCrew},${i},null)" title="Clear labor code">×</button>` : ''}
         </div>
         ${_diRemLineHTML(_diCodeRemaining(row.costCode, row.area, jobName, csvFile))}
+        <button type="button" onclick="diAddExtraCode(${_diActiveCrew},${i})" style="margin-top:5px;background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.4);border-radius:5px;font-size:.72rem;cursor:pointer;padding:3px 10px;color:#c9a84c;font-weight:700;" title="Add another labor code for this area">+ Add Labor Code</button>
       </td>
-      <td style="padding:6px 8px;">
+      <td style="padding:6px 8px;vertical-align:top;">
         <input class="fi" style="width:100%;padding:6px 8px;font-size:.85rem;" value="${eh(row.description)}" placeholder="Notes"
           oninput="_diData[${_diActiveCrew}][${i}].description=this.value;diAutoSaveDraft()" />
       </td>
-      <td style="padding:6px 4px;width:52px;text-align:center;white-space:nowrap;">
-        <button onclick="diAddExtraCode(${_diActiveCrew},${i})" style="background:none;border:none;color:#c9a84c;font-size:1.1rem;font-weight:700;cursor:pointer;padding:2px 3px;line-height:1;" title="Add another labor code for this area">+</button>
+      <td style="padding:10px 4px;width:52px;text-align:center;white-space:nowrap;vertical-align:top;">
         <button onclick="diClearEntry(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 3px;line-height:1;" title="Clear this entry">✕</button>
       </td>
     </tr>`;
@@ -8284,6 +8284,7 @@ async function diClearEntries() {
   (_diData[crew] || []).forEach(r => {
     r.area = ''; r.costCode = ''; r.description = '';
     r.corBudgetId = ''; r.corNumber = '';
+    r.extraEntries = [];   // also drop any added labor-code sub-rows
   });
   diRenderCrewTable();
   diAutoSaveDraft();
@@ -8536,9 +8537,10 @@ function diAreaKey(e, input) {
     hi = Math.max(hi - 1, 0);
     opts[hi].classList.add('hi');
     opts[hi].scrollIntoView({ block:'nearest' });
-  } else if (e.key === 'Enter' && hi >= 0) {
+  } else if (e.key === 'Enter' && opts.length) {
+    // Enter auto-fills with the top match (or the highlighted one, if the user arrowed to it).
     e.preventDefault();
-    const el = opts[hi];
+    const el = opts[hi >= 0 ? hi : 0];
     diAreaPick(el.dataset.area, parseInt(el.dataset.crew), parseInt(el.dataset.row));
   } else if (e.key === 'Escape') {
     dropdown.style.display = 'none';
@@ -8689,8 +8691,9 @@ function diCodeKey(e, input) {
   } else if (e.key === 'ArrowUp') {
     e.preventDefault(); if (hi >= 0) opts[hi].classList.remove('hi');
     hi = Math.max(hi - 1, 0); opts[hi].classList.add('hi'); opts[hi].scrollIntoView({ block: 'nearest' });
-  } else if (e.key === 'Enter' && hi >= 0) {
-    e.preventDefault(); const el = opts[hi];
+  } else if (e.key === 'Enter' && opts.length) {
+    // Enter auto-fills with the top match (or the highlighted one, if the user arrowed to it).
+    e.preventDefault(); const el = opts[hi >= 0 ? hi : 0];
     diCodePick(el.dataset.code, parseInt(el.dataset.crew), parseInt(el.dataset.row), el.dataset.xi === '' ? null : parseInt(el.dataset.xi));
   } else if (e.key === 'Escape') {
     dd.style.display = 'none';
@@ -18781,6 +18784,15 @@ function renderCODashboard() {
       return { corb, ptd, rem, co, wu, fAmt, iAmt: corbInternalAmount(corb), desc: corb.description, codes: corb.laborCode, woNum: null };
     });
   }
+  // Order newest-approved first. corb.createdAt is written at approval time; group all
+  // of a COR/Work Order's labor-code rows by their shared approval time so they stay
+  // adjacent and the most recently approved COR/WO floats to the top of the table.
+  const _rowTs    = r => (r.corb && r.corb.createdAt) || (r.co && r.co.reviewedAt) || '';
+  const _rowGroup = r => (r.corb && (r.corb.changeOrderId || r.corb.writeUpId)) || '';
+  const _groupTs  = {};
+  rows.forEach(r => { const g = _rowGroup(r), t = _rowTs(r); if (!_groupTs[g] || t > _groupTs[g]) _groupTs[g] = t; });
+  rows.sort((a, b) => (_groupTs[_rowGroup(b)] || '').localeCompare(_groupTs[_rowGroup(a)] || ''));
+
   const totalRem   = totalBudget - totalPtd;
   const remColor   = totalRem < 0 ? 'var(--red)' : totalRem === 0 ? 'var(--yellow)' : 'var(--green)';
 
@@ -18792,7 +18804,8 @@ function renderCODashboard() {
     const actionCell = co ? `<button class="btn-sm" onclick="coOpenDetail('${ea(co.id)}')">View</button>`
                      : (wu && isAdmin()) ? `<button class="btn-sm" onclick="cwViewFromDash('${ea(wu.id)}')">View</button>`
                      : '—';
-    const firstCell = _dashIsBurn ? `Work Order${woNum ? ' #' + woNum : ''}` : eh(corb.corNumber);
+    const corDisp   = String(corb.corNumber || '').replace(/^0+(\d)/, '$1');   // strip leading zeros (004 → 4), like Work Order #s
+    const firstCell = _dashIsBurn ? `Work Order${woNum ? ' #' + woNum : ''}` : `Change Order #${eh(corDisp)}`;
     return `<tr style="border-top:1px solid var(--border);">
       <td style="padding:8px 10px;font-weight:700;font-size:.83rem;">${firstCell}</td>
       <td style="padding:8px 10px;font-size:.83rem;">${eh(desc)}</td>
@@ -18823,7 +18836,7 @@ function renderCODashboard() {
        </div>`
     : '';
   const headHTML = `<thead><tr>
-          <th style="${thStyle}text-align:left;">${_dashIsBurn ? 'Work Order #' : 'COR #'}</th>
+          <th style="${thStyle}text-align:left;">${_dashIsBurn ? 'Work Order #' : 'Change Order #'}</th>
           <th style="${thStyle}text-align:left;">Description</th>
           <th style="${thStyle}text-align:left;">Labor Code</th>
           ${showInternal ? `<th style="${thStyle}text-align:right;">Internal Amt</th>` : ''}
