@@ -2360,6 +2360,21 @@
       </div>
     </div>
 
+    <div style="margin-top:16px;">
+      <label style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px;">Attach Signed COR (PDF)</label>
+      <div id="cw-approve-drop"
+        ondragover="event.preventDefault();this.style.borderColor='var(--accent)'"
+        ondragleave="this.style.borderColor='var(--border)'"
+        ondrop="cwApproveDrop(event)"
+        onclick="document.getElementById('cw-approve-file').click()"
+        style="border:1.5px dashed var(--border);border-radius:10px;padding:18px;text-align:center;cursor:pointer;color:var(--muted);font-size:.85rem;transition:border-color .15s;">
+        <div style="font-size:1.4rem;margin-bottom:4px;"><span class="ico ico-file" aria-hidden="true"></span></div>
+        <div>Drag &amp; drop a PDF here, or click to browse</div>
+      </div>
+      <input type="file" id="cw-approve-file" accept="application/pdf,.pdf" style="display:none;" onchange="cwApproveFile(this)" />
+      <div id="cw-approve-file-name" style="font-size:.8rem;color:var(--green);margin-top:6px;min-height:1.1em;"></div>
+    </div>
+
     <div style="font-size:.78rem;color:var(--muted);margin:14px 0 18px;">On approval: labor is written to each area × labor code (Daily Input / paysheet tracking), materials (cost + tax) are added to the material budget, and the material markup profit is added to the Dashboard margin for this job.</div>
 
     <div style="display:flex;gap:10px;">
@@ -3104,7 +3119,7 @@ async function updateUserRole(uid, role) {
 }
 
 async function deleteUser(uid, email) {
-  if (!confirm(`Delete account "${email}"? This removes their access but does not delete their data.`)) return;
+  if (!await uiConfirm(`Delete account "${email}"? This removes their access but does not delete their data.`)) return;
   try {
     await db.collection('users').doc(uid).delete();
     openUsersModal(); // refresh the list
@@ -3219,7 +3234,7 @@ async function removeCSVFile(name) {
     if (relatedDailyInputs.length) parts.push(`${relatedDailyInputs.length} daily input${relatedDailyInputs.length !== 1 ? 's' : ''}`);
     msg += `\n\nThis will also permanently delete ${parts.join(' and ')} for this job.\n\nThis cannot be undone.`;
   }
-  if (!confirm(msg)) return;
+  if (!await uiConfirm(msg)) return;
 
   // Remove from cache immediately
   if (_cache.jobs)              _cache.jobs              = _cache.jobs.filter(f => f.name !== name);
@@ -3302,7 +3317,7 @@ async function purgeOrphanedJobData() {
   if (!refs.length) { alert('No orphaned data found — the database is already clean.'); return; }
   const summary = Object.entries(counts).map(([k, v]) => `• ${v} ${k}`).join('\n');
   const liveList = [...existing].sort().map(n => `   ${n}`).join('\n');
-  if (!confirm(`Found orphaned data for DELETED jobs:\n\n${summary}\n\nTotal ${refs.length} document(s) will be permanently deleted.\n\nYour ${existing.size} live job(s) are NOT affected:\n${liveList}\n\nProceed?`)) return;
+  if (!await uiConfirm(`Found orphaned data for DELETED jobs:\n\n${summary}\n\nTotal ${refs.length} document(s) will be permanently deleted.\n\nYour ${existing.size} live job(s) are NOT affected:\n${liveList}\n\nProceed?`)) return;
 
   await _commitDeletes(refs);
   // Prune caches so the UI reflects the cleanup immediately.
@@ -3499,7 +3514,7 @@ function closeMaterialModal() {
 // Deletes only the material* fields from a job (labor untouched).
 async function removeMaterialBudget(jobName) {
   if (!isAdmin()) return;
-  if (!confirm(`Remove the material budget from "${jobName}"? Labor budget is kept.`)) return;
+  if (!await uiConfirm(`Remove the material budget from "${jobName}"? Labor budget is kept.`)) return;
   const job = getSavedCSVFiles().find(f => f.name === jobName);
   if (job) { delete job.materialRows; delete job.materialCsvText; delete job.materialCount; delete job.materialSavedAt; }
   const docId = jobName.replace(/[^\w-]/g, '_');
@@ -3560,9 +3575,9 @@ function addWOEntry() {
   renderWOTable();
 }
 
-function deleteWOEntry(id) {
+async function deleteWOEntry(id) {
   if(!isAdmin()) { alert('Admin access required.'); return; }
-  if(!confirm('Delete this entry?')) return;
+  if(!await uiConfirm('Delete this entry?')) return;
   saveWOEntries(getWOEntries().filter(e => e.id !== id));
   renderWOTable();
 }
@@ -4343,8 +4358,8 @@ function cancelEmployeeEdit() {
   renderEmpTable();
 }
 
-function deleteEmployee(num, name) {
-  if (!confirm(`Delete employee #${num} — ${name}? This cannot be undone.`)) return;
+async function deleteEmployee(num, name) {
+  if (!await uiConfirm(`Delete employee #${num} — ${name}? This cannot be undone.`)) return;
   const updated = getEmployees().filter(e => e.n !== num);
   saveEmployees(updated);
   renderEmpTable();
@@ -4460,9 +4475,9 @@ function addLaborCode() {
   renderLCTable();
 }
 
-function deleteLaborCode(code, description) {
+async function deleteLaborCode(code, description) {
   if(!isAdmin()) return;
-  if(!confirm(`Delete code ${code} — ${description||'(no description)'}?`)) return;
+  if(!await uiConfirm(`Delete code ${code} — ${description||'(no description)'}?`)) return;
   const list=getLaborCodes().filter(lc=>!(lc.code===code&&lc.description===description));
   saveLaborCodes(list);
   _lcEditingCode = null;
@@ -4588,14 +4603,23 @@ function dashGetMarginEvents(jobName) {
       const amt  = corb ? corbInternalAmount(corb) : (c.burnAmount || 0);
       if (!amt) return;
       events.push({ type: 'wo', label: `Work Order #${c.burnNumber || '?'}`,
-                    sublabel: (c.description || '').trim() || '', dateRaw: c.reviewedAt || c.submittedAt || '', amount: amt,
+                    sublabel: (c.description || '').trim() || '', dateRaw: c.reviewedAt || c.submittedAt || '', amount: amt, delta: -amt,
                     source: 'Change Orders tab → Work Orders' });
     });
   dashGetOverBudgetItems(jobName).forEach(it => {
     events.push({ type: 'over', label: 'Over Budget',
-                  sublabel: `${it.area}${it.code ? ' · ' + it.code : ''}`, dateRaw: it.dateRaw || '', amount: it.over,
+                  sublabel: `${it.area}${it.code ? ' · ' + it.code : ''}`, dateRaw: it.dateRaw || '', amount: it.over, delta: -it.over,
                   source: `Payroll tab → 503 Work Order Log · ${it.area}` });
   });
+  // Approved Change Order markup profit (material + labor) ADDS to margin — billed profit.
+  (_cache.cowriteups || [])
+    .filter(w => w.jobId === jobName && w.status === 'approved' && (Number(w.markupProfit) || 0) > 0)
+    .forEach(w => {
+      const amt = Number(w.markupProfit) || 0;
+      events.push({ type: 'comarkup', label: `COR #${w.corNumber || '?'} Markup`,
+                    sublabel: 'Change order profit', dateRaw: w.approvedAt || w.updatedAt || w.createdAt || '', amount: amt, delta: amt,
+                    source: 'Change Orders tab → Write-Ups' });
+    });
   return events;
 }
 
@@ -5103,10 +5127,11 @@ function dashRenderTable() {
   grid.innerHTML = jobs.map(jobName => {
     const totalBudget = dashGetTotalBudget(jobName);
     const deductions  = dashGetMarginDeductions(jobName);
+    const coMarkup    = dashGetCOMarkupProfit(jobName);   // approved CO markup profit (adds to margin)
     const contract    = dashGetContract(jobName);
     const contractAmt = contract ? (contract.contractAmount || 0) : 0;
     const hasContract = contractAmt > 0;
-    const margin      = hasContract ? contractAmt - totalBudget - deductions : null;
+    const margin      = hasContract ? contractAmt - totalBudget - deductions + coMarkup : null;
     const marginPct   = (hasContract && contractAmt > 0) ? (margin / contractAmt * 100) : null;
     const safeJob     = jobName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     // Headline is Total Budget; Margin ($ and %) moves to the footer, keeping its
@@ -5326,10 +5351,10 @@ function dashRenderMarginChart(jobName) {
   const groupsMap = new Map();
   events.forEach(ev => {
     const k = dayKey(ev);
-    if (!groupsMap.has(k)) groupsMap.set(k, { dateRaw: ev.dateRaw || '', items: [], amount: 0 });
+    if (!groupsMap.has(k)) groupsMap.set(k, { dateRaw: ev.dateRaw || '', items: [], delta: 0 });
     const g = groupsMap.get(k);
     g.items.push(ev);
-    g.amount += ev.amount;
+    g.delta += (ev.delta != null ? ev.delta : -ev.amount);  // signed: markup adds, deductions subtract
     if (ev.dateRaw && ev.dateRaw > g.dateRaw) g.dateRaw = ev.dateRaw;
   });
   const groups = [...groupsMap.values()].sort((a, b) => (a.dateRaw || '').localeCompare(b.dateRaw || ''));
@@ -5344,13 +5369,13 @@ function dashRenderMarginChart(jobName) {
   }];
   let running = startingMargin;
   groups.forEach(g => {
-    running -= g.amount;
+    running += g.delta;
     const many = g.items.length > 1;
     points.push({
       label: many ? `${g.items.length} events` : g.items[0].label,
       sublabel: many ? g.items.map(i => `${i.label}${i.sublabel ? ' (' + i.sublabel + ')' : ''}`).join(', ') : g.items[0].sublabel,
       dateRaw: g.dateRaw,
-      amount: g.amount,
+      amount: g.delta,   // signed change to margin on this date
       margin: running,
       pct: running / contractAmt * 100,
     });
@@ -5432,7 +5457,7 @@ function dashRenderMarginChart(jobName) {
               const p = points[item.dataIndex];
               const lines = [];
               if (p.label !== 'Start') lines.push(`Event: ${p.label}${p.sublabel ? ' — ' + p.sublabel : ''}`);
-              if (p.amount) lines.push(`Pulled from margin: −${fm(p.amount)}`);
+              if (p.amount) lines.push(p.amount >= 0 ? `Added to margin: +${fm(p.amount)}` : `Pulled from margin: −${fm(Math.abs(p.amount))}`);
               lines.push(`Margin: ${fm(p.margin)}  (${p.pct.toFixed(1)}%)`);
               return lines;
             },
@@ -5464,7 +5489,7 @@ function dashRenderMarginDrivers(jobName) {
   const el = document.getElementById('dash-margin-drivers');
   if (!el) return;
   const totalEl = document.getElementById('dash-drivers-total');
-  const events = dashGetMarginEvents(jobName).filter(e => e.amount > 0);
+  const events = dashGetMarginEvents(jobName).filter(e => e.type !== 'comarkup' && e.amount > 0);
   if (!events.length) {
     if (totalEl) totalEl.textContent = '';
     el.innerHTML = `<div style="font-size:.78rem;color:var(--muted);">✓ No margin drivers — nothing is pulling this project's margin down yet.</div>`;
@@ -5626,9 +5651,9 @@ function switchToCSV(name) {
   displayCSVData(entry.rows, entry.name);
 }
 
-function deleteCSV(name) {
+async function deleteCSV(name) {
   if (!isAdmin()) return;
-  if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  if (!await uiConfirm(`Delete "${name}"? This cannot be undone.`)) return;
   if (prActiveJob === name) prActiveJob = '';
   if (activeCSVName === name) activeCSVName = null;
   removeCSVFile(name);
@@ -5719,10 +5744,10 @@ function _readFileText(file) {
 
 // Resolve which existing job a lone material file should attach to.
 // 0 jobs → null (error handled by caller). 1 → confirm. >1 → numbered prompt.
-function _pickJobForMaterial(candidates) {
+async function _pickJobForMaterial(candidates) {
   if (!candidates.length) return null;
   if (candidates.length === 1) {
-    return confirm(`Add this material budget to job "${candidates[0]}"?`) ? candidates[0] : null;
+    return await uiConfirm(`Add this material budget to job "${candidates[0]}"?`) ? candidates[0] : null;
   }
   const menu = candidates.map((n, i) => `${i + 1}. ${n}`).join('\n');
   const ans = prompt(`Which job should this material budget attach to?\n\n${menu}\n\nEnter a number (1–${candidates.length}):`);
@@ -5771,18 +5796,18 @@ async function processFiles(list) {
     if (laborNames.length === 1) {
       materialTarget = laborNames[0];                       // name-from-labor (both dropped together)
     } else if (laborNames.length > 1) {
-      materialTarget = _pickJobForMaterial(laborNames);     // ambiguous multi-labor batch
+      materialTarget = await _pickJobForMaterial(laborNames);     // ambiguous multi-labor batch
     } else {
       const existing = getSavedCSVFiles().map(f => f.name).sort();
       if (!existing.length) alert('Upload a labor budget first (or drop labor + material together) before adding a material budget.');
-      else materialTarget = _pickJobForMaterial(existing);  // material alone → existing job
+      else materialTarget = await _pickJobForMaterial(existing);  // material alone → existing job
     }
   }
   if (materialTarget) {
     const job = getSavedCSVFiles().find(f => f.name === materialTarget);
     const alreadyHasMaterial = !!(job && job.materialCsvText);
     for (const f of matFiles) {
-      if (alreadyHasMaterial && !confirm(`"${materialTarget}" already has a material budget. Replace it with "${f.name}"?`)) continue;
+      if (alreadyHasMaterial && !await uiConfirm(`"${materialTarget}" already has a material budget. Replace it with "${f.name}"?`)) continue;
       try {
         const matRows = parseMaterialCSV(f.text);
         await saveMaterialBudget(materialTarget, matRows, f.text);
@@ -5949,9 +5974,11 @@ function displayCSVData(rows, name) {
 // ═══════════════════════════
 const _msReg = {};
 function msInit(id, allLabel, onChange, opts){
-  _msReg[id] = { sel:new Set(), options:[], allLabel, onChange, query:'', controls:!!(opts&&opts.controls), onApply:(opts&&opts.onApply)||null };
+  _msReg[id] = { sel:new Set(), options:[], allLabel, onChange, query:'', controls:!!(opts&&opts.controls), onApply:(opts&&opts.onApply)||null, labels:(opts&&opts.labels)||null };
   msRender(id);
 }
+// Display text for an option value — uses the optional label map (value stays the raw option).
+function _msDisp(st, v){ return (st && st.labels && st.labels[v]) ? st.labels[v] : v; }
 function msSetOptions(id, options){
   const st=_msReg[id]; if(!st) return;
   st.options = options.slice();
@@ -5965,7 +5992,7 @@ function msEnsure(id, allLabel, options, onChange, opts){
   const st=_msReg[id];
   if(!st){ msInit(id, allLabel, onChange, opts); msSetOptions(id, options); return; }
   st.allLabel = allLabel; st.onChange = onChange;
-  if(opts){ st.controls = !!opts.controls; st.onApply = opts.onApply||null; }
+  if(opts){ st.controls = !!opts.controls; st.onApply = opts.onApply||null; st.labels = opts.labels||null; }
   const same = st.options.length===options.length && st.options.every((v,i)=>v===options[i]);
   const host = document.getElementById(id);
   const domOk = host && host.querySelector('.ms-btn');
@@ -6017,7 +6044,7 @@ function msTogglePanel(id, open){
 function msUpdateLabel(id){
   const st=_msReg[id]; const host=document.getElementById(id); if(!st||!host) return;
   const n=st.sel.size;
-  const label = n===0 ? st.allLabel : (n===1 ? [...st.sel][0] : n+' selected');
+  const label = n===0 ? st.allLabel : (n===1 ? _msDisp(st,[...st.sel][0]) : n+' selected');
   const lbl = host.querySelector('.ms-lbl');
   const cntWrap = host.querySelector('.ms-cntwrap');
   if(lbl) lbl.textContent = label;
@@ -6036,7 +6063,7 @@ function msRenderOpts(id){
   // Selections live in st.sel, independent of what the search shows — searching never unchecks anything.
   list.innerHTML = shown.map(o=>{
     const checked = st.sel.has(o) ? 'checked' : '';
-    return `<label class="ms-opt"><input type="checkbox" ${checked} value="${eh(o)}" onchange="msToggle('${id}', this.value)"><span>${eh(o)}</span></label>`;
+    return `<label class="ms-opt"><input type="checkbox" ${checked} value="${eh(o)}" onchange="msToggle('${id}', this.value)"><span>${eh(_msDisp(st,o))}</span></label>`;
   }).join('');
   _msSyncAllCb(id);
 }
@@ -6046,7 +6073,7 @@ function msRender(id){
   const existing = host.querySelector('.ms-panel');
   const wasOpen = existing && !existing.classList.contains('hidden');
   const n=st.sel.size;
-  const label = n===0 ? st.allLabel : (n===1 ? [...st.sel][0] : n+' selected');
+  const label = n===0 ? st.allLabel : (n===1 ? _msDisp(st,[...st.sel][0]) : n+' selected');
   const cnt = n>0 ? `<span class="ms-cnt">${n}</span>` : '';
   host.innerHTML = `
     <button type="button" class="ms-btn" onclick="event.stopPropagation();msTogglePanel('${id}')">
@@ -6882,11 +6909,11 @@ function renderPayrollJobTabs() {
   }
 }
 
-function deleteJobPayroll(jobName) {
+async function deleteJobPayroll(jobName) {
   if(!isAdmin()) return;
   const count=getPayrollEntries().filter(e=>e.csvFile===jobName).length;
   if(!count){alert('No payroll entries for this job.');return;}
-  if(!confirm(`Delete all ${count} payroll entr${count!==1?'ies':'y'} for "${jobName}"? This cannot be undone.`)) return;
+  if(!await uiConfirm(`Delete all ${count} payroll entr${count!==1?'ies':'y'} for "${jobName}"? This cannot be undone.`)) return;
   savePayrollEntries(getPayrollEntries().filter(e=>e.csvFile!==jobName));
   applyPayrollFilters();
   renderPayrollSummary();
@@ -7177,9 +7204,9 @@ function renderPayrollTable() {
   renderPag('pr-pagination',prFiltered.length,prPage,n=>{prPage=n;renderPayrollTable();});
 }
 
-function deletePayrollEntry(id) {
+async function deletePayrollEntry(id) {
   if(!isAdmin()){alert('Admin access required to delete payroll entries.');return;}
-  if(!confirm('Delete this payroll entry?')) return;
+  if(!await uiConfirm('Delete this payroll entry?')) return;
   savePayrollEntries(getPayrollEntries().filter(e=>String(e.id)!==String(id)));
   applyPayrollFilters(); renderPayrollSummary();
   if(activeCSVName){renderCSVSummary();applyFilters();renderCharts();}
@@ -7574,10 +7601,10 @@ function diAddCrew() {
   diRenderCrewTable();
 }
 
-function diDeleteCrew(crewNum) {
+async function diDeleteCrew(crewNum) {
   if (_diCrewCount <= 1) { alert('Cannot remove the only crew.'); return; }
   const hasData = (_diData[crewNum] || []).some(r => (r.employee||'').trim() || (r.area||'').trim());
-  if (hasData && !confirm(`Remove "${(_diCrewLeadNames[crewNum]||'').trim() || 'Crew '+crewNum}"? All entries in this crew will be lost.`)) return;
+  if (hasData && !await uiConfirm(`Remove "${(_diCrewLeadNames[crewNum]||'').trim() || 'Crew '+crewNum}"? All entries in this crew will be lost.`)) return;
 
   // Rebuild contiguous numbered arrays (removing crewNum, shifting higher ones down)
   const newData       = {};
@@ -7724,7 +7751,7 @@ async function diLoadCrewSet(id) {
 }
 
 async function diDeleteCrewSet(id, name) {
-  if (!confirm(`Delete crew set "${name}"?`)) return;
+  if (!await uiConfirm(`Delete crew set "${name}"?`)) return;
   try {
     await db.collection('crewsets').doc(id).delete();
     _diShowToast(`Crew "${name}" deleted`);
@@ -8244,16 +8271,16 @@ function diClearFilter(type) {
   _diUpdateFilterBtnState();
 }
 
-function diClearEmployees() {
-  if (!confirm('Clear all employee names for this crew?')) return;
+async function diClearEmployees() {
+  if (!await uiConfirm('Clear all employee names for this crew?')) return;
   const crew = _diActiveCrew;
   (_diData[crew] || []).forEach(r => { r.employee = ''; r.empNum = ''; });
   diRenderCrewTable();
   diAutoSaveDraft();
 }
 
-function diClearEntries() {
-  if (!confirm('Clear all area and labor code entries for this crew?')) return;
+async function diClearEntries() {
+  if (!await uiConfirm('Clear all area and labor code entries for this crew?')) return;
   const crew = _diActiveCrew;
   (_diData[crew] || []).forEach(r => {
     r.area = ''; r.costCode = ''; r.description = '';
@@ -9100,7 +9127,7 @@ async function diCreateDraftFolder() {
 async function diDeleteDraftFolder(folderId) {
   const folder = _diDraftFolders.find(f => f.id === folderId);
   if (!folder) return;
-  if (!confirm(`Delete folder "${folder.name}"? Drafts inside will become unsorted.`)) return;
+  if (!await uiConfirm(`Delete folder "${folder.name}"? Drafts inside will become unsorted.`)) return;
   try {
     await db.collection('draftFolders').doc(folderId).delete();
     const inFolder = _diDraftsDocs.filter(d => d.folderId === folderId);
@@ -9776,7 +9803,7 @@ async function psCompileSelectedInputs() {
     return `  • ${g.job} — Week Ending ${_fmtWeekDate(g.week)} (${g.ids.length} input${g.ids.length !== 1 ? 's' : ''})`;
   }).join('\n');
   const totalSel = inputs.length;
-  if (!confirm(`Compile ${totalSel} selected daily input${totalSel !== 1 ? 's' : ''} into weekly paysheets?\n\n${groupKeys.length} group${groupKeys.length !== 1 ? 's' : ''} (by job + week):\n${groupDesc}\n\nEach selected daily input becomes its OWN separate paysheet for its week. Other paysheets for these weeks are left untouched.`)) return;
+  if (!await uiConfirm(`Compile ${totalSel} selected daily input${totalSel !== 1 ? 's' : ''} into weekly paysheets?\n\n${groupKeys.length} group${groupKeys.length !== 1 ? 's' : ''} (by job + week):\n${groupDesc}\n\nEach selected daily input becomes its OWN separate paysheet for its week. Other paysheets for these weeks are left untouched.`)) return;
 
   const summaries = [];
   for (const k of groupKeys) {
@@ -10081,7 +10108,7 @@ async function diSavePayWeekSettings() {
 // entered date (falling back to the save timestamp only when a record has no date).
 async function diMigratePayWeeks() {
   if (!isAdmin()) { alert('Admin only.'); return; }
-  if (!confirm('Recompute the weekEnding on all daily inputs using the Thursday→Wednesday pay-week rule and each input\'s entered date?\n\nThis updates existing records. It cannot be undone.')) return;
+  if (!await uiConfirm('Recompute the weekEnding on all daily inputs using the Thursday→Wednesday pay-week rule and each input\'s entered date?\n\nThis updates existing records. It cannot be undone.')) return;
   try {
     const snap = await db.collection('dailyinput').get();
     const updates = [];
@@ -10148,7 +10175,7 @@ function _diPsLogDetailHTML(p) {
 /** Delete a supplemental paysheet from Firestore + cache and refresh the log. */
 async function diDeleteSuppPaysheet(docId) {
   if (!isAdmin()) { alert('Admin access required.'); return; }
-  if (!confirm('Delete this added paysheet? This cannot be undone.')) return;
+  if (!await uiConfirm('Delete this added paysheet? This cannot be undone.')) return;
   try {
     await db.collection('paysheets').doc(docId).delete();
     if (_cache.paysheets) _cache.paysheets = _cache.paysheets.filter(p => p.id !== docId);
@@ -10590,7 +10617,7 @@ function diViewSubmission(id) {
 }
 
 async function diDeleteSubmission(id) {
-  if (!confirm('Delete this daily input submission?')) return;
+  if (!await uiConfirm('Delete this daily input submission?')) return;
   try {
     await db.collection('dailyinput').doc(id).delete();
     diLoadLog();
@@ -12233,6 +12260,12 @@ function cwOpenFromInbox(id) {
   cwOpenFolder(w.jobId);
   cwOpenDoc(id);
 }
+// Open a write-up from the Change Orders dashboard View button (jumps to Write-Ups sub-tab).
+function cwViewFromDash(id) {
+  if (!isAdmin()) return;
+  coSetSubTab('writeup');
+  cwOpenFromInbox(id);
+}
 function cwRenderFolders() {
   const wrap = document.getElementById('cw-folders-wrap');
   if (!wrap) return;
@@ -12363,8 +12396,13 @@ function cwPopulateDistFilters(job, selected) {
   const f = getSavedCSVFiles().find(x => x.name === job);
   const areas = f ? [...new Set(f.rows.map(r => r.area).filter(a => a && a !== '—'))].sort() : [];
   const codes = f ? [...new Set(f.rows.map(r => String(r.costCode)).filter(c => c && c !== '—'))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})) : [];
-  msEnsure('cw-dist-area', 'Select areas', areas, cwDistChanged);
-  msEnsure('cw-dist-code', 'Select labor codes', codes, cwDistChanged);
+  // Show "code — description" in the labor-code dropdown (value stays the bare code).
+  const lcDesc = {};
+  getLaborCodes().forEach(lc => { lcDesc[String(lc.code)] = String(lc.code) + (lc.description ? ' — ' + lc.description : ''); });
+  const codeLabels = {};
+  codes.forEach(c => { codeLabels[c] = lcDesc[c] || c; });
+  msEnsure('cw-dist-area', 'Select areas', areas, cwDistChanged, { controls:true, onApply:cwDistChanged });
+  msEnsure('cw-dist-code', 'Select labor codes', codes, cwDistChanged, { controls:true, onApply:cwDistChanged, labels:codeLabels });
   if (selected) { /* selection restored by caller via msValues on open */ }
 }
 function cwDistChanged() { if (_cwCur) { _cwCur.areas = msValues('cw-dist-area'); _cwCur.laborCodes = msValues('cw-dist-code'); } }
@@ -12667,8 +12705,28 @@ function _cwCollectDoc() {
     createdAt: cur.createdAt || now,
     updatedAt: now,
   };
+  // Link back to the CO request this write-up was started from (if any).
+  if (cur.sourceChangeOrderId) doc.sourceChangeOrderId = cur.sourceChangeOrderId;
   if (cur.approvedAt) { doc.approvedAt = cur.approvedAt; doc.approvedBy = cur.approvedBy; }
   return doc;
+}
+
+// When a write-up was started by approving a CO request, saving it (draft or
+// pending) clears that request out of Pending Review and links it to the write-up.
+async function _cwClearSourceCO(coId, writeUpId) {
+  const co = (_cache.changeorders || []).find(c => c.id === coId);
+  if (!co || co.status === 'approved') return;
+  const update = {
+    status: 'approved',
+    reviewerEmail: _currentUser ? _currentUser.email : null,
+    reviewerUid:   _currentUser ? _currentUser.uid   : null,
+    reviewedAt:    new Date().toISOString(),
+    linkedWriteUpId: writeUpId,
+  };
+  await db.collection('changeorders').doc(coId).update(update);
+  const idx = (_cache.changeorders || []).findIndex(c => c.id === coId);
+  if (idx !== -1) Object.assign(_cache.changeorders[idx], update);
+  try { renderCOLog(); } catch(_) {}
 }
 async function cwSave(status) {
   if (!isAdmin()) return;
@@ -12680,6 +12738,8 @@ async function cwSave(status) {
   if (doc.status !== 'approved') doc.status = status || 'pending';
   try {
     await db.collection('cowriteups').doc(doc.id).set(doc);
+    // Clear the originating CO request out of Pending Review (if this write-up came from one).
+    if (doc.sourceChangeOrderId) { try { await _cwClearSourceCO(doc.sourceChangeOrderId, doc.id); } catch(_) {} }
     _cwEditingId = doc.id;
     _cwCur = Object.assign({}, doc, {
       laborLines: doc.laborLines.map(x=>Object.assign({},x)),
@@ -12704,6 +12764,23 @@ async function cwSubmitDraft(id) {
     toast('Draft submitted — pending approval.', 'success');
     if (cwActive()) { if (_cwNav === 'folders') cwRenderFolders(); else cwRenderLog(); }
   } catch(e) { console.error('cwSubmitDraft:', e); toast('Failed to submit: ' + e.message, 'error'); }
+}
+// Open: if a signed PDF was attached on approval, pop it up (same as Purchasing);
+// otherwise open the change order in the builder.
+function cwOpenAction(id) {
+  const w = _cwList().find(x => x.id === id);
+  if (w && w.pdfData) { _cwOpenAttachment(id); return; }
+  cwOpenDoc(id);
+}
+function _cwOpenAttachment(id) {
+  const w = _cwList().find(x => x.id === id);
+  if (!w || !w.pdfData) { toast('No attached PDF on this change order.', 'error'); return; }
+  const title = w.pdfName || ('COR ' + (w.corNumber || '') + ' Attachment');
+  if (_isStandalonePWA()) { _appViewer({ title, url: w.pdfData, print:false }); return; }
+  const win = window.open('', '_blank');
+  if (!win) { toast('Pop-up blocked — allow pop-ups to view the attachment.', 'error'); return; }
+  win.document.write(`<!doctype html><title>${eh(title)}</title><body style="margin:0"><iframe src="${w.pdfData}" style="border:0;width:100vw;height:100vh;"></iframe></body>`);
+  win.document.close();
 }
 function cwOpenDoc(id) {
   const doc = _cwList().find(w => w.id === id);
@@ -12815,7 +12892,7 @@ function cwRenderLog() {
         </div>
         ${badge(w.status)}
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="btn btn-outline" onclick="cwOpenDoc('${ea(w.id)}')" style="font-size:.72rem;padding:4px 10px;">Open</button>
+          <button class="btn btn-outline" onclick="cwOpenAction('${ea(w.id)}')" style="font-size:.72rem;padding:4px 10px;" title="${w.pdfData?'Open attached signed PDF':'Open in builder'}">Open</button>
           <button class="btn btn-outline" onclick="_cwExportDocPDF(_cwList().find(x=>x.id==='${ea(w.id)}'))" style="font-size:.72rem;padding:4px 10px;" title="Open print view">Print</button>
         <button class="btn btn-outline" onclick="_cwDownloadDocPDF(_cwList().find(x=>x.id==='${ea(w.id)}'))" style="font-size:.72rem;padding:4px 10px;" title="Download a ready-to-send PDF"><span class="ico ico-file" aria-hidden="true"></span> PDF</button>
           ${w.status==='draft' ? `<button class="btn btn-outline" onclick="cwSubmitDraft('${ea(w.id)}')" style="font-size:.72rem;padding:4px 10px;" title="Move this draft to Pending Approval">Submit</button>` : ''}
@@ -12846,6 +12923,7 @@ async function cwDeleteDoc(id) {
 // ── Approval — distribute labor across areas × codes, post materials + markup ──
 let _cwApproveId = null;
 let _cwApprovePairs = [];
+let _cwApprovePdf = null;   // { name, data } signed-COR PDF attached on approval
 function cwApprove(id) {
   if (!isAdmin()) return;
   const w = _cwList().find(x => x.id === id);
@@ -12879,9 +12957,32 @@ function cwApprove(id) {
       <input type="number" class="fi cw-approve-dist-input" min="0" step="0.01" placeholder="0.00" style="width:100%;text-align:right;padding:5px 8px;" oninput="cwApproveDistSum()" />
     </div>`).join('');
   cwApproveDistSum();
+  // Signed-COR PDF: prefill if one was already attached, reset the picker otherwise.
+  _cwApprovePdf = (w.pdfName && w.pdfData) ? { name:w.pdfName, data:w.pdfData } : null;
+  const fn = document.getElementById('cw-approve-file-name');
+  if (fn) fn.textContent = _cwApprovePdf ? ('📎 ' + _cwApprovePdf.name) : '';
+  const fileInput = document.getElementById('cw-approve-file'); if (fileInput) fileInput.value = '';
   document.getElementById('cw-approve-modal').classList.add('open');
 }
-function cwApproveCancel() { _cwApproveId = null; _cwApprovePairs = []; const m = document.getElementById('cw-approve-modal'); if (m) m.classList.remove('open'); }
+function cwApproveCancel() { _cwApproveId = null; _cwApprovePairs = []; _cwApprovePdf = null; const m = document.getElementById('cw-approve-modal'); if (m) m.classList.remove('open'); }
+function _cwReadApprovePdf(file) {
+  if (!file) return;
+  if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) { toast('Please attach a PDF file.', 'error'); return; }
+  if (file.size > 700*1024) { toast('PDF too large (max ~700 KB). Attach a smaller file.', 'error'); return; }
+  const r = new FileReader();
+  r.onload = e => {
+    _cwApprovePdf = { name:file.name, data:e.target.result };
+    const fn = document.getElementById('cw-approve-file-name'); if (fn) fn.textContent = '📎 ' + file.name;
+  };
+  r.onerror = () => toast('Could not read the PDF.', 'error');
+  r.readAsDataURL(file);
+}
+function cwApproveDrop(e) {
+  e.preventDefault();
+  const dz = document.getElementById('cw-approve-drop'); if (dz) dz.style.borderColor = 'var(--border)';
+  _cwReadApprovePdf(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+}
+function cwApproveFile(input) { _cwReadApprovePdf(input.files && input.files[0]); }
 function cwApproveDistSum() {
   const inputs = [...document.querySelectorAll('.cw-approve-dist-input')];
   const sum = inputs.reduce((s,inp) => s + (parseFloat(inp.value)||0), 0);
@@ -12943,17 +13044,19 @@ async function cwApproveConfirm() {
     // in _mprConsolidate (so edits reflect immediately, no re-approval needed). We only clean
     // up any legacy stored comaterialbudgets from a previous version of this feature.
     const legacyMat = (_cache.comaterialbudgets || []).filter(m => m.writeUpId === wid);
+    const cwUpdate = { status:'approved', approvedAt:nowIso, approvedBy:(_currentUser?_currentUser.email:'') };
+    if (_cwApprovePdf) { cwUpdate.pdfName = _cwApprovePdf.name; cwUpdate.pdfData = _cwApprovePdf.data; }
     const writeOps = [
       ...corbDocs.map(d => db.collection('corbudgets').doc(d.id).set(d)),
       ...legacyMat.map(m => db.collection('comaterialbudgets').doc(m.id).delete().catch(()=>{})),
-      db.collection('cowriteups').doc(wid).update({ status:'approved', approvedAt:nowIso, approvedBy:(_currentUser?_currentUser.email:'') }),
+      db.collection('cowriteups').doc(wid).update(cwUpdate),
     ];
     await Promise.all(writeOps);
     // Optimistic cache updates (snapshots will reconcile).
     _cache.corbudgets = [...(_cache.corbudgets||[]).filter(b => b.writeUpId !== wid), ...corbDocs];
     _cache.comaterialbudgets = (_cache.comaterialbudgets||[]).filter(m => m.writeUpId !== wid);
     const wi = (_cache.cowriteups||[]).findIndex(x => x.id === wid);
-    if (wi !== -1) Object.assign(_cache.cowriteups[wi], { status:'approved', approvedAt:nowIso });
+    if (wi !== -1) Object.assign(_cache.cowriteups[wi], cwUpdate);
     if (_cwEditingId === wid && _cwCur) _cwCur.status = 'approved';
     toast('Change order approved — budgets created.', 'success');
     cwApproveCancel();
@@ -13070,7 +13173,7 @@ function _cwPdfCss(scope) {
     ${p}.sign{font-family:'Great Vibes','Snell Roundhand','Brush Script MT',cursive;font-size:2.1rem;line-height:1;color:#12203a;}
     ${p}.logo{text-align:center;} ${p}.logo img{height:70px;object-fit:contain;}
     ${p}.title{text-align:center;font-weight:800;font-size:1.35rem;letter-spacing:.02em;margin:-6px 0 14px;}
-    ${p}table{width:100%;border-collapse:collapse;}
+    ${p}table{width:100%;border-collapse:collapse;table-layout:fixed;}
     ${p}td{font-size:.85rem;padding:2px 6px;vertical-align:top;}
     ${p}.bar td{background:#c8a95a !important;color:#1a1a1a;font-weight:700;font-size:.82rem;padding:5px 10px;letter-spacing:.02em;}
     ${p}.bar.c td{text-align:center;}
@@ -13086,10 +13189,18 @@ function _cwPdfCss(scope) {
   `;
 }
 function _cwDocHTML(doc) {
+  // Render inside the SAME 816px scoped layout the downloadable PDF uses, and set
+  // @page margin:0 so the printed/"Save as PDF" output matches the PDF button exactly
+  // (no wrapping, no browser header/footer).
   return `<!doctype html><html><head><meta charset="utf-8"><title>COR ${eh(doc.corNumber||'')}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap" rel="stylesheet">
-  <style>${_cwPdfCss(null)}@media print{ body{padding:12px 40px;} }</style></head><body>${_cwDocBody(doc)}</body></html>`;
+  <style>
+    @page{ size:816px 1056px; margin:0; }
+    html,body{ margin:0; padding:0; background:#fff; }
+    ${_cwPdfCss('#cw-print-root')}
+    #cw-print-root{ margin:0 auto; }
+  </style></head><body><div id="cw-print-root">${_cwDocBody(doc)}</div></body></html>`;
 }
 function _cwExportDocPDF(doc) {
   if (!doc) { toast('Change order not found.', 'error'); return; }
@@ -13162,10 +13273,14 @@ async function _cwDownloadDocPDF(doc) {
     if (img && !img.complete) { await new Promise(r => { img.onload = r; img.onerror = r; setTimeout(r, 2500); }); }
     try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(_) {}
     await new Promise(res => setTimeout(res, 300));
+    // Capture the FULL rendered width (not a hard 816 crop) so a wide cost-summary
+    // table is never clipped on the right — it's scaled down to the page width below,
+    // matching how the print view fits everything.
+    const w = Math.ceil(Math.max(wrap.scrollWidth, wrap.offsetWidth, 816));
     const h = Math.max(wrap.scrollHeight, wrap.offsetHeight, 1);
     const canvas = await H2C(wrap, {
       scale: 2, useCORS: true, backgroundColor: '#ffffff',
-      width: 816, height: h, windowWidth: 816, windowHeight: h, scrollX: 0, scrollY: 0,
+      width: w, height: h, windowWidth: w, windowHeight: h, scrollX: 0, scrollY: 0,
     });
     const imgData = canvas.toDataURL('image/jpeg', 0.98);
     const pageW = 816, pageH = 1056;
@@ -14219,7 +14334,7 @@ async function acctUnapprovePaysheets(weekEnding, jobName) {
     p.type === 'weekly' && p.weekEnding === weekEnding && p.job === jobName && _psIsApproved(p));
   if (!docs.length) { alert('No approved paysheets found for this job and week.'); return; }
   const many = docs.length !== 1;
-  if (!confirm(
+  if (!await uiConfirm(
     `Un-approve ${docs.length} paysheet${many ? 's' : ''} for "${jobName}" — Week Ending ${_fmtWeekDate(weekEnding)}?\n\n` +
     `• Removes ${many ? 'them' : 'it'} from the Accounting tab\n` +
     `• Deletes the payroll entries ${many ? 'they' : 'it'} created on the Payroll tab\n` +
@@ -15375,8 +15490,8 @@ function psSplitAmtChanged(i, val) {
   psScheduleAnyAutoSave();
 }
 
-function clearPaysheet() {
-  if (!confirm(`Clear Crew ${_psActiveCrew} paysheet?`)) return;
+async function clearPaysheet() {
+  if (!await uiConfirm(`Clear Crew ${_psActiveCrew} paysheet?`)) return;
   _psState[_psActiveCrew] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
   _psCurrentType = 'weekly';
   psLoadHeaderFields();
@@ -15869,7 +15984,7 @@ async function psConfirmPullInputs() {
     .map(cb => items[parseInt(cb.dataset.i, 10)])
     .filter(Boolean);
   if (!sel.length) { alert('Select at least one daily input to move.'); return; }
-  if (!confirm(`Move ${sel.length} daily input${sel.length !== 1 ? 's' : ''} for "${job}" to Week Ending ${_fmtWeekDate(targetWeek)}?\n\nOriginal entry dates/timestamps are NOT changed — only the pay-week assignment.`)) return;
+  if (!await uiConfirm(`Move ${sel.length} daily input${sel.length !== 1 ? 's' : ''} for "${job}" to Week Ending ${_fmtWeekDate(targetWeek)}?\n\nOriginal entry dates/timestamps are NOT changed — only the pay-week assignment.`)) return;
 
   try {
     const batch = db.batch();
@@ -16042,7 +16157,7 @@ async function psCompileAllUncompiled(weekEnding) {
 
   const newCount = uncompiled.length;
   const fmCount  = affected.size;
-  if (!confirm(`Compile ${newCount} new daily input${newCount !== 1 ? 's' : ''} for Week Ending ${_fmtWeekDate(weekEnding)}?\n\n${fmCount} foreman${fmCount !== 1 ? 's' : ''} with new inputs will be (re)built from all their inputs this week. Foremen already fully compiled are left untouched.`)) return;
+  if (!await uiConfirm(`Compile ${newCount} new daily input${newCount !== 1 ? 's' : ''} for Week Ending ${_fmtWeekDate(weekEnding)}?\n\n${fmCount} foreman${fmCount !== 1 ? 's' : ''} with new inputs will be (re)built from all their inputs this week. Foremen already fully compiled are left untouched.`)) return;
 
   const res = await psCompileWeeklyPaysheet(weekEnding, { job: activeJob, selectedIds: rebuildIds, skipConfirm: true, skipAlert: true });
 
@@ -16106,7 +16221,7 @@ async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
     ? `${diInputs.length} daily input${diInputs.length !== 1 ? 's' : ''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy paysheet${legacyDailySheets.length !== 1 ? 's' : ''}` : ''}`
     : `${legacyDailySheets.length} legacy daily paysheet${legacyDailySheets.length !== 1 ? 's' : ''}`;
 
-  if (!opts.skipConfirm && !confirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly paysheets?\n\nOne SEPARATE paysheet per foreman/crew lead — each labeled with their name.\n(Any existing compiled paysheets for this week will be rebuilt.)`)) return;
+  if (!opts.skipConfirm && !await uiConfirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly paysheets?\n\nOne SEPARATE paysheet per foreman/crew lead — each labeled with their name.\n(Any existing compiled paysheets for this week will be rebuilt.)`)) return;
 
   // Group by crew lead name so all of a foreman's entries across multiple daily inputs
   // land in one tab, regardless of how many submission docs there are.
@@ -16436,7 +16551,7 @@ async function psDeleteFolder(folderId) {
     alert(`Cannot delete — this folder still contains ${diInFolder.length} daily input${diInFolder.length !== 1 ? 's' : ''}.\n\nDelete them from the submission log first.`);
     return;
   }
-  if (!confirm(`Delete empty folder ${folderName}?\nThis cannot be undone.`)) return;
+  if (!await uiConfirm(`Delete empty folder ${folderName}?\nThis cannot be undone.`)) return;
   try {
     await db.collection('psfolders').doc(folderId).delete();
     _cache.psFoldersList = (_cache.psFoldersList||[]).filter(f => f.id !== folderId);
@@ -16455,7 +16570,7 @@ async function psDeleteFolder(folderId) {
 
 async function psLockFolder(we) {
   if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can lock folders.'); return; }
-  if (!confirm(`Lock folder "Week Ending: ${_fmtWeekDate(we)}"?\n\nForeman-class users will be blocked from viewing this folder and its paysheets until unlocked or granted temporary access.`)) return;
+  if (!await uiConfirm(`Lock folder "Week Ending: ${_fmtWeekDate(we)}"?\n\nForeman-class users will be blocked from viewing this folder and its paysheets until unlocked or granted temporary access.`)) return;
   const now = new Date().toISOString();
   try {
     await db.collection('psfolders').doc(we).set({
@@ -16473,7 +16588,7 @@ async function psLockFolder(we) {
 
 async function psUnlockFolder(we) {
   if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can unlock folders.'); return; }
-  if (!confirm(`Unlock folder "Week Ending: ${_fmtWeekDate(we)}"?\n\nForeman-class users will be able to view this folder again.`)) return;
+  if (!await uiConfirm(`Unlock folder "Week Ending: ${_fmtWeekDate(we)}"?\n\nForeman-class users will be able to view this folder again.`)) return;
   try {
     await db.collection('psfolders').doc(we).set({ weekEnding: we, locked: false, lockedBy: null, lockedAt: null }, { merge: true });
     if (_cache.psFolderMeta && _cache.psFolderMeta[we]) {
@@ -16557,7 +16672,7 @@ async function psDenyFolderRequest(reqId) {
 
 async function psRevokeFolderAccess(we, email) {
   if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can revoke access.'); return; }
-  if (!confirm(`Revoke temporary access for ${email}?`)) return;
+  if (!await uiConfirm(`Revoke temporary access for ${email}?`)) return;
   try {
     const meta   = (_cache.psFolderMeta || {})[we] || {};
     const grants = Object.assign({}, meta.grants || {});
@@ -16860,7 +16975,7 @@ function _diLoadRow(d) {
 async function psMoveDailyTo(docId, newWeekEnding, selectEl) {
   if (!newWeekEnding) return;
   selectEl.value = '';
-  if (!confirm(`Move this daily input to "Week Ending: ${_fmtWeekDate(newWeekEnding)}"?`)) return;
+  if (!await uiConfirm(`Move this daily input to "Week Ending: ${_fmtWeekDate(newWeekEnding)}"?`)) return;
   const di = (_cache.dailyInputs||[]).find(x => x.id === docId);
   if (!di) { alert('Daily input not found.'); return; }
   try {
@@ -16947,7 +17062,7 @@ function psToggleFolder(folderId, elId) {
 async function psMovePaysheetTo(docId, newWeekEnding, selectEl) {
   if (!newWeekEnding) return;
   selectEl.value = ''; // reset dropdown
-  if (!confirm(`Move this paysheet to "Week Ending: ${_fmtWeekDate(newWeekEnding)}"?`)) return;
+  if (!await uiConfirm(`Move this paysheet to "Week Ending: ${_fmtWeekDate(newWeekEnding)}"?`)) return;
   const ps = (_cache.paysheets||[]).find(p => p.id === docId);
   if (!ps) { alert('Paysheet not found.'); return; }
 
@@ -17073,7 +17188,7 @@ function psCancelSaveDest() {
 
 async function deleteSavedPaysheet(docId, e) {
   e.stopPropagation();
-  if (!confirm('Delete this saved paysheet? This cannot be undone.')) return;
+  if (!await uiConfirm('Delete this saved paysheet? This cannot be undone.')) return;
   try {
     // Find the paysheet doc to check if it's a daily type
     const ps = (_cache.paysheets || []).find(p => p.id === docId);
@@ -18218,7 +18333,7 @@ async function psBackfillAccountingWeek(weekEnding) {
     p.type === 'weekly' && p.weekEnding === wk && _psIsApproved(p));
   if (!sheets.length) { alert(`No approved paysheets found for Week Ending ${_fmtWeekDate(wk)}.`); return; }
 
-  if (!confirm(`Bring Week Ending ${_fmtWeekDate(wk)} up to date in Accounting?\n\nApproves + syncs every crew tab with data on the ${sheets.length} already-approved paysheet${sheets.length !== 1 ? 's' : ''} for this week. Idempotent — no double-counting. Other weeks are untouched.`)) return;
+  if (!await uiConfirm(`Bring Week Ending ${_fmtWeekDate(wk)} up to date in Accounting?\n\nApproves + syncs every crew tab with data on the ${sheets.length} already-approved paysheet${sheets.length !== 1 ? 's' : ''} for this week. Idempotent — no double-counting. Other weeks are untouched.`)) return;
 
   const approvedBy = _currentUser ? _currentUser.email : 'unknown';
   let totalEntries = 0, sheetsFixed = 0;
@@ -18270,7 +18385,7 @@ async function acctCleanupOrphanedPaysheets() {
   if (!total) { alert('Nothing to clean up — all paysheets match an existing job.'); return; }
 
   const jobList = [...new Set([...orphanedPS, ...orphanedDI].map(r => r.job))].join('\n  • ');
-  if (!confirm(
+  if (!await uiConfirm(
     `Delete ${orphanedPS.length} paysheet${orphanedPS.length !== 1 ? 's' : ''} and ` +
     `${orphanedDI.length} daily input${orphanedDI.length !== 1 ? 's' : ''} for deleted jobs?\n\n  • ${jobList}\n\nThis cannot be undone.`
   )) return;
@@ -18631,8 +18746,10 @@ function renderCODashboard() {
   const _dashIsBurn = _coActiveSubTab === 'burn';
   const cos   = (_cache.changeorders || []).filter(c => c.jobId === jobName && (_dashIsBurn ? c.workOrderNumber === '503 - Burn' : c.workOrderNumber !== '503 - Burn'));
   const _coIdSet = new Set(cos.map(c => c.id));
-  // Only show corbs whose parent change order still exists (guard against orphans from deleted COs)
-  const corbs = (_cache.corbudgets || []).filter(b => b.jobId === jobName && _coIdSet.has(b.changeOrderId));
+  // Only show corbs whose parent change order still exists (guard against orphans from deleted COs).
+  // For Change Orders, also include labor budgets distributed by approved write-ups (tagged writeUpId).
+  const _approvedWuIds = _dashIsBurn ? new Set() : new Set((_cache.cowriteups||[]).filter(w => w.jobId === jobName && w.status === 'approved').map(w => w.id));
+  const corbs = (_cache.corbudgets || []).filter(b => b.jobId === jobName && (_coIdSet.has(b.changeOrderId) || (b.writeUpId && _approvedWuIds.has(b.writeUpId))));
 
   let totalBudget = 0, totalPtd = 0;
   let rows;
@@ -18660,17 +18777,22 @@ function renderCODashboard() {
       const fAmt = corbForemanAmount(corb);
       const rem  = fAmt - ptd;
       totalBudget += fAmt; totalPtd += ptd;
-      const co  = cos.find(c => c.id === corb.changeOrderId);
-      return { corb, ptd, rem, co, fAmt, iAmt: corbInternalAmount(corb), desc: corb.description, codes: corb.laborCode, woNum: null };
+      const co  = cos.find(c => c.id === corb.changeOrderId) || (corb.writeUpId ? cos.find(c => c.linkedWriteUpId === corb.writeUpId) : null);
+      const wu  = corb.writeUpId ? (_cache.cowriteups || []).find(w => w.id === corb.writeUpId) : null;
+      return { corb, ptd, rem, co, wu, fAmt, iAmt: corbInternalAmount(corb), desc: corb.description, codes: corb.laborCode, woNum: null };
     });
   }
   const totalRem   = totalBudget - totalPtd;
   const remColor   = totalRem < 0 ? 'var(--red)' : totalRem === 0 ? 'var(--yellow)' : 'var(--green)';
 
   const showInternal = !isForeman();
-  const renderDashRow = ({ corb, ptd, rem, co, fAmt, iAmt, desc, codes, woNum }) => {
+  const renderDashRow = ({ corb, ptd, rem, co, wu, fAmt, iAmt, desc, codes, woNum }) => {
     const remColor2 = rem < 0 ? '#ef4444' : rem === 0 ? '#c9a84c' : '#22c55e';
-    const statusBadge = co ? coStatusBadge(co.status) : '—';
+    // Status comes from the linked CO request if any; otherwise the write-up's own status.
+    const statusBadge = co ? coStatusBadge(co.status) : (wu ? coStatusBadge(wu.status) : '—');
+    const actionCell = co ? `<button class="btn-sm" onclick="coOpenDetail('${ea(co.id)}')">View</button>`
+                     : (wu && isAdmin()) ? `<button class="btn-sm" onclick="cwViewFromDash('${ea(wu.id)}')">View</button>`
+                     : '—';
     const firstCell = _dashIsBurn ? `Work Order${woNum ? ' #' + woNum : ''}` : eh(corb.corNumber);
     return `<tr style="border-top:1px solid var(--border);">
       <td style="padding:8px 10px;font-weight:700;font-size:.83rem;">${firstCell}</td>
@@ -18681,7 +18803,7 @@ function renderCODashboard() {
       <td style="padding:8px 10px;text-align:right;font-size:.83rem;color:#1a56db;font-weight:600;">${fm(ptd)}</td>
       <td style="padding:8px 10px;text-align:right;font-size:.83rem;font-weight:700;color:${remColor2};">${rem < 0 ? '-' : ''}${fm(Math.abs(rem))}</td>
       <td style="padding:8px 10px;text-align:center;">${statusBadge}</td>
-      <td style="padding:8px 10px;text-align:center;">${co ? `<button class="btn-sm" onclick="coOpenDetail('${ea(co.id)}')">View</button>` : '—'}</td>
+      <td style="padding:8px 10px;text-align:center;">${actionCell}</td>
     </tr>`;
   };
   // Fully-paid work orders (remaining rounds to $0.00 with a real budget) move to their own dropdown.
@@ -18795,8 +18917,12 @@ function _coJobStats(jobName, isBurn) {
   const cos = (_cache.changeorders || []).filter(c =>
     c.jobId === jobName && c.status === 'approved' &&
     (isBurn ? c.workOrderNumber === '503 - Burn' : c.workOrderNumber !== '503 - Burn'));
-  let internal = 0, foreman = 0, ptd = 0;
+  let internal = 0, foreman = 0, ptd = 0, count = 0;
   cos.forEach(co => {
+    // A CO request converted into a write-up is tallied via its write-up below — skip
+    // here so it isn't double-counted.
+    if (!isBurn && co.linkedWriteUpId) return;
+    count++;
     const corbs = (_cache.corbudgets || []).filter(b => b.changeOrderId === co.id);
     if (!corbs.length) return;
     const _isBurnCo = co.workOrderNumber === '503 - Burn';
@@ -18804,7 +18930,19 @@ function _coJobStats(jobName, isBurn) {
     foreman  += _isBurnCo ? corbInternalAmount(corbs[0]) : corbs.reduce((s, c) => s + corbForemanAmount(c), 0);
     ptd      += corbs.reduce((s, c) => s + computeCorPaid(c), 0);
   });
-  return { count: cos.length, internal, foreman, ptd, remaining: foreman - ptd };
+  // Change Orders: add approved write-up budgets (labor distributed into writeUpId corbudgets).
+  // Write-up internalCorAmount is split per area, so SUM it (unlike legacy CO corbs).
+  if (!isBurn) {
+    (_cache.cowriteups || []).filter(w => w.jobId === jobName && w.status === 'approved').forEach(w => {
+      count++;
+      const corbs = (_cache.corbudgets || []).filter(b => b.writeUpId === w.id);
+      if (!corbs.length) return;
+      internal += corbs.reduce((s, c) => s + corbInternalAmount(c), 0);
+      foreman  += corbs.reduce((s, c) => s + corbForemanAmount(c), 0);
+      ptd      += corbs.reduce((s, c) => s + computeCorPaid(c), 0);
+    });
+  }
+  return { count, internal, foreman, ptd, remaining: foreman - ptd };
 }
 
 // Dispatcher: overview (inbox + project cards) vs single-job view. All existing
@@ -18884,7 +19022,9 @@ function renderCOOverview() {
   // ── Approved-by-project cards ──
   const approved = (_cache.changeorders || []).filter(c =>
     (isBurn ? c.workOrderNumber === '503 - Burn' : c.workOrderNumber !== '503 - Burn') && c.status === 'approved' && existingJobs.has(c.jobId));
-  const jobNames = [...new Set(approved.map(c => c.jobId).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  // Change Orders: also surface jobs that only have approved write-up budgets (no CO request).
+  const wuJobs = isBurn ? [] : (_cache.cowriteups || []).filter(w => w.status === 'approved' && existingJobs.has(w.jobId)).map(w => w.jobId);
+  const jobNames = [...new Set([...approved.map(c => c.jobId), ...wuJobs].filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const stats = jobNames.map(name => ({ name, st: _coJobStats(name, isBurn) }));
   const projects = document.getElementById('co-projects-wrap');
   if (projects) {
@@ -19548,7 +19688,7 @@ function coOpenDetail(coId) {
       <div style="font-size:.78rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;">Review</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
         <button class="btn btn-outline" style="margin:0;padding:6px 14px;font-size:.82rem;border-color:#f59e0b;color:#f59e0b;" onclick="coSetStatus('${ea(coId)}','pending')"><span class="ico ico-hourglass" aria-hidden="true"></span> Mark Pending</button>
-        <button class="btn" style="margin:0;padding:6px 14px;font-size:.82rem;background:#22c55e;border-color:#22c55e;" onclick="coStartApproval('${ea(coId)}')">✓ Approve</button>
+        <button class="btn" style="margin:0;padding:6px 14px;font-size:.82rem;background:#22c55e;border-color:#22c55e;" onclick="${_isBurn ? `coStartApproval('${ea(coId)}')` : `coApproveToWriteup('${ea(coId)}')`}">✓ Approve</button>
         <button class="btn" style="margin:0;padding:6px 14px;font-size:.82rem;background:#ef4444;border-color:#ef4444;" onclick="coSetStatus('${ea(coId)}','declined')">✕ Decline</button>
       </div>
       <div id="co-approval-form" style="display:none;border-top:1px solid var(--border);padding-top:12px;">
@@ -19613,7 +19753,7 @@ async function coDelete(coId) {
   const _deleteLabel = co.workOrderNumber === '503 - Burn' ? `Work Order#${co.burnNumber || '?'}` : `WO# ${co.workOrderNumber}`;
   const _linkedCorbs = (_cache.corbudgets || []).filter(b => b.changeOrderId === coId);
   const _corbCountMsg = _linkedCorbs.length > 0 ? ` (${_linkedCorbs.length} COR budget entr${_linkedCorbs.length === 1 ? 'y' : 'ies'} will also be deleted)` : '';
-  if (!confirm(`Delete ${_deleteLabel} for ${co.jobId}?\n\nThis cannot be undone.${_corbCountMsg}`)) return;
+  if (!await uiConfirm(`Delete ${_deleteLabel} for ${co.jobId}?\n\nThis cannot be undone.${_corbCountMsg}`)) return;
   try {
     const batch = db.batch();
     batch.delete(db.collection('changeorders').doc(coId));
@@ -19635,6 +19775,28 @@ function coStartApproval(coId) {
   _coPendingCoId = coId;
   const form = document.getElementById('co-approval-form');
   if (form) form.style.display = 'block';
+}
+
+// Approving a (non-burn) Change Order request jumps straight to the Write-Ups
+// builder with a fresh priced write-up for that job — COR # auto-numbered in
+// sequence and the request's description pre-filled as the scope of work.
+function coApproveToWriteup(coId) {
+  if (!canReviewCO()) return;
+  // The Write-Up builder is admin-only; non-admin reviewers keep the COR-budget flow.
+  if (!isAdmin()) { coStartApproval(coId); return; }
+  const co = (_cache.changeorders || []).find(c => c.id === coId);
+  if (!co) { toast('Change order not found.', 'error'); return; }
+  coCloseDetail();
+  coSetSubTab('writeup');      // switch sub-tab + cwEnter()
+  cwOpenFolder(co.jobId);      // sets _cwJob, starts a new write-up (sequential COR #), opens builder
+  if (_cwCur) {
+    if (co.description) {
+      _cwCur.scope = co.description;
+      const el = document.getElementById('cw-scope'); if (el) el.value = co.description;
+    }
+    _cwCur.sourceChangeOrderId = coId;   // link back to the originating request
+  }
+  toast('Started a write-up — COR # and description pre-filled.', 'success');
 }
 
 function coCheckApprovalReady() {
@@ -19668,7 +19830,7 @@ async function coSetStatus(coId, status) {
   if (!canReviewCO()) return;
   const _coForStatus = (_cache.changeorders || []).find(c => c.id === coId);
   const _isBurnStatus = _coForStatus && _coForStatus.workOrderNumber === '503 - Burn';
-  if (status === 'declined' && !confirm(`Mark this ${_isBurnStatus ? 'Work Order' : 'Change Order'} as Declined? The foreman will not be able to proceed.`)) return;
+  if (status === 'declined' && !await uiConfirm(`Mark this ${_isBurnStatus ? 'Work Order' : 'Change Order'} as Declined? The foreman will not be able to proceed.`)) return;
   try {
     const update = { status, reviewerEmail: _currentUser.email, reviewerUid: _currentUser.uid, reviewedAt: new Date().toISOString() };
     await db.collection('changeorders').doc(coId).update(update);
