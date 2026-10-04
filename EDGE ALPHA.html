@@ -3222,31 +3222,98 @@ async function removeCSVFile(name) {
   if (!confirm(msg)) return;
 
   // Remove from cache immediately
-  if (_cache.jobs)         _cache.jobs         = _cache.jobs.filter(f => f.name !== name);
-  if (_cache.paysheets)    _cache.paysheets    = _cache.paysheets.filter(p => p.job !== name);
-  if (_cache.dailyInputs)  _cache.dailyInputs  = _cache.dailyInputs.filter(d => d.job !== name);
+  if (_cache.jobs)              _cache.jobs              = _cache.jobs.filter(f => f.name !== name);
+  if (_cache.paysheets)         _cache.paysheets         = _cache.paysheets.filter(p => p.job !== name);
+  if (_cache.dailyInputs)       _cache.dailyInputs       = _cache.dailyInputs.filter(d => d.job !== name);
+  if (_cache.changeorders)      _cache.changeorders      = _cache.changeorders.filter(c => c.jobId !== name);
+  if (_cache.corbudgets)        _cache.corbudgets        = _cache.corbudgets.filter(b => b.jobId !== name);
+  if (_cache.cowriteups)        _cache.cowriteups        = _cache.cowriteups.filter(w => w.jobId !== name);
+  if (_cache.comaterialbudgets) _cache.comaterialbudgets = _cache.comaterialbudgets.filter(m => m.jobId !== name);
 
   const docId = name.replace(/[^\w-]/g, '_');
   try {
-    const batch = db.batch();
-    batch.delete(db.collection('jobs').doc(docId));
-    batch.delete(db.collection('jobs').doc(docId + '__MATERIAL')); // remove material sibling too (no-op if none)
-    batch.delete(db.collection('jobs').doc(docId + '__STOCKING')); // remove stocking sibling too (no-op if none)
-    relatedPaysheets.forEach(p   => batch.delete(db.collection('paysheets').doc(p.id)));
-    relatedDailyInputs.forEach(d => batch.delete(db.collection('dailyinput').doc(d.id)));
-    (_purLogDocs || []).filter(p => p.job === name).forEach(p => batch.delete(db.collection('purchaseorders').doc(p.id)));
-    (_mprEntries || []).filter(e => e.job === name).forEach(e => batch.delete(db.collection('materialpayroll').doc(e.id)));
-    // Change Order write-ups for this job + their material budget rows + their labor corbudgets.
-    (_cache.cowriteups || []).filter(w => w.jobId === name).forEach(w => {
-      batch.delete(db.collection('cowriteups').doc(w.id));
-      (_cache.corbudgets || []).filter(b => b.writeUpId === w.id).forEach(b => batch.delete(db.collection('corbudgets').doc(b.id)));
-    });
-    (_cache.comaterialbudgets || []).filter(m => m.jobId === name).forEach(m => batch.delete(db.collection('comaterialbudgets').doc(m.id)));
-    await batch.commit();
+    const refs = [
+      db.collection('jobs').doc(docId),
+      db.collection('jobs').doc(docId + '__MATERIAL'), // material sibling (no-op if none)
+      db.collection('jobs').doc(docId + '__STOCKING'), // stocking sibling (no-op if none)
+    ];
+    relatedPaysheets.forEach(p   => refs.push(db.collection('paysheets').doc(p.id)));
+    relatedDailyInputs.forEach(d => refs.push(db.collection('dailyinput').doc(d.id)));
+    (_purLogDocs || []).filter(p => p.job === name).forEach(p => refs.push(db.collection('purchaseorders').doc(p.id)));
+    (_mprEntries || []).filter(e => e.job === name).forEach(e => refs.push(db.collection('materialpayroll').doc(e.id)));
+    // Change / Work Orders for this job + all their budgets (CO-linked and write-up-linked),
+    // write-ups, and CO material budgets.
+    (_cache.changeorders || []).filter(c => c.jobId === name).forEach(c => refs.push(db.collection('changeorders').doc(c.id)));
+    (_cache.corbudgets || []).filter(b => b.jobId === name).forEach(b => refs.push(db.collection('corbudgets').doc(b.id)));
+    (_cache.cowriteups || []).filter(w => w.jobId === name).forEach(w => refs.push(db.collection('cowriteups').doc(w.id)));
+    (_cache.comaterialbudgets || []).filter(m => m.jobId === name).forEach(m => refs.push(db.collection('comaterialbudgets').doc(m.id)));
+    // CO notifications (not cached) — query by job.
+    try {
+      const notifSnap = await db.collection('coNotifications').where('jobId', '==', name).get();
+      notifSnap.forEach(d => refs.push(d.ref));
+    } catch(_) {}
+    await _commitDeletes(refs);
   } catch(e) {
     console.error('jobs delete:', e);
     alert(`Failed to delete "${name}" from cloud: ${e.message}`);
   }
+}
+
+// Commit a list of doc refs for deletion in batches that stay under Firestore's
+// 500-operation-per-batch limit.
+async function _commitDeletes(refs) {
+  for (let i = 0; i < refs.length; i += 450) {
+    const batch = db.batch();
+    refs.slice(i, i + 450).forEach(r => batch.delete(r));
+    await batch.commit();
+  }
+}
+
+// One-time (admin, console-run) cleanup: permanently delete all database records
+// that belong to jobs which no longer exist in Budgets. Only touches data for
+// deleted jobs — anything tied to a current live job is left untouched.
+async function purgeOrphanedJobData() {
+  if (!isAdmin()) { alert('Admin access required.'); return; }
+  const existing = new Set((_cache.jobs || []).map(f => f.name));
+  if (!existing.size) { alert('No live jobs are loaded yet — aborting so nothing is deleted by mistake.'); return; }
+  const refs = [];
+  const counts = {};
+  const add = (label, coll, docs, jobField) => {
+    const orphans = (docs || []).filter(d => { const j = d[jobField]; return j && !existing.has(j); });
+    orphans.forEach(d => refs.push(db.collection(coll).doc(d.id)));
+    if (orphans.length) counts[label] = orphans.length;
+  };
+  add('Change / Work Orders', 'changeorders',      _cache.changeorders,      'jobId');
+  add('CO budgets',           'corbudgets',         _cache.corbudgets,        'jobId');
+  add('CO material budgets',  'comaterialbudgets',  _cache.comaterialbudgets, 'jobId');
+  add('Write-ups',            'cowriteups',         _cache.cowriteups,        'jobId');
+  add('Saved paysheets',      'paysheets',          _cache.paysheets,         'job');
+  add('Daily inputs',         'dailyinput',         _cache.dailyInputs,       'job');
+  add('Purchase orders',      'purchaseorders',     _purLogDocs,              'job');
+  add('Material payroll',     'materialpayroll',    _mprEntries,              'job');
+  // CO notifications (not cached) — fetch all, keep only orphans.
+  try {
+    const snap = await db.collection('coNotifications').get();
+    const orphanNotifs = snap.docs.filter(d => { const j = d.data().jobId; return j && !existing.has(j); });
+    orphanNotifs.forEach(d => refs.push(d.ref));
+    if (orphanNotifs.length) counts['CO notifications'] = orphanNotifs.length;
+  } catch(_) {}
+
+  if (!refs.length) { alert('No orphaned data found — the database is already clean.'); return; }
+  const summary = Object.entries(counts).map(([k, v]) => `• ${v} ${k}`).join('\n');
+  const liveList = [...existing].sort().map(n => `   ${n}`).join('\n');
+  if (!confirm(`Found orphaned data for DELETED jobs:\n\n${summary}\n\nTotal ${refs.length} document(s) will be permanently deleted.\n\nYour ${existing.size} live job(s) are NOT affected:\n${liveList}\n\nProceed?`)) return;
+
+  await _commitDeletes(refs);
+  // Prune caches so the UI reflects the cleanup immediately.
+  _cache.changeorders      = (_cache.changeorders      || []).filter(c => existing.has(c.jobId));
+  _cache.corbudgets        = (_cache.corbudgets        || []).filter(b => existing.has(b.jobId));
+  _cache.comaterialbudgets = (_cache.comaterialbudgets || []).filter(m => existing.has(m.jobId));
+  _cache.cowriteups        = (_cache.cowriteups        || []).filter(w => existing.has(w.jobId));
+  _cache.paysheets         = (_cache.paysheets         || []).filter(p => existing.has(p.job));
+  _cache.dailyInputs       = (_cache.dailyInputs       || []).filter(d => existing.has(d.job));
+  alert(`Done — deleted ${refs.length} orphaned document(s). The database now only holds data for your live jobs.`);
+  try { renderCOLog(); } catch(_) {}
 }
 
 // ─── Payroll Entries ───
@@ -18771,8 +18838,13 @@ function renderCOOverview() {
   const kindLabel = isBurn ? 'Work Orders' : 'Change Orders';
   const firstLabel = isBurn ? 'Work Order #' : 'Labor Code';
 
+  // Only show change/work orders for jobs that still exist in Budgets — hides
+  // orphaned orders left behind by deleted jobs.
+  const existingJobs = new Set(getSavedCSVFiles().map(f => f.name));
+
   // ── Pending-review inbox ──
   let pend = (_cache.changeorders || []).filter(c => isBurn ? c.workOrderNumber === '503 - Burn' : c.workOrderNumber !== '503 - Burn');
+  pend = pend.filter(c => existingJobs.has(c.jobId));
   pend = pend.filter(c => c.status === 'submitted' || c.status === 'pending');
   if (statuses.includes('submitted') || statuses.includes('pending')) pend = pend.filter(c => statuses.includes(c.status));
   const headHTML = `<tr>
@@ -18795,7 +18867,7 @@ function renderCOOverview() {
 
   // ── Approved-by-project cards ──
   const approved = (_cache.changeorders || []).filter(c =>
-    (isBurn ? c.workOrderNumber === '503 - Burn' : c.workOrderNumber !== '503 - Burn') && c.status === 'approved');
+    (isBurn ? c.workOrderNumber === '503 - Burn' : c.workOrderNumber !== '503 - Burn') && c.status === 'approved' && existingJobs.has(c.jobId));
   const jobNames = [...new Set(approved.map(c => c.jobId).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const stats = jobNames.map(name => ({ name, st: _coJobStats(name, isBurn) }));
   const projects = document.getElementById('co-projects-wrap');
