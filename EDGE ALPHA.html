@@ -9165,10 +9165,25 @@ function _calcPayWeekEnding(isoTimestamp) {
   return base.toISOString().slice(0, 10);
 }
 
+// Same Thu→Wed pay-week rule as _calcPayWeekEnding, but derived from a plain
+// calendar date (YYYY-MM-DD) the user entered — e.g. the Daily Input date — instead
+// of a live submit timestamp. Rolls the date forward to its pay-week end day (Wed),
+// so the input lands in the week-ending that actually contains the work date.
+function _calcPayWeekEndingFromDate(dateStr) {
+  if (!dateStr) return '';
+  const { endDay = 3 } = _payWeekSettings;
+  const d = new Date(dateStr + 'T12:00:00'); // noon avoids DST edge cases
+  const daysToEnd = (endDay - d.getDay() + 7) % 7;
+  d.setDate(d.getDate() + daysToEnd);
+  return d.toISOString().slice(0, 10);
+}
+
 async function submitDailyInput(date, jobName, crews) {
   const now         = new Date();
   const submittedAt = now.toISOString();
-  const weekEnding  = _calcPayWeekEnding(submittedAt);
+  // Tie the input to the week-ending of the DATE the user entered (not the save
+  // time), so changing the date moves it to the correct pay week.
+  const weekEnding  = _calcPayWeekEndingFromDate(date);
   const timeStr     = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   const id          = `${date}_${jobName.replace(/[^\w-]/g, '_')}_${Date.now()}`;
 
@@ -10027,7 +10042,7 @@ function _renderPayWeekSettingsBody() {
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <button class="btn-sm" onclick="diMigratePayWeeks()" style="font-size:.75rem;padding:3px 10px;background:rgba(239,68,68,.15);color:#ef4444;border:1px solid #ef4444;">Migrate Existing Data</button>
-        <span style="font-size:.74rem;color:var(--muted);">Recomputes week assignment for all saved daily inputs using their save timestamp</span>
+        <span style="font-size:.74rem;color:var(--muted);">Recomputes week assignment for all saved daily inputs using their entered date</span>
       </div>
     </div>`;
 }
@@ -10062,18 +10077,19 @@ async function diSavePayWeekSettings() {
   }
 }
 
-// Admin-only: recompute weekEnding for all existing dailyinput docs from their submittedAt timestamp.
+// Admin-only: recompute weekEnding for all existing dailyinput docs from each input's
+// entered date (falling back to the save timestamp only when a record has no date).
 async function diMigratePayWeeks() {
   if (!isAdmin()) { alert('Admin only.'); return; }
-  if (!confirm('Recompute the weekEnding on all daily inputs using the current Thursday→Wednesday pay-week rule and each record\'s save timestamp?\n\nThis updates existing records. It cannot be undone.')) return;
+  if (!confirm('Recompute the weekEnding on all daily inputs using the Thursday→Wednesday pay-week rule and each input\'s entered date?\n\nThis updates existing records. It cannot be undone.')) return;
   try {
     const snap = await db.collection('dailyinput').get();
     const updates = [];
     snap.docs.forEach(doc => {
       const data = doc.data();
-      if (!data.submittedAt) return;
-      const newWE = _calcPayWeekEnding(data.submittedAt);
-      if (newWE !== data.weekEnding) updates.push({ ref: doc.ref, weekEnding: newWE });
+      const newWE = data.date ? _calcPayWeekEndingFromDate(data.date)
+                  : (data.submittedAt ? _calcPayWeekEnding(data.submittedAt) : data.weekEnding);
+      if (newWE && newWE !== data.weekEnding) updates.push({ ref: doc.ref, weekEnding: newWE });
     });
     if (!updates.length) {
       alert('All daily inputs already have the correct weekEnding. Nothing to update.');
