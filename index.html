@@ -19085,19 +19085,32 @@ function _coAreaRenderDropdown(filter) {
     return;
   }
   const all = psGetAreas(jobName).filter(a => !isSpecialArea(a));
-  const filtered = filter ? all.filter(a => a.toLowerCase().includes(filter.toLowerCase())) : all;
-  if (!filtered.length) {
-    dd.innerHTML = '<p style="padding:10px 12px;color:var(--muted);font-size:.82rem;margin:0;">No areas found.</p>';
-    dd.style.display = 'block';
-    return;
+  const q = (filter || '').trim();
+  const filtered = q ? all.filter(a => a.toLowerCase().includes(q.toLowerCase())) : all;
+  // Free-text "add" option: lets you type any area that isn't in the job's
+  // list and add it anyway (works the same on desktop + iPad).
+  const hasExact   = all.some(a => a.toLowerCase() === q.toLowerCase());
+  const alreadySel = _coSelectedAreas.some(a => a.toLowerCase() === q.toLowerCase());
+  let customHTML = '';
+  if (q && !hasExact && !alreadySel) {
+    customHTML = `<div onclick="coAreaAddCustom('${ea(q)}')" style="display:flex;align-items:center;gap:6px;padding:9px 12px;font-size:.83rem;cursor:pointer;color:var(--accent);border-bottom:1px solid rgba(255,255,255,.04);">
+      <span style="font-weight:700;flex-shrink:0;">+ Add</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">&ldquo;${eh(q)}&rdquo;</span>
+    </div>`;
   }
-  dd.innerHTML = filtered.map(a => {
+  const optsHTML = filtered.map(a => {
     const checked = _coSelectedAreas.includes(a);
     return `<label style="display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:.83rem;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);">
       <input type="checkbox" ${checked ? 'checked' : ''} onchange="coAreaToggle('${ea(a)}',this)" style="cursor:pointer;flex-shrink:0;width:14px;height:14px;" />
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${eh(areaDisplayLabel(a))}</span>
     </label>`;
-  }).join('') +
+  }).join('');
+  if (!filtered.length && !customHTML) {
+    dd.innerHTML = '<p style="padding:10px 12px;color:var(--muted);font-size:.82rem;margin:0;">No areas found.</p>';
+    dd.style.display = 'block';
+    return;
+  }
+  dd.innerHTML = customHTML + optsHTML +
   `<div style="padding:8px 10px;border-top:1px solid rgba(255,255,255,.08);position:sticky;bottom:0;background:var(--surface);">
     <button type="button" onclick="coAreaApply()" style="width:100%;padding:8px;background:var(--accent);color:#000;font-weight:700;font-size:.83rem;border:none;border-radius:6px;cursor:pointer;">Apply</button>
   </div>`;
@@ -19108,6 +19121,40 @@ function coAreaToggle(area, cb) {
   if (cb.checked) { if (!_coSelectedAreas.includes(area)) _coSelectedAreas.push(area); }
   else { _coSelectedAreas = _coSelectedAreas.filter(a => a !== area); }
   _coAreaRenderTags();
+}
+
+// Add a free-text area the user typed (not in the job's area list).
+// close=true hides the dropdown after adding (used by the Enter key); otherwise
+// the dropdown stays open so several areas can be added in a row.
+function coAreaAddCustom(area, close) {
+  area = (area || '').trim();
+  if (!area) return;
+  if (!_coSelectedAreas.some(a => a.toLowerCase() === area.toLowerCase())) _coSelectedAreas.push(area);
+  _coAreaRenderTags();
+  const search = document.getElementById('co-area-search');
+  if (search) search.value = '';
+  if (close) {
+    if (search) search.blur();
+    coAreaApply();
+  } else {
+    if (search) search.focus();
+    _coAreaRenderDropdown('');
+  }
+}
+
+// Pressing Enter in the area search adds the typed area (matching an existing
+// one if it exists, otherwise as a free-text custom area) and closes the
+// dropdown. Works on desktop + iPad.
+function coAreaEnter(e) {
+  if (e.key !== 'Enter' && e.keyCode !== 13) return;
+  e.preventDefault();
+  const search = document.getElementById('co-area-search');
+  const q = (search ? search.value : '').trim();
+  if (!q) return;
+  const jobName = (document.getElementById('co-submit-job') || {}).value || '';
+  const all = jobName ? psGetAreas(jobName).filter(a => !isSpecialArea(a)) : [];
+  const match = all.find(a => a.toLowerCase() === q.toLowerCase());
+  coAreaAddCustom(match || q, true);
 }
 
 function coAreaApply() {
@@ -19183,6 +19230,37 @@ function coLcToggle(code, cb) {
   if (cb.checked) { if (!_coSelectedLaborCodes.includes(code)) _coSelectedLaborCodes.push(code); }
   else { _coSelectedLaborCodes = _coSelectedLaborCodes.filter(c => c !== code); }
   _coLcRenderTags();
+}
+
+// Add a labor code; close=true hides the dropdown afterward (used by Enter).
+function coLcAddCode(code, close) {
+  code = (code || '').trim();
+  if (!code) return;
+  if (!_coSelectedLaborCodes.includes(code)) _coSelectedLaborCodes.push(code);
+  _coLcRenderTags();
+  const search = document.getElementById('co-lc-search');
+  if (search) search.value = '';
+  if (close) {
+    if (search) search.blur();
+    coLcApply();
+  } else {
+    if (search) search.focus();
+    _coLcRenderDropdown('');
+  }
+}
+
+// Pressing Enter in the labor-code search adds the matching code (exact code
+// match first, otherwise the best filtered result) and closes the dropdown.
+function coLcEnter(e) {
+  if (e.key !== 'Enter' && e.keyCode !== 13) return;
+  e.preventDefault();
+  const search = document.getElementById('co-lc-search');
+  const q = (search ? search.value : '').trim().toLowerCase();
+  if (!q) return;
+  const all = sortLaborCodes(getLaborCodes());
+  const match = all.find(lc => lc.code.toLowerCase() === q) ||
+                all.find(lc => lc.code.toLowerCase().includes(q) || lc.description.toLowerCase().includes(q));
+  if (match) coLcAddCode(match.code, true);
 }
 
 function coLcApply() {
@@ -19820,7 +19898,8 @@ function computeCorPaid(corb) {
             <input id="co-area-search" class="fi" style="width:100%;box-sizing:border-box;"
               placeholder="Search areas…" autocomplete="off"
               onfocus="coAreaOpen()"
-              oninput="coAreaSearch(this.value)" />
+              oninput="coAreaSearch(this.value)"
+              onkeydown="coAreaEnter(event)" />
             <div id="co-area-dropdown" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.6);max-height:200px;overflow-y:auto;"></div>
           </div>
         </div>
@@ -19832,7 +19911,8 @@ function computeCorPaid(corb) {
             <input id="co-lc-search" class="fi" style="width:100%;box-sizing:border-box;"
               placeholder="Search labor codes…" autocomplete="off"
               onfocus="coLcOpen()"
-              oninput="coLcSearch(this.value)" />
+              oninput="coLcSearch(this.value)"
+              onkeydown="coLcEnter(event)" />
             <div id="co-lc-dropdown" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.6);max-height:200px;overflow-y:auto;"></div>
           </div>
         </div>
@@ -20873,14 +20953,23 @@ function computeCorPaid(corb) {
         cell(bShare,y,wShare,rh,'EMPLOYEE SHARE',{bold:true,align:'center',fill:true});
         y+=rh;
         emp.allocations.forEach(a=>{
-          if(y+rh>PH-M){ pdf.addPage(); y=M; }
           const areaLbl=(a.areaDisplay||'')+(a.sourceType==='COR'?` [COR ${a.corNumber||''}]`:'');
-          cell(bLot,y,wLot,rh,areaLbl,{});
-          cell(bCode,y,wCode,rh,a.laborCode||'',{align:'center'});
-          cell(bEarn,y,wEarn,rh,_acctPdfAmt(a.areaEarnedCents),{align:'right'});
-          cell(bEmp,y,wEmpc,rh,String(a.employeesSharingArea),{align:'center'});
-          cell(bShare,y,wShare,rh,_acctPdfAmt(a.employeeShareCents),{bold:true,align:'right'});
-          y+=rh;
+          // Measure how many lines the LOT label wraps to so the row grows to fit
+          // it instead of overflowing into the next row.
+          pdf.setFont('helvetica','normal'); pdf.setFontSize(8);
+          const lotLines=pdf.splitTextToSize(String(areaLbl),wLot-8);
+          const lineH=9.5;
+          const rowH=Math.max(rh, lotLines.length*lineH+6);
+          if(y+rowH>PH-M){ pdf.addPage(); y=M; }
+          // Draw the LOT cell box only, then render the wrapped lines top-aligned.
+          cell(bLot,y,wLot,rowH,'',{});
+          pdf.setFont('helvetica','normal'); pdf.setFontSize(8); pdf.setTextColor(...BLK);
+          pdf.text(lotLines, bLot+4, y+lineH);
+          cell(bCode,y,wCode,rowH,a.laborCode||'',{align:'center'});
+          cell(bEarn,y,wEarn,rowH,_acctPdfAmt(a.areaEarnedCents),{align:'right'});
+          cell(bEmp,y,wEmpc,rowH,String(a.employeesSharingArea),{align:'center'});
+          cell(bShare,y,wShare,rowH,_acctPdfAmt(a.employeeShareCents),{bold:true,align:'right'});
+          y+=rowH;
         });
         cell(bLot,y,wLot+wCode+wEarn+wEmpc,rh,'BUDGET — EMPLOYEE TOTAL EARNED',{bold:true});
         cell(bShare,y,wShare,rh,_acctPdfAmt(emp.totalCents),{bold:true,align:'right'});
