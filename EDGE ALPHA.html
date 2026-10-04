@@ -806,7 +806,8 @@
         <h2 style="font-size:1.3rem;font-weight:700;margin:0;color:var(--text);">Stocking Sheet</h2>
         <div style="font-size:.8rem;color:var(--muted);margin-top:4px;">Board material only, pulled from the Material Budget. Changing sheet size recalculates the sheet count — the budget is never modified.</div>
       </div>
-      <select id="stocking-job-select" class="fi" style="min-width:240px;max-width:340px;" onchange="stockingOnJobChange()">
+      <!-- Job selector removed from the UI; kept hidden as the state holder for stockingOpenJob/stockingBack (navigation is via the project cards). -->
+      <select id="stocking-job-select" style="display:none;" onchange="stockingOnJobChange()">
         <option value="">— Select Job —</option>
       </select>
     </div>
@@ -1292,9 +1293,7 @@
           <div id="dash-subtitle" style="font-size:.8rem;color:var(--muted);margin-top:4px;">Financial overview by job</div>
         </div>
       </div>
-      <select id="dash-job-select" class="fi" style="min-width:220px;max-width:320px;" onchange="dashOnJobChange()">
-        <option value="">— Select Job —</option>
-      </select>
+      <!-- Job selector removed from the UI; project cards open a job via _dashSelectJob(). -->
     </div>
 
     <!-- Summary cards (shown when job is selected) -->
@@ -1821,8 +1820,8 @@
   <div id="acct-toolbar">
     <div class="acct-title"><span class="ico ico-receipt" aria-hidden="true"></span> Accounting</div>
     <div class="acct-controls">
-      <label>Week Ending</label>
-      <select id="acct-week-select" class="fi" style="min-width:120px;" onchange="acctOnWeekChange()">
+      <!-- Week-ending selector removed from the UI; kept hidden as the detail-view/export state holder (set programmatically during drill-down). -->
+      <select id="acct-week-select" style="display:none;" onchange="acctOnWeekChange()">
         <option value="">— Select —</option>
       </select>
       <select id="acct-job-select" class="fi" style="display:none;" onchange="acctRenderRouter()">
@@ -6424,7 +6423,7 @@ function stockingFilterBoard(board) {
 function stockingPopulateAreaFilter(board) {
   if (!document.getElementById('stocking-filter-area')) return;
   const areas = [...new Set(board.map(r=>r.area).filter(a=>a&&a!=='—'))].sort((a,b)=>a.localeCompare(b));
-  msEnsure('stocking-filter-area', 'All areas', areas, stockingApplyFilters);
+  msEnsure('stocking-filter-area', 'All areas', areas, stockingApplyFilters, { controls:true, onApply:stockingApplyFilters });
 }
 function stockingApplyFilters() { _stockingRerender(); }
 function stockingResetFilters() {
@@ -6519,7 +6518,7 @@ function stockingOverviewHTML() {
       <div style="font-size:.8rem;color:var(--muted);">${files.length} project${files.length!==1?'s':''} &middot; ${grandSheets.toLocaleString()} total sheets &middot; ${grandLines.toLocaleString()} board lines</div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;">${cards}</div>
-    <div style="font-size:.78rem;color:var(--muted);margin-top:16px;">Select a project above or from the dropdown to build its stocking sheet.</div>
+    <div style="font-size:.78rem;color:var(--muted);margin-top:16px;">Select a project above to build its stocking sheet.</div>
   </div>`;
 }
 function stockingOpenJob(name) {
