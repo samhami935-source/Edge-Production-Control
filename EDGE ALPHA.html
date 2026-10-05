@@ -3156,9 +3156,16 @@ function _refreshActiveView() {
   } catch (e) { console.error('View refresh failed:', e); }
 }
 
-// Triggers: becoming visible again, window focus, and bfcache / frozen-page restore.
-document.addEventListener('visibilitychange', () => { if (!document.hidden) _resumeRefreshData(); });
-window.addEventListener('focus', () => _resumeRefreshData());
+// Only refresh after a GENUINE backgrounding. Track how long the app was hidden so a quick
+// PDF / print / download round-trip (which briefly blurs or hides the page) never triggers a
+// disruptive reload + re-render — that was making data appear to vanish until a manual refresh.
+// (The old window 'focus' listener fired on every such round-trip, incl. the in-app PDF
+// viewer which doesn't even change document.hidden, so it's removed.)
+let _hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { _hiddenAt = Date.now(); return; }
+  if (_hiddenAt && Date.now() - _hiddenAt > 60000) _resumeRefreshData();   // hidden >60s = real background
+});
 window.addEventListener('pageshow', e => { if (e.persisted) _resumeRefreshData(); });
 
 function updateUserPill() {
