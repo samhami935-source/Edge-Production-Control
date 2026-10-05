@@ -3012,8 +3012,11 @@ firebase.auth().onAuthStateChanged(async user => {
   }
 
   document.getElementById('pending-screen').style.display = 'none';
-  // Load all Firestore data before revealing the app (loading screen stays up during this)
-  try { await loadAllData(); } catch(e) { console.error('Data load error:', e); }
+  // Load all Firestore data before revealing the app (loading screen stays up during this).
+  // iOS/iPadOS can fire this callback before the network radio is ready, so retry a few
+  // times rather than silently revealing an EMPTY app (which forced a manual refresh).
+  const _loaded = await _loadAllDataWithRetry();
+  if (!_loaded) { _showLoadRetry(); return; }
   dashLoadMarginThreshold().catch(() => {});
   // One-time: regroup any older weekly paysheets into one-per-foreman (submitter).
   psRegroupPaysheetsBySubmitter().catch(() => {});
@@ -3022,6 +3025,105 @@ firebase.auth().onAuthStateChanged(async user => {
   updateUserPill();
   appInit();
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// iPad / standalone-PWA data freshness.
+// iOS freezes the page when it's backgrounded and restores it on return WITHOUT
+// re-running the auth callback — so the one-shot data load never re-ran and the
+// user had to refresh manually. These helpers (a) retry the initial load so a cold
+// launch never reveals an empty app, and (b) re-fetch + re-render when the app
+// becomes visible again.
+// ─────────────────────────────────────────────────────────────────────────────
+let _lastDataLoadAt = 0;
+let _resumeBusy     = false;
+
+// Retry the initial data load (the network may not be ready on a cold iOS launch).
+async function _loadAllDataWithRetry(tries = 4) {
+  for (let i = 0; i < tries; i++) {
+    try { await loadAllData(); _lastDataLoadAt = Date.now(); return true; }
+    catch (e) {
+      console.error('Data load attempt ' + (i + 1) + ' failed:', e);
+      const msg = document.getElementById('loading-msg');
+      if (msg && i < tries - 1) msg.textContent = 'Loading data… (retrying)';
+      await new Promise(r => setTimeout(r, 600 * (i + 1)));
+    }
+  }
+  return false;
+}
+
+// Shown only if every load attempt failed — lets the user retry without a hard refresh.
+function _showLoadRetry() {
+  const scr = document.getElementById('loading-screen');
+  if (!scr) return;
+  scr.style.display = 'flex';
+  scr.innerHTML =
+    '<div style="color:var(--muted);font-size:.9rem;text-align:center;max-width:300px;line-height:1.5;">'
+    + 'Couldn’t load your data.<br>Check your connection and try again.</div>'
+    + '<button onclick="_retryInitialLoad(this)" style="margin-top:18px;background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.5);border-radius:6px;color:#c9a84c;font-weight:700;font-size:.85rem;padding:9px 22px;cursor:pointer;">Retry</button>';
+}
+
+async function _retryInitialLoad(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  const ok = await _loadAllDataWithRetry();
+  if (!ok) { _showLoadRetry(); return; }
+  dashLoadMarginThreshold().catch(() => {});
+  psRegroupPaysheetsBySubmitter().catch(() => {});
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display     = 'block';
+  updateUserPill();
+  appInit();
+}
+
+// Re-fetch data and refresh the current view when the app is reopened / returns to the
+// foreground. Debounced, and skipped while a modal is open or the user is typing so
+// in-progress data entry is never disrupted.
+async function _resumeRefreshData() {
+  if (_resumeBusy) return;
+  if (!_currentUser || _currentUserRole === 'pending') return;
+  if (document.hidden) return;
+  if (Date.now() - _lastDataLoadAt < 20000) return;   // debounce rapid app-switches
+  _resumeBusy = true;
+  try {
+    await loadAllData();
+    _lastDataLoadAt = Date.now();
+    _refreshActiveView();
+  } catch (e) {
+    console.error('Resume refresh failed:', e);
+  } finally {
+    _resumeBusy = false;
+  }
+}
+
+// Re-render whatever tab is open, reusing the normal tab entry points (idempotent —
+// their live listeners unsubscribe before re-subscribing). Skips the re-render when a
+// modal is open or focus is in a field, so active data entry is never clobbered.
+function _refreshActiveView() {
+  if (document.querySelector('.modal-overlay.open, .modal.open')) return;
+  const ae = document.activeElement;
+  const typing = !!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable));
+  try {
+    switch (activeTab) {
+      case 'dashboard':    dashRefreshIfActive(); break;
+      case 'payroll':      switchToPayroll(); break;
+      case 'budgets':      switchToBudgets(); break;
+      case 'stocking':     switchToStocking(); break;
+      case 'purchasing':   switchToPurchasing(); break;
+      case 'lc':           switchToLaborCodes(); break;
+      case 'emp':          switchToEmployeeNames(); break;
+      case 'accounting':   switchToAccounting(); break;
+      case 'co':           switchToCO(); break;
+      // Data-entry tabs: only re-render when the user isn't mid-entry (cache is already
+      // refreshed, so switching away and back will reflect it either way).
+      case 'paysheet':     if (!typing) switchToPaysheet(); break;
+      case 'daily-inputs': if (!typing) switchToDailyInputs(); break;
+    }
+  } catch (e) { console.error('View refresh failed:', e); }
+}
+
+// Triggers: becoming visible again, window focus, and bfcache / frozen-page restore.
+document.addEventListener('visibilitychange', () => { if (!document.hidden) _resumeRefreshData(); });
+window.addEventListener('focus', () => _resumeRefreshData());
+window.addEventListener('pageshow', e => { if (e.persisted) _resumeRefreshData(); });
 
 function updateUserPill() {
   const pill = document.getElementById('user-info-pill');
