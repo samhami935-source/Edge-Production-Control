@@ -2650,6 +2650,17 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db      = firebase.firestore();
+// Offline persistence (IndexedDB): lets the app paint instantly from the on-device
+// cache on repeat/returning opens, keeps live listeners (e.g. the dashboard calendar)
+// showing data immediately, and keeps working if the connection drops — then syncs
+// fresh data in the background. Must be called before any other Firestore use.
+// Degrades silently if the browser can't support it (private mode, extra tab, etc.).
+try {
+  db.enablePersistence().catch(err => {
+    // failed-precondition = another tab already holds it; unimplemented = unsupported.
+    console.warn('Firestore persistence unavailable:', (err && err.code) || err);
+  });
+} catch (e) { console.warn('Firestore persistence init failed:', e); }
 const storage = firebase.storage();
 const fns     = firebase.functions(); // Cloud Functions (admin-set-password)
 
@@ -2665,23 +2676,27 @@ const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, 
 // when setting up the schedule (used to pre-fill the date pickers in the admin UI).
 let _payWeekSettings = { startDay: 4, startHour: 4, endDay: 3, endHour: 17, anchorStartDate: '', anchorEndDate: '' };
 
-async function loadAllData() {
+async function loadAllData(source) {
+  // source: 'cache' (instant on-device read) or undefined (server-default). Passed to
+  // every .get() so the same loader serves both the fast cache paint and the authoritative
+  // server refresh.
+  const _opt = source ? { source } : undefined;
   const loadMsg = document.getElementById('loading-msg');
-  if (loadMsg) loadMsg.textContent = 'Loading data…';
+  if (loadMsg && !source) loadMsg.textContent = 'Loading data…';
   const [jobsSnap, payrollSnap, woSnap, lcDoc, empDoc, paysheetsSnap, psFoldersSnap, psFolderReqSnap, coSnap, corbSnap, contractsSnap, cwSnap, coMatSnap] = await Promise.all([
-    db.collection('jobs').get(),
-    db.collection('payroll').get(),
-    db.collection('workorders').get(),
-    db.collection('config').doc('laborcodes').get(),
-    db.collection('config').doc('employees').get(),
-    db.collection('paysheets').get(),
-    db.collection('psfolders').get(),
-    db.collection('psfolderrequests').get(),
-    db.collection('changeorders').get(),
-    db.collection('corbudgets').get(),
-    db.collection('jobcontracts').get(),
-    db.collection('cowriteups').get().catch(() => ({ docs: [] })),
-    db.collection('comaterialbudgets').get().catch(() => ({ docs: [] })),
+    db.collection('jobs').get(_opt),
+    db.collection('payroll').get(_opt),
+    db.collection('workorders').get(_opt),
+    db.collection('config').doc('laborcodes').get(_opt),
+    db.collection('config').doc('employees').get(_opt),
+    db.collection('paysheets').get(_opt),
+    db.collection('psfolders').get(_opt),
+    db.collection('psfolderrequests').get(_opt),
+    db.collection('changeorders').get(_opt),
+    db.collection('corbudgets').get(_opt),
+    db.collection('jobcontracts').get(_opt),
+    db.collection('cowriteups').get(_opt).catch(() => ({ docs: [] })),
+    db.collection('comaterialbudgets').get(_opt).catch(() => ({ docs: [] })),
   ]);
   // Material budgets are stored as SIBLING docs in the same 'jobs' collection
   // (id = "<jobDocId>__MATERIAL", _kind:'material') so they inherit the job
@@ -3015,16 +3030,40 @@ firebase.auth().onAuthStateChanged(async user => {
   // Load all Firestore data before revealing the app (loading screen stays up during this).
   // iOS/iPadOS can fire this callback before the network radio is ready, so retry a few
   // times rather than silently revealing an EMPTY app (which forced a manual refresh).
+  // Fast path: paint instantly from the on-device cache if we have a usable one, so the
+  // app (and its calendar/live views) appears immediately. First-ever load has an empty
+  // cache and simply falls through to the server load below.
+  let _painted = false;
+  try {
+    await loadAllData('cache');
+    if ((_cache.jobs && _cache.jobs.length) && (_cache.laborcodes && _cache.laborcodes.length)) {
+      _revealApp();
+      _painted = true;
+      _lastDataLoadAt = Date.now();
+    }
+  } catch (e) { /* no usable cache — fall through to the server load */ }
+
+  // Authoritative load from the server (retried). When painted from cache this runs in
+  // the background and then re-renders; otherwise it's the blocking first load.
   const _loaded = await _loadAllDataWithRetry();
-  if (!_loaded) { _showLoadRetry(); return; }
+  if (!_loaded) { if (!_painted) _showLoadRetry(); return; }
   dashLoadMarginThreshold().catch(() => {});
   // One-time: regroup any older weekly paysheets into one-per-foreman (submitter).
   psRegroupPaysheetsBySubmitter().catch(() => {});
+  if (_painted) {
+    _refreshActiveView();   // replace the cache paint with fresh server data
+  } else {
+    _revealApp();
+  }
+});
+
+// Reveal the app shell and run the one-time initial render.
+function _revealApp() {
   document.getElementById('loading-screen').style.display = 'none';
   document.getElementById('app-screen').style.display     = 'block';
   updateUserPill();
   appInit();
-});
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // iPad / standalone-PWA data freshness.
@@ -3068,10 +3107,7 @@ async function _retryInitialLoad(btn) {
   if (!ok) { _showLoadRetry(); return; }
   dashLoadMarginThreshold().catch(() => {});
   psRegroupPaysheetsBySubmitter().catch(() => {});
-  document.getElementById('loading-screen').style.display = 'none';
-  document.getElementById('app-screen').style.display     = 'block';
-  updateUserPill();
-  appInit();
+  _revealApp();
 }
 
 // Re-fetch data and refresh the current view when the app is reopened / returns to the
