@@ -1726,6 +1726,7 @@
       <div style="margin-bottom:10px;">
         <button id="di-select-all-btn" class="btn btn-outline" style="display:none;margin-top:0;padding:6px 14px;font-size:.8rem;" onclick="diSelectAllVisible()" title="Select every daily input currently listed"><span class="ico ico-check-square" aria-hidden="true"></span> Select all</button>
         <button id="di-export-excel-btn" class="btn" style="display:none;margin-top:0;padding:6px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="diExportSelectedToExcel()" title="Export the daily inputs selected via the checkboxes to an Excel file"><span class="ico ico-download" aria-hidden="true"></span> Export selected to Excel</button>
+        <button id="di-export-pdf-btn" class="btn" style="display:none;margin-top:0;padding:6px 14px;font-size:.8rem;background:#b91c1c;color:#fff;border:none;" onclick="diExportSelectedToPDF()" title="Export the daily inputs selected via the checkboxes to a PDF file"><span class="ico ico-download" aria-hidden="true"></span> Export selected to PDF</button>
       </div>
       <div id="di-log-wrap" style="overflow-x:auto;position:relative;">
         <table style="min-width:700px;width:100%;border-collapse:collapse;font-size:.82rem;">
@@ -9975,9 +9976,11 @@ function diRenderLogRows() {
   const filterRow = document.getElementById('di-log-filter-inputs');
   if (!tbody) return;
 
-  // Admin-only: reveal the "Export selected to Excel" button for admins; hidden for all other roles.
+  // Admin-only: reveal the "Export selected to Excel"/"to PDF" buttons for admins; hidden for all other roles.
   const _diXlsBtn = document.getElementById('di-export-excel-btn');
   if (_diXlsBtn) _diXlsBtn.style.display = isAdmin() ? '' : 'none';
+  const _diPdfBtn = document.getElementById('di-export-pdf-btn');
+  if (_diPdfBtn) _diPdfBtn.style.display = isAdmin() ? '' : 'none';
   // Show the "Select all" button for roles that can select/compile (same audience as the row checkboxes).
   const _diSelAllBtn = document.getElementById('di-select-all-btn');
   if (_diSelAllBtn) _diSelAllBtn.style.display = canCompilePaysheet() ? '' : 'none';
@@ -15356,6 +15359,113 @@ function diExportSelectedToExcel() {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Same report as the Excel export, rendered to a PDF (native jsPDF table drawing,
+// identical columns and row data). Landscape letter, paginates, wraps long cells.
+function diExportSelectedToPDF() {
+  if (!_diSelectedInputs.size) {
+    alert('Select one or more daily inputs in the Submission Log first (use the checkboxes on the left of each row).');
+    return;
+  }
+  if (typeof window.jspdf === 'undefined') { alert('PDF library not loaded — please wait a moment and try again.'); return; }
+  const subs = (_diLogDocs || []).filter(r => _diSelectedInputs.has(r.id));
+  if (!subs.length) { alert('The selected submissions are no longer available. Refresh and try again.'); return; }
+
+  // Group by submission so each one becomes its own block in the PDF — identical row
+  // data to diExportSelectedToExcel, just kept grouped instead of flattened together.
+  const groups = subs.map(sub => {
+    const ts = _diFmtSubTimestamp(sub);
+    const foremen = new Set();
+    const gRows = [];
+    (sub.crews || []).forEach(crew => {
+      const foreman = (crew.crewLeadName || '').trim() || (sub.submittedBy || '');
+      if (foreman) foremen.add(foreman);
+      const entries = (crew.entries || []).filter(e => (e.employee || '').trim() || (e.area || '').trim() || (e.costCode || '').trim());
+      const headcount = new Set(entries.map(e => (e.employee || '').trim()).filter(Boolean)).size;
+      entries.forEach(e => {
+        gRows.push({
+          timestamp: ts,
+          building:  areaDisplayLabel(e.area || ''),
+          headcount: headcount || '',
+          member:    (e.employee || '').trim(),
+          code:      (e.costCode || '').trim(),
+          labor:     _diLaborDesc(e.costCode),
+        });
+      });
+    });
+    return { ts, foreman: [...foremen].join(', '), rows: gRows };
+  }).filter(g => g.rows.length);
+  const totalRows = groups.reduce((s, g) => s + g.rows.length, 0);
+  if (!totalRows) { alert('No employee entries were found in the selected submissions.'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+  const PW = 792, PH = 612, M = 36, BLK = [0, 0, 0];
+  // Columns sum to 720 (= PW - 2*M).
+  const cols = [
+    { key: 'timestamp', label: 'Timestamp',      x: M,       w: 110, align: 'left'   },
+    { key: 'building',  label: 'Building',        x: M + 110, w: 150, align: 'left'   },
+    { key: 'headcount', label: 'Crew Headcount',  x: M + 260, w: 70,  align: 'center' },
+    { key: 'member',    label: 'Crew Members',    x: M + 330, w: 150, align: 'left'   },
+    { key: 'code',      label: 'Labor Codes',     x: M + 480, w: 70,  align: 'center' },
+    { key: 'labor',     label: 'Labor',           x: M + 550, w: 170, align: 'left'   },
+  ];
+  const cell = (x, y, w, h, txt, o) => { o = o || {};
+    if (o.fill) { pdf.setFillColor(242, 242, 242); pdf.rect(x, y, w, h, 'F'); }
+    pdf.setDrawColor(0); pdf.setLineWidth(0.5); pdf.rect(x, y, w, h, 'S');
+    if (txt != null && txt !== '') {
+      pdf.setFont('helvetica', o.bold ? 'bold' : 'normal'); pdf.setFontSize(o.size || 8); pdf.setTextColor(...BLK);
+      const a = o.align || 'left', tx = a === 'right' ? x + w - 4 : a === 'center' ? x + w / 2 : x + 4;
+      if (Array.isArray(txt)) pdf.text(txt, tx, y + 10, { align: a });               // wrapped lines, top-aligned
+      else pdf.text(String(txt), tx, y + h / 2 + 3, { align: a, maxWidth: w - 6 });  // single line, centered
+    }
+  };
+
+  const totalW = cols.reduce((s, c) => s + c.w, 0);
+  let y = M;
+  pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...BLK); pdf.setFontSize(14);
+  pdf.text('DAILY INPUT SUBMISSIONS', PW / 2, y + 10, { align: 'center' });
+  const jobName = (document.getElementById('ps-job-select') || {}).value || '';
+  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9);
+  pdf.text(`${totalRows} entr${totalRows !== 1 ? 'ies' : 'y'} • ${groups.length} submission${groups.length !== 1 ? 's' : ''}${jobName ? '  •  ' + jobName : ''}`, PW / 2, y + 26, { align: 'center' });
+  y += 44;
+
+  const hh = 18;
+  const drawHeader = () => {
+    cols.forEach(c => cell(c.x, y, c.w, hh, c.label, { bold: true, align: 'center', fill: true }));
+    y += hh;
+  };
+  const drawRow = r => {
+    // Size the row to the tallest wrapped cell so nothing overflows.
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8);
+    const wrapped = cols.map(c => {
+      const val = r[c.key] == null ? '' : String(r[c.key]);
+      return { c, lines: val === '' ? [''] : pdf.splitTextToSize(val, c.w - 8) };
+    });
+    const maxLines = Math.max(1, ...wrapped.map(w => w.lines.length));
+    const rowH = Math.max(hh, maxLines * 10 + 6);
+    if (y + rowH > PH - M) { pdf.addPage(); y = M; drawHeader(); }
+    wrapped.forEach(({ c, lines }) => cell(c.x, y, c.w, rowH, lines, { align: c.align }));
+    y += rowH;
+  };
+
+  // One titled block per submission, separated by a gap, so submissions are broken apart.
+  groups.forEach((g, gi) => {
+    if (gi > 0) y += 14;
+    // Keep each block's band + header + first row together; break to a new page if needed.
+    if (y + (20 + hh + 22) > PH - M) { pdf.addPage(); y = M; }
+    pdf.setFillColor(224, 224, 224); pdf.setDrawColor(0); pdf.setLineWidth(0.5);
+    pdf.rect(M, y, totalW, 20, 'FD');
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9); pdf.setTextColor(...BLK);
+    const band = `Submission: ${g.ts}${g.foreman ? '    •    Foreman: ' + g.foreman : ''}    •    ${g.rows.length} entr${g.rows.length !== 1 ? 'ies' : 'y'}`;
+    pdf.text(band, M + 6, y + 13, { maxWidth: totalW - 12 });
+    y += 20;
+    drawHeader();
+    g.rows.forEach(drawRow);
+  });
+
+  pdf.save(`daily-inputs-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
 function psCancelEdit() {
