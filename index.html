@@ -12781,10 +12781,11 @@ function _cwTotals(cur) {
   const materialTotal = materialSubtotal + materialTax + materialEscalation;
   const feesTotal = CW_FEE_KEYS.reduce((s,[k]) => s + _cwNum((cur.fees[k]||{}).qty)*_cwNum((cur.fees[k]||{}).price), 0);
   const subtotal = laborTotal + materialTotal + feesTotal;
-  // Gross markup: profit = base × pct/(1−pct). Materials on pre-tax subtotal, labor on labor total.
-  // e.g. $1,099.80 at 15% → 1099.80/0.85 = 1293.88, profit = 194.08.
+  // Gross markup: profit = base × pct/(1−pct), so markup is exactly pct of the marked-up total.
+  // Materials base = cost + sales tax + escalation (the full material total); labor on labor total.
+  // e.g. $19,625.56 at 15% → 19625.56/0.85 = 23088.89, profit = 3463.33 (= 15% of 23088.89).
   const mpct = _cwNum(cur.markupPct)/100;
-  const matMarkupProfit = (mpct > 0 && mpct < 1) ? materialSubtotal * (mpct/(1-mpct)) : 0;
+  const matMarkupProfit = (mpct > 0 && mpct < 1) ? materialTotal * (mpct/(1-mpct)) : 0;
   const lpct = _cwNum(cur.laborMarkupPct)/100;
   const laborMarkupProfit = (lpct > 0 && lpct < 1) ? laborTotal * (lpct/(1-lpct)) : 0;
   const markupProfit = matMarkupProfit + laborMarkupProfit;   // total → Dashboard margin
