@@ -195,6 +195,28 @@
     .cal-cell.cal-dragover { outline:2px dashed var(--accent); outline-offset:-2px; background:rgba(201,168,76,.08); }
     .cal-more { font-size:.68rem; color:var(--muted); font-weight:600; padding:1px 4px; }
     @media(max-width:640px){ .cal-cell { min-height:74px; } .cal-chip { font-size:.62rem; } }
+    /* Pin the checklist box to its own size — the generic `.modal input` rule (width:100%, padding,
+       margin) otherwise stretches it across the whole day-modal card and squeezes the task text. */
+    .cal-check, .modal input.cal-check { flex:0 0 18px; width:18px; height:18px; min-width:0; padding:0; margin:2px 0 0 0; border:none; box-shadow:none; cursor:pointer; accent-color:var(--accent); }
+    /* ── Task list (admin personal tasks; shares records with the calendar) ── */
+    .tl-subtabs { display:flex; gap:6px; border-bottom:1px solid var(--border); margin-bottom:14px; }
+    .tl-subtab { background:transparent; border:none; border-bottom:2px solid transparent; color:var(--muted); font-weight:700; font-size:.85rem; padding:8px 14px; cursor:pointer; margin-bottom:-1px; }
+    .tl-subtab.active { color:var(--accent); border-bottom-color:var(--accent); }
+    .tl-count { display:inline-block; min-width:18px; padding:0 6px; border-radius:9px; background:var(--surface2); color:var(--muted); font-size:.68rem; margin-left:4px; vertical-align:middle; }
+    .tl-row { display:flex; align-items:flex-start; gap:12px; border:1px solid var(--border); border-left:4px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:8px; background:var(--surface); }
+    .tl-row.tl-done { opacity:.72; }
+    .tl-row.tl-done .tl-title { text-decoration:line-through; color:var(--muted); }
+    .tl-check { width:18px; height:18px; cursor:pointer; margin:0; flex-shrink:0; accent-color:var(--accent); }
+    /* Bigger tap target for the checklist boxes (iPad) without changing the visible box size. */
+    .chk-hit { display:inline-flex; align-items:flex-start; justify-content:center; flex-shrink:0; padding:10px; margin:-10px -4px -10px -10px; cursor:pointer; }
+    button.tl-pill { font-family:inherit; line-height:1.4; }
+    .tl-title { font-weight:700; font-size:.92rem; }
+    .tl-meta { font-size:.74rem; color:var(--muted); margin-top:3px; display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center; }
+    .tl-pill { display:inline-block; font-size:.66rem; font-weight:700; padding:2px 8px; border-radius:9px; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border:1px solid transparent; white-space:nowrap; }
+    .tl-pill.tl-private { background:rgba(201,168,76,.15); color:var(--accent); border-color:rgba(201,168,76,.35); }
+    .tl-pill.tl-public { background:rgba(59,130,246,.15); color:#60a5fa; border-color:rgba(59,130,246,.35); }
+    .tl-done-badge { display:inline-block; font-size:.66rem; font-weight:800; padding:2px 8px; border-radius:9px; background:rgba(34,197,94,.15); color:#22c55e; border:1px solid rgba(34,197,94,.35); text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
+    .tl-actions { display:flex; gap:6px; margin-left:auto; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end; }
     .modal { background:var(--surface); border:1px solid var(--border); border-top:2px solid var(--accent); border-radius:var(--radius); padding:32px; width:360px; max-width:95vw; }
     .modal h2 { font-size:1.15rem; font-weight:800; margin-bottom:6px; color:var(--accent); }
     .modal p { font-size:.83rem; color:var(--muted); margin-bottom:20px; }
@@ -686,6 +708,9 @@
   <div class="tab-bar" id="tab-bar">
     <div class="tab" id="dashboard-tab" onclick="switchToDashboard()">
       <span><span class="ico ico-bar-chart" aria-hidden="true"></span></span><span class="tab-name">Dashboard</span>
+    </div>
+    <div class="tab" id="tasks-tab" onclick="switchToTasks()" style="display:none;">
+      <span><span class="ico ico-check-square" aria-hidden="true"></span></span><span class="tab-name">Tasks</span>
     </div>
     <div class="tab tab-payroll" id="payroll-tab" onclick="switchToPayroll()">
       <span><span class="ico ico-receipt" aria-hidden="true"></span></span><span class="tab-name">Payroll</span>
@@ -1244,6 +1269,22 @@
   </div>
 
   <!-- Employee Names content -->
+  <!-- Tasks: admin-only personal task list. Same records as the Dashboard calendar. -->
+  <div id="tasks-content" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h2 style="font-size:1.3rem;font-weight:700;margin:0;color:var(--text);">My Tasks</h2>
+        <div style="font-size:.8rem;color:var(--muted);margin-top:4px;">Your personal task list. Every task also goes on the Dashboard calendar — <strong>private</strong> tasks show only for you, <strong>public</strong> tasks show for everyone.</div>
+      </div>
+      <button class="btn" onclick="tlNewTask()" style="background:var(--accent);color:#000;font-weight:700;white-space:nowrap;margin:0;"><span class="ico ico-plus" aria-hidden="true"></span> New Task</button>
+    </div>
+    <div class="tl-subtabs">
+      <button type="button" class="tl-subtab active" id="tl-sub-open" onclick="tlSetSub('open')">Open <span class="tl-count" id="tl-count-open">0</span></button>
+      <button type="button" class="tl-subtab" id="tl-sub-done" onclick="tlSetSub('done')">Completed <span class="tl-count" id="tl-count-done">0</span></button>
+    </div>
+    <div id="tl-list"></div>
+  </div>
+
   <div id="emp-content" style="display:none;">
     <div id="emp-admin-form" style="display:none;">
       <div class="lc-add-form">
@@ -1398,6 +1439,7 @@
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div id="cal-filter-owner" class="ms"></div>
           <div id="cal-filter-job" class="ms"></div>
           <button id="cal-add-btn" class="btn" onclick="calOpenTaskModal()" style="background:var(--accent);color:#000;font-weight:700;white-space:nowrap;margin:0;"><span class="ico ico-plus" aria-hidden="true"></span> Add Task</button>
         </div>
@@ -1459,14 +1501,23 @@
             <input type="text" id="cal-f-location" class="fi" style="width:100%;" placeholder="e.g. Lv. 3 / Exterior" />
           </div>
         </div>
-        <div>
-          <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:5px;">Status</label>
-          <select id="cal-f-status" class="fi" style="width:100%;">
-            <option value="scheduled">Scheduled</option>
-            <option value="in_progress">In Progress</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:180px;">
+            <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:5px;">Status</label>
+            <select id="cal-f-status" class="fi" style="width:100%;">
+              <option value="scheduled">Scheduled</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div style="flex:1;min-width:180px;">
+            <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:5px;">Visibility</label>
+            <select id="cal-f-visibility" class="fi" style="width:100%;">
+              <option value="public">Public — everyone sees it</option>
+              <option value="private">Private — only me</option>
+            </select>
+          </div>
         </div>
         <div>
           <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:5px;">Notes</label>
@@ -2040,6 +2091,10 @@
         #cw-workspace .table-wrap{background:transparent;border:none;border-radius:0;overflow:visible;}
         #cw-workspace table td{border:none;white-space:normal;}
         #cw-workspace #cw-fees-tbody td{border-bottom:1px solid var(--border);}
+        /* Approved write-ups open view-only: form sections are inert (no taps/typing/focus). */
+        #cw-workspace.cw-locked .cw-card{opacity:.82;pointer-events:none;user-select:text;}
+        #cw-workspace .cw-lock-note{display:none;}
+        #cw-workspace.cw-locked .cw-lock-note{display:flex;}
       </style>
 
       <!-- sticky action bar -->
@@ -2049,9 +2104,14 @@
           <button class="btn btn-outline cw-btn" onclick="cwNewDoc()"><span class="ico ico-plus" aria-hidden="true"></span> New</button>
           <button class="btn btn-outline cw-btn" onclick="cwExportPDF()" title="Open a print-ready view">Print</button>
           <button class="btn cw-btn" onclick="cwDownloadPDF()" style="background:#3b3f46;color:#fff;border:none;font-weight:600;" title="Download a ready-to-send PDF"><span class="ico ico-file" aria-hidden="true"></span> Download PDF</button>
-          <button class="btn btn-outline cw-btn" onclick="cwSave('draft')" title="Save a work-in-progress draft (not submitted for approval)"><span class="ico ico-save" aria-hidden="true"></span> Save Draft</button>
-          <button class="btn cw-btn" onclick="cwSave('pending')" style="background:#c9a84c;color:#000;border:none;font-weight:700;" title="Save & submit for approval"><span class="ico ico-save" aria-hidden="true"></span> Save</button>
+          <button id="cw-btn-unlock" class="btn btn-outline cw-btn" onclick="cwUnlockEdit()" style="display:none;" title="Make changes to this approved change order"><span class="ico ico-unlock" aria-hidden="true"></span> Unlock to edit</button>
+          <button id="cw-btn-savedraft" class="btn btn-outline cw-btn" onclick="cwSave('draft')" title="Save a work-in-progress draft (not submitted for approval)"><span class="ico ico-save" aria-hidden="true"></span> Save Draft</button>
+          <button id="cw-btn-save" class="btn cw-btn" onclick="cwSave('pending')" style="background:#c9a84c;color:#000;border:none;font-weight:700;" title="Save & submit for approval"><span class="ico ico-save" aria-hidden="true"></span> Save</button>
         </div>
+      </div>
+      <div class="cw-lock-note" style="align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 14px;padding:10px 14px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-radius:10px;font-size:.82rem;color:#86efac;">
+        <span class="ico ico-lock" aria-hidden="true"></span>
+        <span><strong style="color:#22c55e;">Approved — view only.</strong> This change order is approved, so its details are locked. Use <strong>Unlock to edit</strong> only if something needs correcting.</span>
       </div>
 
       <!-- 1 · Proposal details -->
@@ -3147,6 +3207,7 @@ function _refreshActiveView() {
       case 'purchasing':   switchToPurchasing(); break;
       case 'lc':           switchToLaborCodes(); break;
       case 'emp':          switchToEmployeeNames(); break;
+      case 'tasks':        switchToTasks(); break;
       case 'accounting':   switchToAccounting(); break;
       case 'co':           switchToCO(); break;
       // Data-entry tabs: only re-render when the user isn't mid-entry (cache is already
@@ -3290,6 +3351,8 @@ function updateAdminUI() {
   // Tab visibility by role
   const dashboardTab = document.getElementById('dashboard-tab');
   if (dashboardTab) dashboardTab.style.display = canViewDashboard() ? '' : 'none';
+  const tasksTab = document.getElementById('tasks-tab');
+  if (tasksTab) tasksTab.style.display = isAdmin() ? '' : 'none';   // Tasks list is admin-only
   const payrollTab = document.getElementById('payroll-tab');
   const budgetsTab = document.getElementById('budgets-tab');
   const lcTab      = document.getElementById('lc-tab');
@@ -4831,6 +4894,7 @@ const CAL_MONTHS   = ['January','February','March','April','May','June','July','
 let _calYear = null, _calMonth = null;   // month cursor (month is 0-based)
 let _calTasks = [];
 let _calUnsub = null;
+let _calLoaded = false;   // true once the first calendarTasks snapshot has arrived
 let _calDayDate = '';
 
 function _calPad(n){ return n<10 ? '0'+n : ''+n; }
@@ -4846,13 +4910,49 @@ function _calFmtTime(hhmm){
 }
 function _calInitCursor(){ if(_calYear==null||_calMonth==null){ const n=new Date(); _calYear=n.getFullYear(); _calMonth=n.getMonth(); } }
 
+// ── Ownership / visibility — the Tasks tab and the calendar share these records ──
+// Owner = ownerEmail (new) or createdBy (legacy tasks). Private tasks are visible only
+// to their owner; everything else, including every pre-existing task, is public.
+function _calMyEmail(){ return String((_currentUser && _currentUser.email) || '').toLowerCase(); }
+function _calOwnerEmail(t){ return String((t && (t.ownerEmail || t.createdBy)) || '').toLowerCase(); }
+function _calOwns(t){
+  if (!t || !_currentUser) return false;
+  const me = _calMyEmail();
+  return (!!me && _calOwnerEmail(t) === me) || (!!t.ownerUid && t.ownerUid === _currentUser.uid);
+}
+function _calIsPrivate(t){ return !!t && t.visibility === 'private'; }
+function _calVisible(t){ return !!t && (!_calIsPrivate(t) || _calOwns(t)); }
+function _calIsDone(t){ return !!t && t.status === 'completed'; }
+// Visible to this user AND matches the calendar's Owner + Project filters (grid and day view).
+function _calPassesFilters(t){
+  if (!_calVisible(t)) return false;
+  const jobs = msValues('cal-filter-job'), owners = msValues('cal-filter-owner');
+  if (jobs.length && !jobs.includes(t.jobName)) return false;
+  if (owners.length && !owners.includes(_calOwnerEmail(t))) return false;
+  return true;
+}
+// Who may tick the checkbox: the owner, or any admin.
+// Admins only (the calendar is read-only for everyone else), and only tasks they can see.
+function _calCanComplete(t){ return !!t && isAdmin() && _calVisible(t); }
+
+// Re-render every surface that shows tasks: the calendar grid, an open day modal, the Tasks tab.
+function _calAfterChange(){
+  try { if (activeTab === 'dashboard') calRender(); } catch(_) {}
+  try { if (activeTab === 'tasks') tlRender(); } catch(_) {}
+  try {
+    const dm = document.getElementById('cal-day-modal');
+    if (dm && dm.classList.contains('open') && _calDayDate) calOpenDay(_calDayDate);
+  } catch(_) {}
+}
+
 // Live Firestore subscription — one listener; updates the grid in real time.
 function calEnsureSubscribed(){
-  if (_calUnsub || !canViewDashboard()) return;
+  if (_calUnsub || !(canViewDashboard() || isAdmin())) return;
   try {
     _calUnsub = db.collection('calendarTasks').onSnapshot(snap => {
       _calTasks = snap.docs.map(d => d.data());
-      try { if (activeTab === 'dashboard') calRender(); } catch(_) {}
+      _calLoaded = true;
+      _calAfterChange();
     }, () => {});
   } catch(_) {}
 }
@@ -4869,6 +4969,14 @@ function calGoToday(){ const n=new Date(); _calYear=n.getFullYear(); _calMonth=n
 function _calPopulateSelects(){
   const jobs = getSavedCSVFiles().map(f=>f.name).sort((a,b)=>a.localeCompare(b));
   if (document.getElementById('cal-filter-job')) msEnsure('cal-filter-job', 'All projects', jobs, calRender);
+  // Owner filter: everyone who owns a task this user can see; "My tasks" listed first.
+  if (document.getElementById('cal-filter-owner')) {
+    const me = _calMyEmail();
+    const owners = [...new Set(_calTasks.filter(_calVisible).map(_calOwnerEmail).filter(Boolean))]
+      .sort((a,b) => (a===me?-1:b===me?1:a.localeCompare(b)));
+    const labels = {}; owners.forEach(o => { labels[o] = o===me ? 'My tasks' : o; });
+    msEnsure('cal-filter-owner', 'All owners', owners, calRender, { labels });
+  }
   const fjob = document.getElementById('cal-f-job');
   if (fjob){ const cur=fjob.value; fjob.innerHTML='<option value="">— None —</option>'+jobs.map(j=>`<option value="${eh(j)}">${eh(j)}</option>`).join(''); fjob.value=cur; }
   const ftype = document.getElementById('cal-f-type');
@@ -4885,13 +4993,12 @@ function calRender(){
   const label = document.getElementById('cal-month-label');
   if (label) label.textContent = CAL_MONTHS[_calMonth] + ' ' + _calYear;
 
-  const jobFilter = msValues('cal-filter-job');
   const first = new Date(_calYear, _calMonth, 1);
   const gridStart = new Date(_calYear, _calMonth, 1 - first.getDay());
   const today = _calTodayYMD();
 
   const byDate = {};
-  _calTasks.filter(t => t && t.date && (!jobFilter.length || jobFilter.includes(t.jobName))).forEach(t => { (byDate[t.date]=byDate[t.date]||[]).push(t); });
+  _calTasks.filter(t => t && t.date && _calPassesFilters(t)).forEach(t => { (byDate[t.date]=byDate[t.date]||[]).push(t); });
   Object.values(byDate).forEach(arr => arr.sort((a,b)=> (a.allDay?0:1)-(b.allDay?0:1) || (a.startTime||'').localeCompare(b.startTime||'')));
 
   let html = '<div class="cal-weekhead">' + CAL_WEEKDAYS.map(d=>`<div>${d}</div>`).join('') + '</div><div class="cal-body">';
@@ -4906,7 +5013,9 @@ function calRender(){
       const ty=_calType(t.type); const done=t.status==='completed'||t.status==='cancelled';
       const time = (!t.allDay && t.startTime) ? _calFmtTime(t.startTime)+' ' : '';
       const drag = admin ? ` draggable="true" ondragstart="calDragStart(event,'${ea(t.id)}')" ondragend="calDragEnd(event)"` : '';
-      return `<span class="cal-chip${done?' cal-done':''}${admin?' cal-draggable':''}"${drag} style="background:${ty.color};" title="${eh(t.title||'')}" onclick="event.stopPropagation();calOpenDay('${ymd}')">${eh(time)}${eh(t.title||'(untitled)')}</span>`;
+      // Completed chips are already lined out (cal-done); private ones get the app's lock glyph.
+      const mark = _calIsPrivate(t) ? '<span class="ico ico-lock" aria-hidden="true" style="width:.85em;height:.85em;margin-right:3px;"></span>' : '';
+      return `<span class="cal-chip${done?' cal-done':''}${admin?' cal-draggable':''}"${drag} style="background:${ty.color};" title="${eh((_calIsDone(t)?'Completed Task — ':'')+(_calIsPrivate(t)?'Private — ':'')+(t.title||''))}" onclick="event.stopPropagation();calOpenDay('${ymd}')">${mark}${eh(time)}${eh(t.title||'(untitled)')}</span>`;
     }).join('');
     const more = dayTasks.length>3 ? `<span class="cal-more" onclick="event.stopPropagation();calOpenDay('${ymd}')">+${dayTasks.length-3} more</span>` : '';
     const drop = admin ? ` ondragover="calDragOver(event)" ondragleave="calDragLeave(event)" ondrop="calDrop(event,'${ymd}')"` : '';
@@ -4920,7 +5029,9 @@ function calRender(){
 }
 
 // ── Task editor modal ──
-function calOpenTaskModal(dateStr, taskId){
+// opts.visibility presets the Private/Public toggle for a brand-new task
+// (the Tasks tab defaults to private; the calendar's Add Task defaults to public).
+function calOpenTaskModal(dateStr, taskId, opts){
   // Non-admins can't add/edit — clicking a task shows the read-only day agenda instead.
   if (!isAdmin()) {
     if (taskId) { const t = _calTasks.find(x=>x.id===taskId); if (t) calOpenDay(t.date); }
@@ -4932,6 +5043,7 @@ function calOpenTaskModal(dateStr, taskId){
   if (taskId){
     const t = _calTasks.find(x=>x.id===taskId);
     if (!t){ alert('Task not found.'); return; }
+    if (!_calVisible(t)){ alert('This is another user’s private task.'); return; }
     g('cal-modal-title').textContent='Edit Task';
     g('cal-task-id').value=t.id;
     g('cal-f-title').value=t.title||'';
@@ -4944,6 +5056,8 @@ function calOpenTaskModal(dateStr, taskId){
     g('cal-f-assignee').value=t.assignee||'';
     g('cal-f-location').value=t.location||'';
     g('cal-f-status').value=t.status||'scheduled';
+    g('cal-f-visibility').value=_calIsPrivate(t)?'private':'public';
+    g('cal-f-visibility').disabled = !_calOwns(t);   // only the owner decides private/public
     g('cal-f-notes').value=t.notes||'';
     delBtn.style.display='';
   } else {
@@ -4959,6 +5073,8 @@ function calOpenTaskModal(dateStr, taskId){
     g('cal-f-assignee').value='';
     g('cal-f-location').value='';
     g('cal-f-status').value='scheduled';
+    g('cal-f-visibility').value=(opts && opts.visibility==='private') ? 'private' : 'public';
+    g('cal-f-visibility').disabled = false;
     g('cal-f-notes').value='';
     delBtn.style.display='none';
   }
@@ -4981,6 +5097,10 @@ async function calSaveTask(){
   const allDay=g('cal-f-allday').checked;
   const now=new Date().toISOString();
   const existing = existingId ? _calTasks.find(x=>x.id===existingId) : null;
+  if (existing && !_calVisible(existing)){ alert('This is another user’s private task.'); return; }
+  const me = _currentUser?_currentUser.email:'unknown';
+  const status = g('cal-f-status').value||'scheduled';
+  const wasDone = !!(existing && existing.status==='completed');
   const data = {
     id, title,
     type: g('cal-f-type').value||'general',
@@ -4990,21 +5110,54 @@ async function calSaveTask(){
     endTime:   allDay ? '' : (g('cal-f-end').value||''),
     assignee: g('cal-f-assignee').value.trim(),
     location: g('cal-f-location').value.trim(),
-    status: g('cal-f-status').value||'scheduled',
+    status,
     notes: g('cal-f-notes').value.trim(),
+    // Task-list fields. Owner is fixed at creation (legacy tasks: their creator).
+    // A non-owner editing a task keeps its existing visibility (the select is disabled for them).
+    visibility: (existing && !_calOwns(existing))
+      ? (existing.visibility==='private' ? 'private' : 'public')
+      : (g('cal-f-visibility').value==='private' ? 'private' : 'public'),
+    ownerEmail: (existing && (existing.ownerEmail || existing.createdBy)) || me,
+    ownerUid:   (existing && existing.ownerUid) || (!existing && _currentUser ? _currentUser.uid : ''),
+    completedAt: status==='completed' ? ((wasDone && existing.completedAt) || now) : null,
+    completedBy: status==='completed' ? ((wasDone && existing.completedBy) || me) : null,
+    listHidden:  status==='completed' ? !!(existing && existing.listHidden) : false,
     createdAt: existing&&existing.createdAt ? existing.createdAt : now,
-    createdBy: existing&&existing.createdBy ? existing.createdBy : (_currentUser?_currentUser.email:'unknown'),
+    createdBy: existing&&existing.createdBy ? existing.createdBy : me,
     updatedAt: now,
-    updatedBy: _currentUser?_currentUser.email:'unknown',
+    updatedBy: me,
   };
   try {
     await db.collection('calendarTasks').doc(id).set(data);
     const idx=_calTasks.findIndex(x=>x.id===id);
     if (idx>=0) _calTasks[idx]=data; else _calTasks.push(data);
     calCloseTaskModal();
-    calRender();
+    _calAfterChange();
     try { toast('Task saved.', 'success'); } catch(_) {}
   } catch(e){ alert('Failed to save task: '+e.message); }
+}
+
+// Checkbox on the calendar day view / Tasks tab. Completing keeps the task on its date
+// (lined out, "Completed Task"); reopening also puts it back on the Tasks list.
+async function calToggleComplete(id, checked){
+  const t = _calTasks.find(x=>x.id===id);
+  if (!t) return;
+  if (!_calCanComplete(t)){ alert('Admin access required.'); _calAfterChange(); return; }
+  const now = new Date().toISOString(), me = _currentUser?_currentUser.email:'unknown';
+  const data = Object.assign({}, t, checked
+    ? { status:'completed', completedAt:now, completedBy:me, updatedAt:now, updatedBy:me }
+    : { status:'scheduled', completedAt:null, completedBy:null, listHidden:false, updatedAt:now, updatedBy:me });
+  const idx = _calTasks.findIndex(x=>x.id===id);
+  if (idx>=0) _calTasks[idx]=data;   // optimistic
+  _calAfterChange();
+  try {
+    await db.collection('calendarTasks').doc(id).set(data);
+    try { toast(checked ? 'Task completed.' : 'Task reopened.', 'success'); } catch(_) {}
+  } catch(e){
+    { const j=_calTasks.findIndex(x=>x.id===id); if (j>=0) _calTasks[j]=t; }   // re-find: a snapshot may have replaced the array
+    _calAfterChange();
+    alert('Failed to update task: '+e.message);
+  }
 }
 
 async function calDeleteTask(){
@@ -5016,7 +5169,7 @@ async function calDeleteTask(){
     await db.collection('calendarTasks').doc(id).delete();
     _calTasks=_calTasks.filter(x=>x.id!==id);
     calCloseTaskModal();
-    calRender();
+    _calAfterChange();
     try { toast('Task deleted.', 'success'); } catch(_) {}
   } catch(e){ alert('Failed to delete task: '+e.message); }
 }
@@ -5077,8 +5230,7 @@ async function calMoveTask(id, newYmd){
 // ── Day agenda modal ──
 function calOpenDay(ymd){
   _calDayDate = ymd;
-  const jobFilter=msValues('cal-filter-job');
-  const tasks=_calTasks.filter(t=>t.date===ymd && (!jobFilter.length||jobFilter.includes(t.jobName)))
+  const tasks=_calTasks.filter(t=>t && t.date===ymd && _calPassesFilters(t))
     .sort((a,b)=> (a.allDay?0:1)-(b.allDay?0:1) || (a.startTime||'').localeCompare(b.startTime||''));
   const d=_calParseYMD(ymd);
   const title=document.getElementById('cal-day-title');
@@ -5090,14 +5242,23 @@ function calOpenDay(ymd){
       const time = t.allDay ? 'All day' : ((t.startTime?_calFmtTime(t.startTime):'')+(t.endTime?' – '+_calFmtTime(t.endTime):''));
       const meta = [t.jobName,t.assignee,t.location].filter(Boolean).map(eh).join(' · ');
       const editBtn = isAdmin() ? `<button class="btn" onclick="calCloseDayModal();calOpenTaskModal(null,'${ea(t.id)}')" style="margin:8px 0 0;padding:5px 12px;font-size:.75rem;font-weight:700;"><span class="ico ico-edit" aria-hidden="true"></span> Edit</button>` : '';
-      return `<div style="border:1px solid var(--border);border-left:4px solid ${ty.color};border-radius:8px;padding:9px 11px;${done?'opacity:.6;':''}">
-        <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
-          <span style="font-weight:700;font-size:.9rem;${done?'text-decoration:line-through;':''}">${eh(t.title||'(untitled)')}</span>
-          <span style="font-size:.72rem;color:var(--muted);white-space:nowrap;">${eh(time)}</span>
+      // Checklist: owner or admin can tick it; it stays on this date, lined out as a Completed Task.
+      const isDone = _calIsDone(t), canChk = _calCanComplete(t);
+      const chk = canChk ? `<label class="chk-hit" onclick="event.stopPropagation()"><input type="checkbox" class="cal-check" ${isDone?'checked':''} onchange="calToggleComplete('${ea(t.id)}', this.checked)" title="${isDone?'Reopen task':'Mark complete'}" aria-label="${eh((isDone?'Reopen ':'Mark complete: ')+(t.title||'task'))}" /></label>` : '';
+      const badges = (isDone ? `<span class="tl-done-badge">Completed Task</span>` : '')
+                   + (_calIsPrivate(t) ? ` <span class="tl-pill tl-private" style="cursor:default;">Private</span>` : '');
+      return `<div style="display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-left:4px solid ${ty.color};border-radius:8px;padding:9px 11px;${done?'opacity:.6;':''}">
+        ${chk}
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
+            <span style="font-weight:700;font-size:.9rem;${done?'text-decoration:line-through;':''}">${eh(t.title||'(untitled)')}</span>
+            <span style="font-size:.72rem;color:var(--muted);white-space:nowrap;">${eh(time)}</span>
+          </div>
+          ${badges ? `<div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;">${badges}</div>` : ''}
+          <div style="font-size:.72rem;color:var(--muted);margin-top:3px;">${eh(ty.label)}${meta?' · '+meta:''}</div>
+          ${t.notes ? `<div style="font-size:.76rem;color:var(--text);margin-top:6px;white-space:pre-wrap;border-top:1px solid var(--border);padding-top:6px;">${eh(t.notes)}</div>` : ''}
+          ${editBtn}
         </div>
-        <div style="font-size:.72rem;color:var(--muted);margin-top:3px;">${eh(ty.label)}${meta?' · '+meta:''}</div>
-        ${t.notes ? `<div style="font-size:.76rem;color:var(--text);margin-top:6px;white-space:pre-wrap;border-top:1px solid var(--border);padding-top:6px;">${eh(t.notes)}</div>` : ''}
-        ${editBtn}
       </div>`;
     }).join('') : `<div style="text-align:center;color:var(--muted);padding:18px;font-size:.85rem;">No tasks scheduled.</div>`;
   }
@@ -5107,6 +5268,153 @@ function calOpenDay(ymd){
 }
 function calCloseDayModal(){ document.getElementById('cal-day-modal').classList.remove('open'); }
 function calAddFromDay(){ const d=_calDayDate; calCloseDayModal(); calOpenTaskModal(d); }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TASKS tab (admin-only) — each admin's personal to-do list. Reads/writes the
+// same 'calendarTasks' records as the dashboard calendar, so the two can't drift:
+//   • only the signed-in user's own tasks are listed (private + public)
+//   • Open / Completed sub-tabs; the checkbox completes or reopens a task
+//   • "Remove" on the Completed sub-tab hides the task from this list only
+//     (listHidden) — it stays on the calendar, lined out as a Completed Task
+// ═══════════════════════════════════════════════════════════════════════════
+let _tlSub = 'open';   // 'open' | 'done'
+
+function switchToTasks(){
+  if (!isAdmin()) return;
+  activeTab = 'tasks';
+  renderTabBar();
+  showPanel('tasks');
+  calEnsureSubscribed();   // same live listener the calendar uses
+  tlRender();
+}
+function tlSetSub(s){ _tlSub = (s==='done') ? 'done' : 'open'; tlRender(); }
+function tlNewTask(){ calOpenTaskModal(null, null, { visibility:'private' }); }
+
+function _tlMine(){ return _calTasks.filter(t => t && t.id && _calOwns(t) && !t.listHidden); }
+function _tlFmtDate(ymd){
+  if (!ymd) return 'No date';
+  const d = _calParseYMD(ymd);
+  return CAL_WEEKDAYS[d.getDay()]+', '+CAL_MONTHS[d.getMonth()].slice(0,3)+' '+d.getDate()+', '+d.getFullYear();
+}
+
+function tlRender(){
+  const list = document.getElementById('tl-list');
+  if (!list) return;
+  const mine = _tlMine();
+  const open = mine.filter(t => !_calIsDone(t))
+    .sort((a,b)=> (a.date||'').localeCompare(b.date||'') || (a.allDay?0:1)-(b.allDay?0:1) || (a.startTime||'').localeCompare(b.startTime||''));
+  const done = mine.filter(_calIsDone)
+    .sort((a,b)=> (b.completedAt||b.updatedAt||'').localeCompare(a.completedAt||a.updatedAt||''));
+  const cOpen = document.getElementById('tl-count-open'), cDone = document.getElementById('tl-count-done');
+  if (cOpen) cOpen.textContent = open.length;
+  if (cDone) cDone.textContent = done.length;
+  const bOpen = document.getElementById('tl-sub-open'), bDone = document.getElementById('tl-sub-done');
+  if (bOpen) bOpen.classList.toggle('active', _tlSub==='open');
+  if (bDone) bDone.classList.toggle('active', _tlSub==='done');
+
+  const rows = _tlSub==='done' ? done : open;
+  const hint = _tlSub==='done'
+    ? `<div style="font-size:.76rem;color:var(--muted);margin-bottom:10px;">Clearing a task here only removes it from this list — it stays on the calendar, lined out as a Completed Task.</div>` : '';
+  if (!_calLoaded){
+    list.innerHTML = `<div style="text-align:center;color:var(--muted);padding:40px 16px;font-size:.88rem;">Loading tasks…</div>`;
+    return;
+  }
+  if (!rows.length){
+    list.innerHTML = hint + `<div style="text-align:center;color:var(--muted);padding:40px 16px;font-size:.88rem;">${_tlSub==='done' ? 'No completed tasks yet.' : 'No open tasks. Click <strong>+ New Task</strong> to add one.'}</div>`;
+    return;
+  }
+  const today = _calTodayYMD();
+  list.innerHTML = hint + rows.map(t => {
+    const ty = _calType(t.type), isDone = _calIsDone(t), priv = _calIsPrivate(t);
+    const time = t.allDay ? 'All day' : ((t.startTime?_calFmtTime(t.startTime):'') + (t.endTime?' – '+_calFmtTime(t.endTime):''));
+    const overdue = !isDone && !!t.date && t.date < today;
+    const meta = [
+      `<span style="${overdue?'color:#ef4444;font-weight:700;':''}">${eh(_tlFmtDate(t.date))}${overdue?' · overdue':''}</span>`,
+      time ? eh(time) : '',
+      `<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:8px;height:8px;border-radius:2px;background:${ty.color};display:inline-block;"></span>${eh(ty.label)}</span>`,
+      t.jobName ? eh(t.jobName) : '',
+      t.location ? eh(t.location) : '',
+    ].filter(Boolean).join('<span style="opacity:.4;">·</span>');
+    const doneInfo = isDone && t.completedAt ? `<div style="font-size:.72rem;color:#22c55e;margin-top:4px;">Completed ${eh(new Date(t.completedAt).toLocaleString())}</div>` : '';
+    // Completed: "Clear from list" is non-destructive (no trash icon); Open: "Delete" removes it everywhere.
+    const del = isDone
+      ? `<button class="btn-sm" onclick="tlRemoveFromList('${ea(t.id)}')" title="Remove from this list — the task stays on the calendar">Clear from list</button>`
+      : `<button class="btn-sm btn-danger" onclick="tlDeleteTask('${ea(t.id)}')" title="Delete this task everywhere, including the calendar"><span class="ico ico-trash" aria-hidden="true"></span> Delete</button>`;
+    return `<div class="tl-row${isDone?' tl-done':''}" style="border-left-color:${ty.color};">
+      <label class="chk-hit"><input type="checkbox" class="tl-check" ${isDone?'checked':''} onchange="calToggleComplete('${ea(t.id)}', this.checked)" title="${isDone?'Reopen task':'Mark complete'}" aria-label="${eh((isDone?'Reopen ':'Mark complete: ')+(t.title||'task'))}" /></label>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span class="tl-title">${eh(t.title||'(untitled)')}</span>
+          <button type="button" class="tl-pill ${priv?'tl-private':'tl-public'}" onclick="tlToggleVisibility('${ea(t.id)}')" title="Tap to make this task ${priv?'public (everyone sees it on the calendar)':'private (only you see it)'}">${priv?'<span class="ico ico-lock" aria-hidden="true"></span> Private':'Public'} ⇄</button>
+          ${isDone ? '<span class="tl-done-badge">Completed Task</span>' : ''}
+        </div>
+        <div class="tl-meta">${meta}</div>
+        ${t.notes ? `<div style="font-size:.76rem;color:var(--text);margin-top:6px;white-space:pre-wrap;">${eh(t.notes)}</div>` : ''}
+        ${doneInfo}
+      </div>
+      <div class="tl-actions">
+        <button class="btn-sm" onclick="calOpenTaskModal(null,'${ea(t.id)}')"><span class="ico ico-edit" aria-hidden="true"></span> Edit</button>
+        ${del}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function tlToggleVisibility(id){
+  if (!isAdmin()) return;
+  const t = _calTasks.find(x=>x.id===id);
+  if (!t || !_calOwns(t)) return;   // only the owner changes private/public
+  // Going public publishes it to everyone's calendar — confirm so a stray tap can't expose it.
+  if (_calIsPrivate(t) && !(await uiConfirm('Make this task public?\n\nEveryone will see it on the Dashboard calendar.', {title:'Make Public', okLabel:'Make Public'}))) return;
+  const now = new Date().toISOString();
+  const data = Object.assign({}, t, { visibility: _calIsPrivate(t) ? 'public' : 'private', updatedAt:now, updatedBy:_currentUser?_currentUser.email:'unknown' });
+  const idx = _calTasks.findIndex(x=>x.id===id);
+  if (idx>=0) _calTasks[idx]=data;
+  _calAfterChange();
+  try {
+    await db.collection('calendarTasks').doc(id).set(data);
+    try { toast(data.visibility==='private' ? 'Task is now private.' : 'Task is now public.', 'success'); } catch(_) {}
+  } catch(e){
+    { const j=_calTasks.findIndex(x=>x.id===id); if (j>=0) _calTasks[j]=t; }   // re-find: a snapshot may have replaced the array
+    _calAfterChange();
+    alert('Failed to update task: '+e.message);
+  }
+}
+
+// Open sub-tab: a real delete — removes the task from the calendar too.
+async function tlDeleteTask(id){
+  if (!isAdmin()) return;
+  const t = _calTasks.find(x=>x.id===id);
+  if (!t || !_calOwns(t)) return;
+  if (!(await uiConfirm('Delete this task? It will also be removed from the calendar. This cannot be undone.', {title:'Delete Task', okLabel:'Delete', danger:true}))) return;
+  try {
+    await db.collection('calendarTasks').doc(id).delete();
+    _calTasks = _calTasks.filter(x=>x.id!==id);
+    _calAfterChange();
+    try { toast('Task deleted.', 'success'); } catch(_) {}
+  } catch(e){ alert('Failed to delete task: '+e.message); }
+}
+
+// Completed sub-tab: hide from this list ONLY. The calendar keeps it, lined out.
+async function tlRemoveFromList(id){
+  if (!isAdmin()) return;
+  const t = _calTasks.find(x=>x.id===id);
+  if (!t || !_calOwns(t)) return;
+  if (!(await uiConfirm('Clear this completed task from your list?\n\nIt will stay on the calendar, lined out as a Completed Task.', {title:'Clear from List', okLabel:'Clear'}))) return;
+  const now = new Date().toISOString();
+  const data = Object.assign({}, t, { listHidden:true, updatedAt:now, updatedBy:_currentUser?_currentUser.email:'unknown' });
+  const idx = _calTasks.findIndex(x=>x.id===id);
+  if (idx>=0) _calTasks[idx]=data;
+  _calAfterChange();
+  try {
+    await db.collection('calendarTasks').doc(id).set(data);
+    try { toast('Removed from your list.', 'success'); } catch(_) {}
+  } catch(e){
+    { const j=_calTasks.findIndex(x=>x.id===id); if (j>=0) _calTasks[j]=t; }   // re-find: a snapshot may have replaced the array
+    _calAfterChange();
+    alert('Failed to update task: '+e.message);
+  }
+}
 
 // Single controller for which view shows:
 //  overview → all-projects table (landing page); detail → one project's own page.
@@ -5717,8 +6025,8 @@ async function dashSaveMarginThreshold() {
 //  TAB ROUTING
 // ═══════════════════════════
 function showPanel(name) {
-  ['csv-content','material-content','stocking-content','payroll-content','budgets-content','lc-content','emp-content','paysheet-content','accounting-content','co-content','dashboard-content','purchasing-content'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
-  const map = { csv:'csv-content', material:'material-content', stocking:'stocking-content', payroll:'payroll-content', budgets:'budgets-content', lc:'lc-content', emp:'emp-content', accounting:'accounting-content', co:'co-content', dashboard:'dashboard-content', purchasing:'purchasing-content' };
+  ['csv-content','material-content','stocking-content','payroll-content','budgets-content','lc-content','emp-content','paysheet-content','accounting-content','co-content','dashboard-content','purchasing-content','tasks-content'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  const map = { csv:'csv-content', material:'material-content', stocking:'stocking-content', payroll:'payroll-content', budgets:'budgets-content', lc:'lc-content', emp:'emp-content', accounting:'accounting-content', co:'co-content', dashboard:'dashboard-content', purchasing:'purchasing-content', tasks:'tasks-content' };
   if (map[name]) document.getElementById(map[name]).style.display = 'block';
   if (name === 'budgets') {
     const hasFiles = getSavedCSVFiles().length > 0;
@@ -5746,6 +6054,8 @@ function renderTabBar() {
   if (coTabEl) coTabEl.classList.toggle('active', activeTab === 'co');
   const empTabEl = document.getElementById('emp-tab');
   if (empTabEl) empTabEl.classList.toggle('active', activeTab === 'emp');
+  const tasksTabEl = document.getElementById('tasks-tab');
+  if (tasksTabEl) tasksTabEl.classList.toggle('active', activeTab === 'tasks');
 }
 
 function switchToPayroll() {
@@ -6270,12 +6580,13 @@ function ssRenderOpts(id){
   // Free-text mode: offer to use exactly what was typed when it isn't already an option.
   if(st.allowCustom && rawq){
     const exact = st.options.some(o=>o.label.toLowerCase()===q || String(o.value).toLowerCase()===q);
-    if(!exact) html += `<div class="ms-opt" data-v="${ea(rawq)}" onclick="ssSelect('${id}', this.getAttribute('data-v'))" style="color:var(--accent);">Use “${eh(rawq)}”</div>`;
+    // eh (HTML-attribute escape), not ea: ea leaves " unescaped, so 5/8" type "X" was cut off at 5/8.
+    if(!exact) html += `<div class="ms-opt" data-v="${eh(rawq)}" onclick="ssSelect('${id}', this.getAttribute('data-v'))" style="color:var(--accent);">Use “${eh(rawq)}”</div>`;
   }
   if(!shown.length && !html){ list.innerHTML=`<div class="ms-empty">${st.options.length?'No matches':'No options'}</div>`; return; }
   html += shown.map(o=>{
     const active = String(o.value)===String(st.value) ? ' style="background:var(--surface2);"' : '';
-    return `<div class="ms-opt" data-v="${ea(o.value)}"${active} onclick="ssSelect('${id}', this.getAttribute('data-v'))">${eh(o.label)}</div>`;
+    return `<div class="ms-opt" data-v="${eh(o.value)}"${active} onclick="ssSelect('${id}', this.getAttribute('data-v'))">${eh(o.label)}</div>`;
   }).join('');
   list.innerHTML = html;
 }
@@ -11140,7 +11451,7 @@ function switchToPaysheet() {
   if (isAccounting()) return;
   activeTab = 'paysheet';
   renderTabBar();
-  ['csv-content','material-content','stocking-content','payroll-content','budgets-content','lc-content','emp-content','accounting-content','co-content','dashboard-content','purchasing-content'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  ['csv-content','material-content','stocking-content','payroll-content','budgets-content','lc-content','emp-content','accounting-content','co-content','dashboard-content','purchasing-content','tasks-content'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   document.getElementById('paysheet-content').style.display = 'block';
   document.getElementById('di-tab-group').style.display = 'none';
   document.getElementById('ps-tab-group').style.display = 'block';
@@ -11162,7 +11473,7 @@ function switchToDailyInputs() {
   if (isAccounting()) return;
   activeTab = 'daily-inputs';
   renderTabBar();
-  ['csv-content','material-content','stocking-content','payroll-content','budgets-content','lc-content','emp-content','accounting-content','co-content','dashboard-content','purchasing-content'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  ['csv-content','material-content','stocking-content','payroll-content','budgets-content','lc-content','emp-content','accounting-content','co-content','dashboard-content','purchasing-content','tasks-content'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   document.getElementById('paysheet-content').style.display = 'block';
   document.getElementById('di-tab-group').style.display = 'block';
   document.getElementById('ps-tab-group').style.display = 'none';
@@ -11213,6 +11524,8 @@ function mprLoadLog() {
       }
       // Keep the Purchasing picker's Paid/Remaining live too.
       if (activeTab === 'purchasing' && _purNav === 'detail') { try { purMatRender(); } catch(_) {} }
+      // …and the Change Orders job view's Material Paid / Remaining.
+      if (activeTab === 'co' && _coView === 'job') { try { renderCOLog(); } catch(_) {} }
     }, err => console.error('mprLoadLog:', err));
   } catch(e) { console.error('mprLoadLog:', e); }
 }
@@ -11224,6 +11537,38 @@ function _qtyFmt(n) {
 }
 
 // Consolidate a job's material budget by description (sum amount + qty across all areas/codes).
+// The material-budget lines one approved write-up adds (merged by description). Single
+// source for both the material budget (_mprConsolidate) and the Change Orders COR cards.
+function _cwMaterialBudgetLines(w) {
+  const _nn = v => { const x = parseFloat(String(v==null?'':v).replace(/,/g,'')); return isFinite(x) ? x : 0; };
+  const map = new Map();
+  const addRow = (desc, qty, uom, budget) => {
+    if (!(budget > 0)) return;
+    const d = (desc||'').trim() || '(no description)';
+    if (!map.has(d)) map.set(d, { description:d, uom:(uom||''), qty:0, budget:0 });
+    const e = map.get(d);
+    e.qty += (Number(qty)||0);
+    e.budget += budget;
+    if ((!e.uom || !String(e.uom).trim()) && uom) e.uom = uom;
+  };
+  // Materials at PRE-TAX cost (matches the CO breakdown)…
+  (w.materialLines||[]).forEach(m => addRow(m.description, _nn(m.qty), m.uom, Math.round(_nn(m.amount)*100)/100));
+  // …material sales tax as its OWN separate budget line (not folded into each material).
+  const _matSub = (w.materialLines||[]).reduce((s,m) => s + _nn(m.amount), 0);
+  const _matTax = Number(w.materialTax) || (_matSub * (_nn(w.materialTaxPct)/100));
+  addRow('Material Tax', '', '', Math.round(_matTax*100)/100);
+  // …material escalation (a cost %) as its OWN separate budget line.
+  const _matEsc = Number(w.materialEscalation) || (_matSub * (_nn(w.materialEscalationPct)/100));
+  if (_matEsc) addRow('Material Escalation', '', '', Math.round(_matEsc*100)/100);
+  // Fees (cost only), each its own line.
+  [['delivery','Delivery Fee'],['stocking','Stocking Fee'],['equipment','Equipment Fee']].forEach(([k,label]) => {
+    const f = (w.fees && w.fees[k]) || {};
+    const amt = Number(f.amount) || (_nn(f.qty)*_nn(f.price));
+    addRow(label, _nn(f.qty), '', Math.round(amt*100)/100);
+  });
+  return [...map.values()];
+}
+
 function _mprConsolidate(job) {
   const f = getSavedCSVFiles().find(x => x.name === job);
   const rows = (f && f.materialRows) ? f.materialRows : [];
@@ -11241,33 +11586,15 @@ function _mprConsolidate(job) {
   // in both the Purchasing picker and the Payroll → Material table. They're kept as their
   // OWN rows, tagged with the COR # (like the labor [COR] budget), rather than merged into
   // CSV descriptions — so they're clearly identifiable as change-order additions.
-  const _nn = v => { const x = parseFloat(String(v==null?'':v).replace(/,/g,'')); return isFinite(x) ? x : 0; };
   (_cache.cowriteups || []).filter(w => w.jobId === job && w.status === 'approved').forEach(w => {
     const cor = w.corNumber || '';
-    const addRow = (desc, qty, uom, budget) => {
-      if (!(budget > 0)) return;
-      const d = (desc||'').trim() || '(no description)';
-      const key = ' COR ' + (cor || w.id) + ' ' + d;
-      if (!map.has(key)) map.set(key, { description:d, code:'', uom:(uom||''), qty:0, budget:0, cor });
+    _cwMaterialBudgetLines(w).forEach(l => {
+      const key = ' COR ' + (cor || w.id) + ' ' + l.description;
+      if (!map.has(key)) map.set(key, { description:l.description, code:'', uom:(l.uom||''), qty:0, budget:0, cor });
       const e = map.get(key);
-      e.qty += (Number(qty)||0);
-      e.budget += budget;
-      if ((!e.uom || !String(e.uom).trim()) && uom) e.uom = uom;
-    };
-    // Materials at PRE-TAX cost (matches the CO breakdown)…
-    (w.materialLines||[]).forEach(m => addRow(m.description, _nn(m.qty), m.uom, Math.round(_nn(m.amount)*100)/100));
-    // …material sales tax as its OWN separate budget line (not folded into each material).
-    const _matSub = (w.materialLines||[]).reduce((s,m) => s + _nn(m.amount), 0);
-    const _matTax = Number(w.materialTax) || (_matSub * (_nn(w.materialTaxPct)/100));
-    addRow('Material Tax', '', '', Math.round(_matTax*100)/100);
-    // …material escalation (a cost %) as its OWN separate budget line.
-    const _matEsc = Number(w.materialEscalation) || (_matSub * (_nn(w.materialEscalationPct)/100));
-    if (_matEsc) addRow('Material Escalation', '', '', Math.round(_matEsc*100)/100);
-    // Fees (cost only), each its own line.
-    [['delivery','Delivery Fee'],['stocking','Stocking Fee'],['equipment','Equipment Fee']].forEach(([k,label]) => {
-      const f = (w.fees && w.fees[k]) || {};
-      const amt = Number(f.amount) || (_nn(f.qty)*_nn(f.price));
-      addRow(label, _nn(f.qty), '', Math.round(amt*100)/100);
+      e.qty += l.qty;
+      e.budget += l.budget;
+      if ((!e.uom || !String(e.uom).trim()) && l.uom) e.uom = l.uom;
     });
   });
   // Change-order materials sort to the TOP, then everything by budget (desc).
@@ -12410,6 +12737,56 @@ function cwOpenFromInbox(id) {
   cwOpenFolder(w.jobId);
   cwOpenDoc(id);
 }
+// Quick read-only snapshot of a write-up COR (timestamps + cost summary), like the
+// Work Order detail pop-up. "Open in Write-Ups" jumps to the full (locked) write-up.
+function cwOpenSnapshot(id) {
+  if (!isAdmin()) return;
+  const w = _cwList().find(x => x.id === id);
+  if (!w) { toast('Change order not found.', 'error'); return; }
+  const ts = v => v ? new Date(v).toLocaleString() : '—';
+  const field = (label, val) => `<div><div style="font-size:.78rem;color:var(--muted);">${label}</div><div style="font-weight:700;font-size:.9rem;color:var(--text);margin-top:2px;word-break:break-word;">${val}</div></div>`;
+  // Same fallbacks as the Write-Ups log breakdown so older docs still summarize fully.
+  const matSub = w.materialSubtotal != null ? w.materialSubtotal : ((w.materialTotal||0) - (w.materialTax||0) - (w.materialEscalation||0));
+  const subTot = w.subtotal != null ? w.subtotal : ((w.laborTotal||0) + (w.materialTotal||0) + (w.feesTotal||0));
+  const matMk  = w.matMarkupProfit != null ? w.matMarkupProfit : (w.markupProfit||0);
+  const row = (label, val, color) => `<div style="display:flex;justify-content:space-between;gap:20px;font-size:.88rem;color:${color||'var(--muted)'};${color?'font-weight:600;':''}"><span>${label}</span><span>${fm(val||0)}</span></div>`;
+  const corDisp = String(w.corNumber || '').replace(/^0+(\d)/, '$1');
+  document.getElementById('cw-snap-title').textContent = 'Change Order #' + (corDisp || '—');
+  document.getElementById('cw-snap-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 20px;">
+      ${field('Job', eh(w.jobId || '—'))}
+      <div><div style="font-size:.78rem;color:var(--muted);">Status</div><div style="margin-top:4px;">${coStatusBadge(w.status)}</div></div>
+      ${field('Created By', eh(w.createdBy || '—'))}
+      ${field('Created At', eh(ts(w.createdAt)))}
+      ${field('Approved By', eh(w.approvedBy || '—'))}
+      ${field('Approved At', eh(ts(w.approvedAt)))}
+      ${field('COR Date', eh(w.date ? fmtDate(w.date) : '—'))}
+      ${field('Last Updated', eh(ts(w.updatedAt)))}
+    </div>
+    ${w.scope ? `<div>${field('Description', `<span style="font-weight:600;white-space:pre-wrap;">${eh(w.scope)}</span>`)}</div>` : ''}
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
+      <div style="font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px;">Cost Summary</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${row('Labor Total', w.laborTotal)}
+        ${row('Material Subtotal', matSub)}
+        ${row('Material Tax', w.materialTax, PUR_COLORS.tax)}
+        ${row(`Material Escalation ${w.materialEscalationPct||0}%`, w.materialEscalation, '#f59e0b')}
+        ${row('Fees', w.feesTotal)}
+        ${row('Subtotal', subTot)}
+        ${row(`Markup (Mat) ${w.markupPct||0}%`, matMk, '#60a5fa')}
+        ${row(`Markup (Labor) ${w.laborMarkupPct||0}%`, w.laborMarkupProfit, '#60a5fa')}
+        <div style="display:flex;justify-content:space-between;gap:20px;font-size:1.05rem;font-weight:800;color:var(--green);border-top:1px solid var(--border);margin-top:4px;padding-top:8px;"><span>Total</span><span>${fm(w.grandTotal||0)}</span></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;border-top:1px solid var(--border);padding-top:14px;">
+      ${w.pdfData ? `<button class="btn btn-outline" onclick="_cwOpenAttachment('${ea(w.id)}')" style="margin:0;font-size:.8rem;padding:7px 14px;"><span class="ico ico-file" aria-hidden="true"></span> Signed PDF</button>` : ''}
+      <button class="btn btn-outline" onclick="_cwViewDocPDF(_cwList().find(x=>x.id==='${ea(w.id)}'))" style="margin:0;font-size:.8rem;padding:7px 14px;"><span class="ico ico-file" aria-hidden="true"></span> PDF</button>
+      <button class="btn" onclick="cwCloseSnapshot();cwViewFromDash('${ea(w.id)}')" style="margin:0;font-size:.8rem;padding:7px 14px;background:var(--accent);color:#000;font-weight:700;">Open in Write-Ups</button>
+    </div>`;
+  document.getElementById('cw-snap-modal').classList.add('open');
+}
+function cwCloseSnapshot() { const m = document.getElementById('cw-snap-modal'); if (m) m.classList.remove('open'); }
+
 // Open a write-up from the Change Orders dashboard View button (jumps to Write-Ups sub-tab).
 function cwViewFromDash(id) {
   if (!isAdmin()) return;
@@ -12511,7 +12888,31 @@ function _cwEmptyDoc(job) {
     status: 'pending',
   };
 }
+// ── View-only lock for approved write-ups ──
+let _cwLocked = false;
+function _cwSetLocked(on) {
+  _cwLocked = !!on;
+  const ws = document.getElementById('cw-workspace');
+  if (ws) {
+    ws.classList.toggle('cw-locked', _cwLocked);
+    // inert = no taps, typing, or keyboard focus inside the form sections (layout unchanged).
+    ws.querySelectorAll('.cw-card').forEach(c => { if (_cwLocked) c.setAttribute('inert', ''); else c.removeAttribute('inert'); });
+  }
+  const show = (id, v) => { const el = document.getElementById(id); if (el) el.style.display = v ? '' : 'none'; };
+  show('cw-btn-unlock',    _cwLocked);
+  show('cw-btn-savedraft', !_cwLocked);
+  show('cw-btn-save',      !_cwLocked);
+}
+function cwUnlockEdit() {
+  if (!isAdmin() || !_cwLocked) return;
+  _cwSetLocked(false);
+  const t = document.getElementById('cw-builder-title');
+  if (t && _cwCur) t.textContent = 'Editing COR #' + (_cwCur.corNumber||'') + ' (approved)';
+  toast('Unlocked — saving keeps this change order approved.', 'info');
+}
+
 function cwNewDoc() {
+  _cwSetLocked(false);
   _cwCur = _cwEmptyDoc(_cwJob);
   _cwEditingId = null;
   cwRefreshCorNum();
@@ -12881,6 +13282,7 @@ async function _cwClearSourceCO(coId, writeUpId) {
 }
 async function cwSave(status) {
   if (!isAdmin()) return;
+  if (_cwLocked) { toast('This approved change order is view-only — tap Unlock to edit first.', 'error'); return; }
   if (!_cwJob || !_cwCur) { toast('Select a project first.', 'error'); return; }
   if (!(_cwCur.corNumber||'').trim()) { toast('Enter a COR number.', 'error'); return; }
   const doc = _cwCollectDoc();
@@ -12952,7 +13354,10 @@ function cwOpenDoc(id) {
   msSetValues('cw-dist-area', doc.areas || []);
   msSetValues('cw-dist-code', doc.laborCodes || []);
   cwRecalc();
-  const t = document.getElementById('cw-builder-title'); if (t) t.textContent = 'Editing COR #' + (doc.corNumber||'');
+  // Approved change orders open view-only (already filled in); everything else stays editable.
+  const _approved = doc.status === 'approved';
+  _cwSetLocked(_approved);
+  const t = document.getElementById('cw-builder-title'); if (t) t.textContent = (_approved ? 'Viewing COR #' : 'Editing COR #') + (doc.corNumber||'');
   const ws = document.getElementById('cw-workspace'); if (ws) ws.scrollIntoView({ behavior:'smooth', block:'start' });
 }
 
@@ -13401,8 +13806,11 @@ function _cwEnsureSignFont() {
 // Build a real downloadable PDF file (named by COR #). Renders the layout into an
 // off-screen container in the MAIN document (iframes render blank under html2canvas),
 // scoped under #cw-pdf-root so the app's CSS can't interfere.
-async function _cwDownloadDocPDF(doc) {
+// opts.output === 'datauri' → return the PDF as a data URI instead of downloading it
+// (used by _cwViewDocPDF to show it in a viewer). Default behavior is unchanged.
+async function _cwDownloadDocPDF(doc, opts) {
   if (!doc) { toast('Change order not found.', 'error'); return; }
+  const _asUri = !!(opts && opts.output === 'datauri');
   let wrap;
   try {
     toast('Preparing PDF…');
@@ -13444,15 +13852,39 @@ async function _cwDownloadDocPDF(doc) {
       while (pos < imgH) { pdf.addImage(imgData, 'JPEG', 0, -pos, pageW, imgH); pos += pageH; if (pos < imgH) pdf.addPage(); }
     }
     const fname = ('COR ' + (doc.corNumber || 'change-order')).trim().replace(/[^\w.-]+/g, '_') + '.pdf';
+    if (_asUri) return pdf.output('datauristring');
     pdf.save(fname);
     toast('PDF downloaded — ready to send.', 'success');
   } catch (e) {
     console.error('cwDownloadPDF:', e);
+    if (_asUri) { toast('Could not build the PDF (' + (e.message || e) + ').', 'error'); return null; }
     toast('Could not build the PDF file (' + (e.message || e) + ') — opening the print view instead.', 'error');
     _cwExportDocPDF(doc);
   } finally {
     if (wrap) setTimeout(() => { try { wrap.remove(); } catch(_) {} }, 500);
   }
+}
+
+// Open the generated COR PDF in a viewer — same experience as the Signed PDF button
+// (_cwOpenAttachment): new tab on desktop, in-app viewer in the iPad home-screen app.
+// The tab is opened synchronously on the tap (before the async build) so pop-up
+// blockers don't stop it, then the finished PDF is written into it.
+async function _cwViewDocPDF(doc) {
+  if (!doc) { toast('Change order not found.', 'error'); return; }
+  const title = 'COR ' + (doc.corNumber || '');
+  const pwa = _isStandalonePWA();
+  const win = pwa ? null : window.open('', '_blank');
+  if (!pwa && !win) { toast('Pop-up blocked — allow pop-ups to view the PDF.', 'error'); return; }
+  if (win) {
+    win.document.write(`<!doctype html><title>${eh(title)}</title><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;font-family:-apple-system,Segoe UI,Arial,sans-serif;color:#666;background:#f5f5f5;">Preparing PDF…</body>`);
+    win.document.close();
+  }
+  const url = await _cwDownloadDocPDF(doc, { output: 'datauri' });
+  if (!url) { if (win) { try { win.close(); } catch(_) {} } return; }
+  if (pwa) { _appViewer({ title, url, print: false }); return; }
+  win.document.open();
+  win.document.write(`<!doctype html><title>${eh(title)}</title><body style="margin:0"><iframe src="${url}" style="border:0;width:100vw;height:100vh;"></iframe></body>`);
+  win.document.close();
 }
 
 function switchToAccounting() {
@@ -18895,6 +19327,7 @@ function switchToCO() {
   _coView = 'overview'; _coJob = '';
   const jf = document.getElementById('co-filter-job');     if (jf) jf.value = '';
   if (_coActiveSubTab === 'writeup' && !isAdmin()) _coActiveSubTab = 'co';
+  if (!isForeman()) mprInit();   // material paid-to-date feeds the COR cards' Material tracking
   coSetSubTab(_coActiveSubTab); // re-apply active sub-tab styling and render
 }
 
@@ -19008,6 +19441,9 @@ function renderCODashboard() {
   // For Change Orders, also include labor budgets distributed by approved write-ups (tagged writeUpId).
   const _approvedWuIds = _dashIsBurn ? new Set() : new Set((_cache.cowriteups||[]).filter(w => w.jobId === jobName && w.status === 'approved').map(w => w.id));
   const corbs = (_cache.corbudgets || []).filter(b => b.jobId === jobName && (_coIdSet.has(b.changeOrderId) || (b.writeUpId && _approvedWuIds.has(b.writeUpId))));
+
+  // Change Orders → one expandable card per COR (labor + material tracking). Work Orders keep the table below.
+  if (!_dashIsBurn) { _coRenderCorCards(container, jobName, cos, corbs); return; }
 
   let totalBudget = 0, totalPtd = 0;
   let rows;
@@ -19137,8 +19573,181 @@ function renderCODashboard() {
     ${paidSection}`;
 }
 
+// ═══ Change Orders job view: one expandable card per COR (Write-Ups-log style) ═══
+// Labor uses the exact existing tracking (corbForemanAmount / corbInternalAmount /
+// computeCorPaid per corbudget line). Material uses the existing material budget lines
+// (_cwMaterialBudgetLines) and paid-to-date by description (_mprPaidByDesc) — the same
+// numbers the Purchasing and Payroll → Material views show. Read-only; writes nothing.
+let _coCorExpanded = new Set();
+let _coCorDoneOpen = false;   // "Completed Change Orders" dropdown open/closed state
+function coToggleCorCard(key) {
+  if (_coCorExpanded.has(key)) _coCorExpanded.delete(key); else _coCorExpanded.add(key);
+  renderCODashboard();
+}
+function _coRemStyle(rem) { return rem < 0 ? 'color:var(--red);' : (Math.round(rem*100) === 0 ? 'color:var(--yellow);' : 'color:var(--green);'); }
+function _coRemFmt(rem)   { return (rem < 0 ? '-' : '') + fm(Math.abs(rem)); }
+
+function _coRenderCorCards(container, jobName, cos, corbs) {
+  const showInternal = !isForeman();
+  const showMat      = !isForeman();   // material $ is management info, like Internal
+  const paidByDesc   = showMat ? _mprPaidByDesc(jobName) : {};
+  const wus = _cache.cowriteups || [];
+
+  // Group labor lines by their COR: write-up corbs by writeUpId, legacy CO-request corbs by changeOrderId.
+  const groups = new Map();
+  const grp = key => { if (!groups.has(key)) groups.set(key, { key, corbs: [] }); return groups.get(key); };
+  corbs.forEach(b => grp(b.writeUpId ? 'wu:' + b.writeUpId : 'co:' + b.changeOrderId).corbs.push(b));
+  // Approved write-ups with no labor lines (material-only CORs) still get a card.
+  wus.filter(w => w.jobId === jobName && w.status === 'approved').forEach(w => grp('wu:' + w.id));
+
+  const list = [...groups.values()].map(g => {
+    const isWu = g.key.startsWith('wu:');
+    const wu = isWu ? wus.find(w => w.id === g.key.slice(3)) : null;
+    const co = isWu ? (wu ? cos.find(c => c.linkedWriteUpId === wu.id) : null) : cos.find(c => c.id === g.key.slice(3));
+    const first = g.corbs[0];
+    const lab = g.corbs.map(b => ({ b, internal: corbInternalAmount(b), foreman: corbForemanAmount(b), ptd: computeCorPaid(b) }));
+    // Write-up internal is split per area → sum; legacy CO internal is the full CO amount repeated on every line → take once.
+    const labInternal = isWu ? lab.reduce((s, x) => s + x.internal, 0) : (lab[0] ? lab[0].internal : 0);
+    const labForeman  = lab.reduce((s, x) => s + x.foreman, 0);
+    const labPtd      = lab.reduce((s, x) => s + x.ptd, 0);
+    const mat = (showMat && wu) ? _cwMaterialBudgetLines(wu).map(m => Object.assign({}, m, { paid: paidByDesc[m.description] || 0 })) : [];
+    const matBudget = mat.reduce((s, m) => s + m.budget, 0);
+    const matPaid   = mat.reduce((s, m) => s + m.paid, 0);
+    const ts = (first && first.createdAt) || (wu && (wu.approvedAt || wu.createdAt)) || (co && co.reviewedAt) || '';
+    return {
+      key: g.key, wu, co, lab, labInternal, labForeman, labPtd, mat, matBudget, matPaid, ts,
+      corNumber: (first && first.corNumber) || (wu && wu.corNumber) || (co && co.corNumber) || '',
+      desc: (first && first.description) || (wu && wu.scope) || (co && co.description) || '',
+      date: (wu && wu.date) || (ts ? ts.slice(0, 10) : ''),
+    };
+  }).sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));   // newest-approved first
+
+  // Totals — labor numbers are identical to the previous table's cards.
+  const tLabF = list.reduce((s, c) => s + c.labForeman, 0), tLabP = list.reduce((s, c) => s + c.labPtd, 0);
+  const tMatB = list.reduce((s, c) => s + c.matBudget, 0), tMatP = list.reduce((s, c) => s + c.matPaid, 0);
+  const card = (label, value, sub, cls, style) => `<div class="card"><div class="label">${label}</div><div class="value ${cls||''}" style="${style||''}">${value}</div><div class="sub">${sub}</div></div>`;
+  const labCards = card('Labor Budget (Foreman)', fm(tLabF), `${list.length} COR${list.length !== 1 ? 's' : ''} approved`, 'cg')
+                 + card('Labor Spent (PTD)', fm(tLabP), `of ${fm(tLabF)} budgeted`, 'cr')
+                 + card('Labor Remaining', _coRemFmt(tLabF - tLabP), tLabF - tLabP < 0 ? 'over budget' : 'remaining', '', _coRemStyle(tLabF - tLabP));
+  const matCards = showMat
+    ? card('Material Budget', fm(tMatB), 'cost + tax + escalation + fees', 'cg')
+    + card('Material Paid', fm(tMatP), `of ${fm(tMatB)} budgeted`, 'cr')
+    + card('Material Remaining', _coRemFmt(tMatB - tMatP), tMatB - tMatP < 0 ? 'over budget' : 'remaining', '', _coRemStyle(tMatB - tMatP))
+    : '';
+
+  const td = 'padding:5px 8px;font-size:.8rem;';
+  const th = 'text-align:left;padding:5px 8px;font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;';
+  const secHead = t => `<div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:12px 0 4px;">${t}</div>`;
+  const chip = (label, budget, spent, spentLbl) => `<div style="font-size:.74rem;color:var(--muted);white-space:nowrap;">
+      <span style="font-weight:700;color:var(--text);">${label}</span> ${fm(budget)}
+      &middot; ${spentLbl} <span style="color:#60a5fa;font-weight:600;">${fm(spent)}</span>
+      &middot; Rem <strong style="${_coRemStyle(budget - spent)}">${_coRemFmt(budget - spent)}</strong></div>`;
+
+  const renderCard = c => {
+    const open = _coCorExpanded.has(c.key);
+    const corDisp = String(c.corNumber || '').replace(/^0+(\d)/, '$1');
+    const status  = c.co ? coStatusBadge(c.co.status) : (c.wu ? coStatusBadge(c.wu.status) : '');
+    const view    = c.co ? `<button class="btn-sm" onclick="event.stopPropagation();coOpenDetail('${ea(c.co.id)}')">View</button>`
+                  : (c.wu && isAdmin()) ? `<button class="btn-sm" onclick="event.stopPropagation();cwOpenSnapshot('${ea(c.wu.id)}')">View</button>` : '';
+    // Same document actions as the Write-Ups log. The signed PDF dropped in on approval is
+    // visible to everyone who can see this tab; Print / generated PDF are admin-only.
+    const _bs = 'font-size:.72rem;padding:4px 10px;margin:0;';
+    const _signedBtn = (c.wu && c.wu.pdfData) ? `<button class="btn btn-outline" onclick="_cwOpenAttachment('${ea(c.wu.id)}')" style="${_bs}" title="Open the signed PDF attached on approval"><span class="ico ico-file" aria-hidden="true"></span> Signed PDF</button>` : '';
+    const _adminBtns = (c.wu && isAdmin()) ? `
+        <button class="btn btn-outline" onclick="_cwExportDocPDF(_cwList().find(x=>x.id==='${ea(c.wu.id)}'))" style="${_bs}" title="Open print view">Print</button>
+        <button class="btn btn-outline" onclick="_cwViewDocPDF(_cwList().find(x=>x.id==='${ea(c.wu.id)}'))" style="${_bs}" title="Open the COR PDF"><span class="ico ico-file" aria-hidden="true"></span> PDF</button>` : '';
+    const docBtns = (_signedBtn || _adminBtns) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;" onclick="event.stopPropagation()">${_signedBtn}${_adminBtns}</div>` : '';
+    const labTable = c.lab.length ? `<table style="width:100%;border-collapse:collapse;"><thead><tr>
+        <th style="${th}">Area</th><th style="${th}">Code</th>${showInternal ? `<th style="${th}text-align:right;">Internal</th>` : ''}
+        <th style="${th}text-align:right;">Foreman Budget</th><th style="${th}text-align:right;">Spent (PTD)</th><th style="${th}text-align:right;">Remaining</th></tr></thead><tbody>${
+        c.lab.map(x => `<tr style="border-top:1px solid rgba(255,255,255,.05);">
+          <td style="${td}">${eh(x.b.area || x.b.burnArea || '—')}</td>
+          <td style="${td}font-family:monospace;color:var(--muted);">${eh(x.b.laborCode || '—')}</td>
+          ${showInternal ? `<td style="${td}text-align:right;color:var(--muted);">${fm(x.internal)}</td>` : ''}
+          <td style="${td}text-align:right;">${fm(x.foreman)}</td>
+          <td style="${td}text-align:right;color:#60a5fa;font-weight:600;">${fm(x.ptd)}</td>
+          <td style="${td}text-align:right;font-weight:700;${_coRemStyle(x.foreman - x.ptd)}">${_coRemFmt(x.foreman - x.ptd)}</td></tr>`).join('')
+      }</tbody></table>` : `<div style="${td}color:var(--muted);">No labor on this COR.</div>`;
+    const matTable = !showMat ? '' : (c.mat.length ? `<table style="width:100%;border-collapse:collapse;"><thead><tr>
+        <th style="${th}">Description</th><th style="${th}text-align:right;">Qty</th><th style="${th}">UOM</th>
+        <th style="${th}text-align:right;">Budget</th><th style="${th}text-align:right;">Paid</th><th style="${th}text-align:right;">Remaining</th></tr></thead><tbody>${
+        c.mat.map(m => `<tr style="border-top:1px solid rgba(255,255,255,.05);">
+          <td style="${td}">${eh(m.description)}</td>
+          <td style="${td}text-align:right;">${m.qty ? eh(_qtyFmt(m.qty)) : '—'}</td>
+          <td style="${td}color:var(--muted);">${eh(m.uom || '—')}</td>
+          <td style="${td}text-align:right;">${fm(m.budget)}</td>
+          <td style="${td}text-align:right;color:#60a5fa;font-weight:600;">${fm(m.paid)}</td>
+          <td style="${td}text-align:right;font-weight:700;${_coRemStyle(m.budget - m.paid)}">${_coRemFmt(m.budget - m.paid)}</td></tr>`).join('')
+      }</tbody></table>
+      <div style="font-size:.7rem;color:var(--muted);margin-top:4px;">Paid comes from approved POs and Payroll → Material entries, matched by description (same as the Purchasing view).</div>`
+      : `<div style="${td}color:var(--muted);">${c.wu ? 'No materials on this COR.' : 'Materials are tracked on write-up CORs only.'}</div>`);
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <div onclick="coToggleCorCard('${ea(c.key)}')" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 14px;cursor:pointer;">
+        <span style="color:var(--muted);font-size:.8rem;padding:2px 6px;display:inline-block;transform:${open ? 'rotate(90deg)' : ''};transition:transform .15s;">▶</span>
+        <div style="flex:1;min-width:200px;">
+          <div style="font-weight:700;font-size:.9rem;color:var(--text);">Change Order #${eh(corDisp || '—')}</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:2px;">${c.date ? fmtDate(c.date) : '—'}${c.desc ? ' &middot; ' + eh(c.desc) : ''}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px;align-items:flex-end;">
+          ${chip('Labor', c.labForeman, c.labPtd, 'PTD')}
+          ${showMat && c.wu ? chip('Material', c.matBudget, c.matPaid, 'Paid') : ''}
+        </div>
+        ${status}
+        ${docBtns}
+        ${view}
+      </div>
+      ${open ? `<div style="padding:4px 14px 14px;border-top:1px solid var(--border);background:rgba(255,255,255,.02);">
+        ${secHead('Labor' + (showInternal ? ` <span style="text-transform:none;font-weight:400;">— Internal ${fm(c.labInternal)} tracks on payroll · Foreman is the field budget</span>` : ''))}
+        ${labTable}
+        ${showMat ? secHead('Material') + matTable : ''}
+      </div>` : ''}
+    </div>`;
+  };
+  // Fully paid out → "Completed Change Orders" (same rule as Paid Out Work Orders: remaining
+  // rounds to exactly $0.00 on a real budget). Every budget the COR has — labor and material —
+  // must be paid out. Material only counts where it's tracked (hidden from foremen).
+  const _zero = v => Math.round(v * 100) === 0;
+  const isCompleted = c => {
+    const hasLab = Math.round(c.labForeman * 100) > 0;
+    const hasMat = showMat && Math.round(c.matBudget * 100) > 0;
+    if (!hasLab && !hasMat) return false;
+    return (!hasLab || _zero(c.labForeman - c.labPtd)) && (!hasMat || _zero(c.matBudget - c.matPaid));
+  };
+  const activeCors = list.filter(c => !isCompleted(c));
+  const doneCors   = list.filter(isCompleted);
+  const cardsHtml  = activeCors.map(renderCard).join('');
+  const doneSection = doneCors.length ? `
+    <details ${_coCorDoneOpen ? 'open' : ''} ontoggle="_coCorDoneOpen=this.open" style="margin-top:18px;border:1px solid var(--border);border-radius:10px;background:var(--surface);">
+      <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;">
+        <span class="co-caret" style="color:var(--muted);transition:transform .15s;">▸</span>
+        <span style="font-weight:700;font-size:.9rem;color:var(--green);">Completed Change Orders</span>
+        <span style="font-size:.8rem;color:var(--muted);">${doneCors.length} fully paid</span>
+      </summary>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:0 12px 12px;">${doneCors.map(renderCard).join('')}</div>
+    </details>` : '';
+
+  const reApproveTip = (isAdmin() && corbs.length > 0)
+    ? `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);border-radius:8px;font-size:.8rem;color:var(--accent);">
+        <strong>Admin tip:</strong> PTD values include both Daily Input entries and approved Weekly Summary Paysheets.
+        If a COR shows $0 PTD after you&rsquo;ve entered amounts on a paysheet, open that paysheet and click
+        <strong>✓ Approve for Accounting</strong> (or re-approve if already approved) to sync the W/E&nbsp;Earned amounts.
+       </div>` : '';
+
+  container.innerHTML = `
+    ${reApproveTip}
+    <div class="cards" style="margin-bottom:${showMat ? '10px' : '16px'};">${labCards}</div>
+    ${matCards ? `<div class="cards" style="margin-bottom:16px;">${matCards}</div>` : ''}
+    ${activeCors.length
+      ? `<div style="display:flex;flex-direction:column;gap:8px;">${cardsHtml}</div>`
+      : `<div style="padding:28px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:10px;">${list.length ? 'Every approved COR for this job is fully paid out — see Completed Change Orders below.' : 'No approved COR budgets for this job yet.'}</div>`}
+    ${doneSection}`;
+}
+
 // One order row — shared by the pending-review inbox and the per-job approved table.
-function _coRowHTML(co) {
+// opts.inbox → Pending Review row: omits COR #, Internal, Foreman, PTD and Remaining
+// (nothing is budgeted until approval). The per-job table still gets every column.
+function _coRowHTML(co, opts) {
+  const _inbox = !!(opts && opts.inbox === true);
   // Sum across ALL corb docs for this CO — dist mode creates one doc per area×labor code pair
   const allCorbs = (_cache.corbudgets || []).filter(b => b.changeOrderId === co.id);
   const hasCorb  = allCorbs.length > 0;
@@ -19165,11 +19774,11 @@ function _coRowHTML(co) {
     <td style="font-size:.8rem;white-space:nowrap;">${dateStr}</td>
     <td>${coStatusBadge(co.status)}</td>
     <td style="text-align:center;">${photoCount > 0 ? `<span class="ico ico-camera" aria-hidden="true"></span> ${photoCount}` : '—'}</td>
-    <td class="co-cor-col">${co.corNumber ? `<strong>${eh(co.corNumber)}</strong>` : '—'}</td>
+    ${_inbox ? '' : `<td class="co-cor-col">${co.corNumber ? `<strong>${eh(co.corNumber)}</strong>` : '—'}</td>
     <td class="co-mgmt-col" style="text-align:right;font-size:.82rem;">${hasCorb ? fm(iAmt) : '—'}</td>
     <td style="text-align:right;font-size:.82rem;">${hasCorb ? fm(fAmt) : '—'}</td>
     <td style="text-align:right;">${ptdCell}</td>
-    <td style="text-align:right;font-weight:700;font-size:.82rem;color:${remColor};">${hasCorb ? (rem < 0 ? '-' : '') + fm(Math.abs(rem)) : '—'}</td>
+    <td style="text-align:right;font-weight:700;font-size:.82rem;color:${remColor};">${hasCorb ? (rem < 0 ? '-' : '') + fm(Math.abs(rem)) : '—'}</td>`}
     <td><button class="btn-sm" onclick="coOpenDetail('${ea(co.id)}')">View</button></td>
   </tr>`;
 }
@@ -19269,22 +19878,37 @@ function renderCOOverview() {
   pend = pend.filter(c => existingJobs.has(c.jobId));
   pend = pend.filter(c => c.status === 'submitted' || c.status === 'pending');
   if (statuses.includes('submitted') || statuses.includes('pending')) pend = pend.filter(c => statuses.includes(c.status));
+  // Pending items have no budget yet, so the inbox skips COR # / amounts / PTD / Remaining.
   const headHTML = `<tr>
-      <th>${firstLabel}</th><th>Job</th><th>Submitted By</th><th>Date</th><th>Status</th><th>Photos</th>
-      <th class="co-cor-col">COR #</th><th class="co-mgmt-col">Internal Amount</th><th>Foreman Amount</th><th>PTD</th><th>Remaining</th><th>Action</th>
+      <th>${firstLabel}</th><th>Job</th><th>Submitted By</th><th>Date</th><th>Status</th><th>Photos</th><th>Action</th>
     </tr>`;
-  const inboxBody = pend.length
-    ? pend.map(_coRowHTML).join('')
-    : `<tr><td colspan="12" style="padding:28px;text-align:center;color:var(--muted);">Nothing awaiting approval — new ${kindLabel.toLowerCase()} appear here until approved.</td></tr>`;
+  // Group the inbox by project: one collapsible group per job (open/closed remembered per sub-tab).
+  const byJob = {};
+  pend.forEach(c => { (byJob[c.jobId] = byJob[c.jobId] || []).push(c); });
+  const pendJobs = Object.keys(byJob).sort((a, b) => a.localeCompare(b));
+  const inboxBody = pendJobs.length
+    ? `<div style="display:flex;flex-direction:column;gap:8px;padding:0 12px 12px;">${pendJobs.map(job => {
+        const k = (isBurn ? 'burn|' : 'co|') + job;
+        const items = byJob[job].slice().sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
+        return `<details ${_coInboxJobOpen.has(k) ? 'open' : ''} ontoggle="_coInboxJobToggle('${ea(k)}', this.open)" style="border:1px solid var(--border);border-radius:8px;background:var(--surface2);">
+          <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;">
+            <span class="co-caret" style="color:var(--muted);transition:transform .15s;">▸</span>
+            <span style="font-weight:700;font-size:.88rem;color:var(--text);">${eh(job)}</span>
+            <span style="font-size:.78rem;color:var(--muted);">${items.length} awaiting approval</span>
+          </summary>
+          <div style="overflow-x:auto;padding:0 4px 4px;"><table><thead>${headHTML}</thead><tbody>${items.map(c => _coRowHTML(c, { inbox: true })).join('')}</tbody></table></div>
+        </details>`;
+      }).join('')}</div>`
+    : `<div style="padding:28px;text-align:center;color:var(--muted);">Nothing awaiting approval — new ${kindLabel.toLowerCase()} appear here until approved.</div>`;
   const inbox = document.getElementById('co-inbox-wrap');
   if (inbox) inbox.innerHTML = `
     <details ${_coInboxOpen ? 'open' : ''} ontoggle="_coInboxOpen=this.open" style="border:1px solid var(--border);border-radius:10px;background:var(--surface);">
       <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;">
         <span class="co-caret" style="color:var(--muted);transition:transform .15s;">▸</span>
         <span style="font-weight:700;font-size:.95rem;color:var(--accent);">Pending Review</span>
-        <span style="font-size:.8rem;color:var(--muted);">${pend.length} awaiting approval</span>
+        <span style="font-size:.8rem;color:var(--muted);">${pend.length} awaiting approval${pendJobs.length ? ` · ${pendJobs.length} project${pendJobs.length !== 1 ? 's' : ''}` : ''}</span>
       </summary>
-      <div style="overflow-x:auto;padding:0 4px 4px;"><table><thead>${headHTML}</thead><tbody>${inboxBody}</tbody></table></div>
+      ${inboxBody}
     </details>`;
 
   // ── Approved-by-project cards ──
@@ -19351,6 +19975,8 @@ let _coActiveSubTab = 'co'; // 'co' | 'burn'
 let _coView = 'overview';   // 'overview' | 'job'
 let _coJob  = '';           // selected job name in job view
 let _coInboxOpen = true;    // Pending Review dropdown open/closed state
+let _coInboxJobOpen = new Set();   // per-project groups inside Pending Review that are expanded ('co|job' / 'burn|job')
+function _coInboxJobToggle(k, open) { if (open) _coInboxJobOpen.add(k); else _coInboxJobOpen.delete(k); }
 let _coPaidOpen  = false;   // Paid Out Work Orders dropdown open/closed state
 let _coSelectedAreas = [];
 let _coSelectedLaborCodes = [];
@@ -20063,8 +20689,39 @@ function coApproveToWriteup(coId) {
       const el = document.getElementById('cw-scope'); if (el) el.value = co.description;
     }
     _cwCur.sourceChangeOrderId = coId;   // link back to the originating request
+    // Carry the request's labor codes + areas into the write-up:
+    //   § 2 Labor — one line per requested code (code + its trade description, like "Add labor codes")
+    //   § 5 Labor Distribution Targets — the requested areas and codes
+    const reqCodes = ((co.laborCodes && co.laborCodes.length) ? co.laborCodes : (co.laborCode ? [co.laborCode] : []))
+      .map(c => String(c).trim()).filter(Boolean);
+    const reqAreas = (co.coAreas || []).map(a => String(a).trim()).filter(Boolean);
+    if (reqCodes.length) {
+      _cwCur.laborLines = reqCodes.map(code => {
+        const lc = getLaborCodes().find(x => String(x.code) === code);
+        return { trade: lc ? (lc.description || '') : '', laborCode: code, rate:'', hours:'', burden:'', amount:'' };
+      });
+      cwRenderLabor();
+    }
+    _cwPrefillDistTargets(reqAreas, reqCodes);
+    cwRecalc();
   }
-  toast('Started a write-up — COR # and description pre-filled.', 'success');
+  toast('Started a write-up — COR #, description, labor codes and areas pre-filled.', 'success');
+}
+// Select the given areas/codes in § 5. Values the job budget doesn't list (e.g. a free-typed
+// area on the request) are added as options so nothing from the request is dropped.
+function _cwPrefillDistTargets(areas, codes) {
+  const add = (id, vals) => {
+    const st = _msReg[id]; if (!st || !vals.length) return;
+    const missing = vals.filter(v => !st.options.includes(v));
+    if (missing.length) msSetOptions(id, st.options.concat(missing));
+    msSetValues(id, vals);
+  };
+  add('cw-dist-area', areas);
+  add('cw-dist-code', codes);
+  const stC = _msReg['cw-dist-code'];
+  if (stC && stC.labels) codes.forEach(c => { if (!stC.labels[c]) { const lc = getLaborCodes().find(x => String(x.code) === c); stC.labels[c] = c + (lc && lc.description ? ' — ' + lc.description : ''); } });
+  try { msUpdateLabel('cw-dist-code'); } catch(_) {}
+  cwDistChanged();
 }
 
 function coCheckApprovalReady() {
@@ -20471,6 +21128,17 @@ function computeCorPaid(corb) {
     <div id="co-detail-body" style="overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;display:flex;flex-direction:column;gap:14px;">
       <!-- populated by coOpenDetail() -->
     </div>
+  </div>
+</div>
+
+<!-- Write-up COR quick snapshot (View on a Change Orders card) — read-only -->
+<div class="modal-overlay" id="cw-snap-modal" onclick="if(event.target===this)cwCloseSnapshot()">
+  <div class="modal" style="width:640px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-shrink:0;">
+      <h2 style="margin:0;font-size:1.1rem;" id="cw-snap-title">Change Order</h2>
+      <button onclick="cwCloseSnapshot()" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:4px;">×</button>
+    </div>
+    <div id="cw-snap-body" style="overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;display:flex;flex-direction:column;gap:14px;"></div>
   </div>
 </div>
 
