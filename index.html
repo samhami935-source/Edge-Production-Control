@@ -4824,8 +4824,12 @@ function dashGetMarginEvents(jobName) {
     .filter(w => w.jobId === jobName && w.status === 'approved' && (Number(w.markupProfit) || 0) > 0)
     .forEach(w => {
       const amt = Number(w.markupProfit) || 0;
-      events.push({ type: 'comarkup', label: `COR #${w.corNumber || '?'} Markup`,
-                    sublabel: 'Change order profit', dateRaw: w.approvedAt || w.updatedAt || w.createdAt || '', amount: amt, delta: amt,
+      const corDisp = String(w.corNumber || '').replace(/^0+(\d)/, '$1') || '?';
+      const mat = Number(w.matMarkupProfit) || 0, lab = Number(w.laborMarkupProfit) || 0;
+      const split = (mat || lab) ? [mat ? `Material ${fm(mat)}` : '', lab ? `Labor ${fm(lab)}` : ''].filter(Boolean).join(' + ') : '';
+      const desc = String(w.scope || w.description || '').trim().split('\n')[0];
+      events.push({ type: 'comarkup', label: `Change Order #${corDisp} Markup`,
+                    sublabel: desc, detail: split, dateRaw: w.approvedAt || w.updatedAt || w.createdAt || '', amount: amt, delta: amt,
                     source: 'Change Orders tab → Write-Ups' });
     });
   return events;
@@ -5942,10 +5946,35 @@ function dashRenderMarginDrivers(jobName) {
   const el = document.getElementById('dash-margin-drivers');
   if (!el) return;
   const totalEl = document.getElementById('dash-drivers-total');
-  const events = dashGetMarginEvents(jobName).filter(e => e.type !== 'comarkup' && e.amount > 0);
+  const allEvents = dashGetMarginEvents(jobName);
+  const events = allEvents.filter(e => e.type !== 'comarkup' && e.amount > 0);
+  const adds   = allEvents.filter(e => e.type === 'comarkup' && e.amount > 0)
+                          .sort((a, b) => String(b.dateRaw).localeCompare(String(a.dateRaw)));
+  const addTotal = adds.reduce((s, e) => s + e.amount, 0);
+  // "Added to Margin" — approved change order markup (the only thing that raises margin).
+  const addRowHtml = e => `<div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;font-size:.8rem;border-top:1px solid var(--border);">
+      <span style="flex:0 0 82px;color:var(--muted);font-size:.72rem;padding-top:1px;">${dashFmtDate(e.dateRaw)}</span>
+      <span style="flex:0 0 auto;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;border:1px solid var(--border);border-radius:4px;padding:1px 6px;margin-top:1px;">CO Markup</span>
+      <div style="flex:1;min-width:0;">
+        <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${eh(e.label)}${e.sublabel ? ' · ' + eh(e.sublabel) : ''}</div>
+        <div style="color:var(--muted);font-size:.7rem;margin-top:1px;"><span class="ico ico-map-pin" aria-hidden="true"></span> ${eh(e.source || '')}${e.detail ? ' · ' + eh(e.detail) : ''}</div>
+      </div>
+      <span style="flex:0 0 auto;color:var(--green);font-weight:700;min-width:92px;text-align:right;padding-top:1px;">+${fm(e.amount)}</span>
+    </div>`;
+  const addsHtml = adds.length ? `<details class="dash-tier" open style="margin-top:10px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+        <summary style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--surface);user-select:none;">
+          <span class="dash-caret" style="color:var(--muted);font-size:.7rem;">▸</span>
+          <span style="width:9px;height:9px;border-radius:50%;background:#22c55e;display:inline-block;"></span>
+          <span style="font-size:.72rem;font-weight:700;color:#22c55e;text-transform:uppercase;letter-spacing:.05em;">Added to Margin</span>
+          <span style="font-size:.7rem;color:var(--muted);">(${adds.length})</span>
+          <span style="margin-left:auto;color:var(--green);font-weight:700;font-size:.8rem;">+${fm(addTotal)}</span>
+        </summary>
+        <div style="padding:0 12px 6px;">${adds.map(addRowHtml).join('')}</div>
+      </details>` : '';
+  const addTotalHtml = adds.length ? `Total added to margin: <strong style="color:var(--green);">+${fm(addTotal)}</strong>` : '';
   if (!events.length) {
-    if (totalEl) totalEl.textContent = '';
-    el.innerHTML = `<div style="font-size:.78rem;color:var(--muted);">✓ No margin drivers — nothing is pulling this project's margin down yet.</div>`;
+    if (totalEl) totalEl.innerHTML = addTotalHtml;
+    el.innerHTML = addsHtml + `<div style="font-size:.78rem;color:var(--muted);margin-top:${adds.length ? '10px' : '0'};">✓ Nothing is pulling this project's margin down yet.</div>`;
     return;
   }
   const total = events.reduce((s, e) => s + e.amount, 0);
@@ -5987,8 +6016,10 @@ function dashRenderMarginDrivers(jobName) {
         <div style="padding:0 12px 6px;">${list.map(rowHtml).join('')}</div>
       </details>`;
   };
-  if (totalEl) totalEl.innerHTML = `Total pulled from margin: <strong style="color:var(--red);">−${fm(total)}</strong>`;
-  el.innerHTML = tierHtml('major', true) + tierHtml('minor', false) + tierHtml('regular', false);
+  if (totalEl) totalEl.innerHTML = (addTotalHtml ? addTotalHtml + ' &nbsp;·&nbsp; ' : '') +
+    `Total pulled from margin: <strong style="color:var(--red);">−${fm(total)}</strong>` +
+    (adds.length ? ` &nbsp;·&nbsp; Net: <strong style="color:${addTotal - total >= 0 ? 'var(--green)' : 'var(--red)'};">${addTotal - total >= 0 ? '+' : '−'}${fm(Math.abs(addTotal - total))}</strong>` : '');
+  el.innerHTML = addsHtml + tierHtml('major', true) + tierHtml('minor', false) + tierHtml('regular', false);
 }
 
 function dashEditThreshold() {
