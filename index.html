@@ -989,8 +989,8 @@
       </div>
     </details>
 
-    <!-- 501 & 502 Work Orders / Change Orders -->
-    <details id="wo-details" style="margin-bottom:24px;">
+    <!-- 501 & 502 Work Orders / Change Orders — hidden (no longer used); kept in the DOM so renderWOTable()/exports stay safe -->
+    <details id="wo-details" style="display:none;margin-bottom:24px;">
       <summary style="cursor:pointer;font-weight:600;font-size:.95rem;color:#3b82f6;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;list-style:none;display:flex;align-items:center;gap:8px;">
         <span><span class="ico ico-clipboard" aria-hidden="true"></span></span><span>501 &amp; 502 — Work Orders / Change Orders</span><span id="wo-count" style="margin-left:auto;font-size:.8rem;color:var(--muted);">0 entries</span>
         <button class="btn-sm" onclick="event.stopPropagation();exportWOCSV()" style="margin-left:12px;font-size:.75rem;padding:4px 10px;">Export CSV</button>
