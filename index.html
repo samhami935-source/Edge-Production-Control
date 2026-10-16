@@ -215,6 +215,11 @@
     .tl-pill { display:inline-block; font-size:.66rem; font-weight:700; padding:2px 8px; border-radius:9px; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border:1px solid transparent; white-space:nowrap; }
     .tl-pill.tl-private { background:rgba(201,168,76,.15); color:var(--accent); border-color:rgba(201,168,76,.35); }
     .tl-pill.tl-public { background:rgba(59,130,246,.15); color:#60a5fa; border-color:rgba(59,130,246,.35); }
+    .cal-prio { display:inline-block; font-size:.66rem; font-weight:800; padding:2px 8px; border-radius:9px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; border:1px solid transparent; }
+    .cal-prio.p-high   { background:rgba(239,68,68,.15);  color:#f87171; border-color:rgba(239,68,68,.4); }
+    .cal-prio.p-medium { background:rgba(245,158,11,.15); color:#fbbf24; border-color:rgba(245,158,11,.4); }
+    .cal-prio.p-low    { background:rgba(148,163,184,.15); color:#cbd5e1; border-color:rgba(148,163,184,.4); }
+    .cal-chip .cal-prio-dot { display:inline-block; font-size:.62rem; font-weight:800; line-height:1; padding:1px 3px; margin-right:4px; border-radius:3px; background:rgba(0,0,0,.35); color:#fff; }
     .tl-done-badge { display:inline-block; font-size:.66rem; font-weight:800; padding:2px 8px; border-radius:9px; background:rgba(34,197,94,.15); color:#22c55e; border:1px solid rgba(34,197,94,.35); text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
     .tl-actions { display:flex; gap:6px; margin-left:auto; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end; }
     .modal { background:var(--surface); border:1px solid var(--border); border-top:2px solid var(--accent); border-radius:var(--radius); padding:32px; width:360px; max-width:95vw; }
@@ -1512,12 +1517,24 @@
             </select>
           </div>
           <div style="flex:1;min-width:180px;">
+            <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:5px;">Priority <span style="font-size:.72rem;">(optional)</span></label>
+            <select id="cal-f-priority" class="fi" style="width:100%;">
+              <option value="">— None —</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:180px;">
             <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:5px;">Visibility</label>
             <select id="cal-f-visibility" class="fi" style="width:100%;">
               <option value="public">Public — everyone sees it</option>
               <option value="private">Private — only me</option>
             </select>
           </div>
+          <div style="flex:1;min-width:180px;"></div>
         </div>
         <div>
           <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:5px;">Notes</label>
@@ -4927,6 +4944,13 @@ function _calOwns(t){
 function _calIsPrivate(t){ return !!t && t.visibility === 'private'; }
 function _calVisible(t){ return !!t && (!_calIsPrivate(t) || _calOwns(t)); }
 function _calIsDone(t){ return !!t && t.status === 'completed'; }
+// Lined-out (completed/cancelled) tasks sink to the bottom of a day's list.
+// Optional priority: High → Medium → Low → none.
+const CAL_PRIORITY = { high:{label:'High', short:'H'}, medium:{label:'Medium', short:'M'}, low:{label:'Low', short:'L'} };
+function _calPriority(t){ const p = t && t.priority; return CAL_PRIORITY[p] ? p : ''; }
+function _calPrioRank(t){ return ({high:0, medium:1, low:2})[_calPriority(t)] ?? 3; }
+function _calPrioBadge(t){ const p=_calPriority(t); return p ? `<span class="cal-prio p-${p}">${CAL_PRIORITY[p].label} Priority</span>` : ''; }
+function _calDoneRank(t){ return (t && (t.status === 'completed' || t.status === 'cancelled')) ? 1 : 0; }
 // Visible to this user AND matches the calendar's Owner + Project filters (grid and day view).
 function _calPassesFilters(t){
   if (!_calVisible(t)) return false;
@@ -5003,7 +5027,7 @@ function calRender(){
 
   const byDate = {};
   _calTasks.filter(t => t && t.date && _calPassesFilters(t)).forEach(t => { (byDate[t.date]=byDate[t.date]||[]).push(t); });
-  Object.values(byDate).forEach(arr => arr.sort((a,b)=> (a.allDay?0:1)-(b.allDay?0:1) || (a.startTime||'').localeCompare(b.startTime||'')));
+  Object.values(byDate).forEach(arr => arr.sort((a,b)=> _calDoneRank(a)-_calDoneRank(b) || _calPrioRank(a)-_calPrioRank(b) || (a.allDay?0:1)-(b.allDay?0:1) || (a.startTime||'').localeCompare(b.startTime||'')));
 
   let html = '<div class="cal-weekhead">' + CAL_WEEKDAYS.map(d=>`<div>${d}</div>`).join('') + '</div><div class="cal-body">';
   for (let i=0;i<42;i++){
@@ -5018,8 +5042,10 @@ function calRender(){
       const time = (!t.allDay && t.startTime) ? _calFmtTime(t.startTime)+' ' : '';
       const drag = admin ? ` draggable="true" ondragstart="calDragStart(event,'${ea(t.id)}')" ondragend="calDragEnd(event)"` : '';
       // Completed chips are already lined out (cal-done); private ones get the app's lock glyph.
-      const mark = _calIsPrivate(t) ? '<span class="ico ico-lock" aria-hidden="true" style="width:.85em;height:.85em;margin-right:3px;"></span>' : '';
-      return `<span class="cal-chip${done?' cal-done':''}${admin?' cal-draggable':''}"${drag} style="background:${ty.color};" title="${eh((_calIsDone(t)?'Completed Task — ':'')+(_calIsPrivate(t)?'Private — ':'')+(t.title||''))}" onclick="event.stopPropagation();calOpenDay('${ymd}')">${mark}${eh(time)}${eh(t.title||'(untitled)')}</span>`;
+      const pr = _calPriority(t);
+      const mark = (pr ? `<span class="cal-prio-dot" aria-hidden="true">${CAL_PRIORITY[pr].short}</span>` : '')
+                 + (_calIsPrivate(t) ? '<span class="ico ico-lock" aria-hidden="true" style="width:.85em;height:.85em;margin-right:3px;"></span>' : '');
+      return `<span class="cal-chip${done?' cal-done':''}${admin?' cal-draggable':''}"${drag} style="background:${ty.color};" title="${eh((_calIsDone(t)?'Completed Task — ':'')+(pr?CAL_PRIORITY[pr].label+' Priority — ':'')+(_calIsPrivate(t)?'Private — ':'')+(t.title||''))}" onclick="event.stopPropagation();calOpenDay('${ymd}')">${mark}${eh(time)}${eh(t.title||'(untitled)')}</span>`;
     }).join('');
     const more = dayTasks.length>3 ? `<span class="cal-more" onclick="event.stopPropagation();calOpenDay('${ymd}')">+${dayTasks.length-3} more</span>` : '';
     const drop = admin ? ` ondragover="calDragOver(event)" ondragleave="calDragLeave(event)" ondrop="calDrop(event,'${ymd}')"` : '';
@@ -5060,6 +5086,7 @@ function calOpenTaskModal(dateStr, taskId, opts){
     g('cal-f-assignee').value=t.assignee||'';
     g('cal-f-location').value=t.location||'';
     g('cal-f-status').value=t.status||'scheduled';
+    g('cal-f-priority').value=_calPriority(t);
     g('cal-f-visibility').value=_calIsPrivate(t)?'private':'public';
     g('cal-f-visibility').disabled = !_calOwns(t);   // only the owner decides private/public
     g('cal-f-notes').value=t.notes||'';
@@ -5077,6 +5104,7 @@ function calOpenTaskModal(dateStr, taskId, opts){
     g('cal-f-assignee').value='';
     g('cal-f-location').value='';
     g('cal-f-status').value='scheduled';
+    g('cal-f-priority').value='';
     g('cal-f-visibility').value=(opts && opts.visibility==='private') ? 'private' : 'public';
     g('cal-f-visibility').disabled = false;
     g('cal-f-notes').value='';
@@ -5115,6 +5143,7 @@ async function calSaveTask(){
     assignee: g('cal-f-assignee').value.trim(),
     location: g('cal-f-location').value.trim(),
     status,
+    priority: _calPriority({priority: g('cal-f-priority').value}),
     notes: g('cal-f-notes').value.trim(),
     // Task-list fields. Owner is fixed at creation (legacy tasks: their creator).
     // A non-owner editing a task keeps its existing visibility (the select is disabled for them).
@@ -5235,7 +5264,7 @@ async function calMoveTask(id, newYmd){
 function calOpenDay(ymd){
   _calDayDate = ymd;
   const tasks=_calTasks.filter(t=>t && t.date===ymd && _calPassesFilters(t))
-    .sort((a,b)=> (a.allDay?0:1)-(b.allDay?0:1) || (a.startTime||'').localeCompare(b.startTime||''));
+    .sort((a,b)=> _calDoneRank(a)-_calDoneRank(b) || _calPrioRank(a)-_calPrioRank(b) || (a.allDay?0:1)-(b.allDay?0:1) || (a.startTime||'').localeCompare(b.startTime||''));
   const d=_calParseYMD(ymd);
   const title=document.getElementById('cal-day-title');
   if (title) title.textContent = CAL_WEEKDAYS[d.getDay()]+', '+CAL_MONTHS[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();
@@ -5249,7 +5278,7 @@ function calOpenDay(ymd){
       // Checklist: owner or admin can tick it; it stays on this date, lined out as a Completed Task.
       const isDone = _calIsDone(t), canChk = _calCanComplete(t);
       const chk = canChk ? `<label class="chk-hit" onclick="event.stopPropagation()"><input type="checkbox" class="cal-check" ${isDone?'checked':''} onchange="calToggleComplete('${ea(t.id)}', this.checked)" title="${isDone?'Reopen task':'Mark complete'}" aria-label="${eh((isDone?'Reopen ':'Mark complete: ')+(t.title||'task'))}" /></label>` : '';
-      const badges = (isDone ? `<span class="tl-done-badge">Completed Task</span>` : '')
+      const badges = _calPrioBadge(t) + (isDone ? ` <span class="tl-done-badge">Completed Task</span>` : '')
                    + (_calIsPrivate(t) ? ` <span class="tl-pill tl-private" style="cursor:default;">Private</span>` : '');
       return `<div style="display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-left:4px solid ${ty.color};border-radius:8px;padding:9px 11px;${done?'opacity:.6;':''}">
         ${chk}
@@ -5306,7 +5335,7 @@ function tlRender(){
   if (!list) return;
   const mine = _tlMine();
   const open = mine.filter(t => !_calIsDone(t))
-    .sort((a,b)=> (a.date||'').localeCompare(b.date||'') || (a.allDay?0:1)-(b.allDay?0:1) || (a.startTime||'').localeCompare(b.startTime||''));
+    .sort((a,b)=> (a.date||'').localeCompare(b.date||'') || _calPrioRank(a)-_calPrioRank(b) || (a.allDay?0:1)-(b.allDay?0:1) || (a.startTime||'').localeCompare(b.startTime||''));
   const done = mine.filter(_calIsDone)
     .sort((a,b)=> (b.completedAt||b.updatedAt||'').localeCompare(a.completedAt||a.updatedAt||''));
   const cOpen = document.getElementById('tl-count-open'), cDone = document.getElementById('tl-count-done');
@@ -5350,6 +5379,7 @@ function tlRender(){
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span class="tl-title">${eh(t.title||'(untitled)')}</span>
           <button type="button" class="tl-pill ${priv?'tl-private':'tl-public'}" onclick="tlToggleVisibility('${ea(t.id)}')" title="Tap to make this task ${priv?'public (everyone sees it on the calendar)':'private (only you see it)'}">${priv?'<span class="ico ico-lock" aria-hidden="true"></span> Private':'Public'} ⇄</button>
+          ${_calPrioBadge(t)}
           ${isDone ? '<span class="tl-done-badge">Completed Task</span>' : ''}
         </div>
         <div class="tl-meta">${meta}</div>
