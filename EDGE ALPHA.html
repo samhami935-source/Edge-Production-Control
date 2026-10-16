@@ -4950,6 +4950,9 @@ const CAL_PRIORITY = { high:{label:'High', short:'H'}, medium:{label:'Medium', s
 function _calPriority(t){ const p = t && t.priority; return CAL_PRIORITY[p] ? p : ''; }
 function _calPrioRank(t){ return ({high:0, medium:1, low:2})[_calPriority(t)] ?? 3; }
 function _calPrioBadge(t){ const p=_calPriority(t); return p ? `<span class="cal-prio p-${p}">${CAL_PRIORITY[p].label} Priority</span>` : ''; }
+// A task keeps its project name after that budget is deleted — labeled "(project deleted)".
+function _calJobDeleted(name){ const jobs=getSavedCSVFiles(); return !!name && jobs.length>0 && !jobs.some(f=>f.name===name); }
+function _calJobLabelHTML(name){ return name ? eh(name) + (_calJobDeleted(name) ? ' <span style="color:#f87171;">(project deleted)</span>' : '') : ''; }
 function _calDoneRank(t){ return (t && (t.status === 'completed' || t.status === 'cancelled')) ? 1 : 0; }
 // Visible to this user AND matches the calendar's Owner + Project filters (grid and day view).
 function _calPassesFilters(t){
@@ -5078,7 +5081,10 @@ function calOpenTaskModal(dateStr, taskId, opts){
     g('cal-task-id').value=t.id;
     g('cal-f-title').value=t.title||'';
     g('cal-f-type').value=t.type||'general';
-    g('cal-f-job').value=t.jobName||'';
+    { const fj=g('cal-f-job'); fj.querySelectorAll('option[data-deleted]').forEach(o=>o.remove());
+      // Deleted project: keep it selectable so saving the task doesn't wipe the name.
+      if (_calJobDeleted(t.jobName)){ const o=document.createElement('option'); o.value=t.jobName; o.textContent=t.jobName+' (project deleted)'; o.dataset.deleted='1'; fj.appendChild(o); }
+      fj.value=t.jobName||''; }
     g('cal-f-date').value=t.date||'';
     g('cal-f-allday').checked=!!t.allDay;
     g('cal-f-start').value=t.startTime||'';
@@ -5096,6 +5102,7 @@ function calOpenTaskModal(dateStr, taskId, opts){
     g('cal-task-id').value='';
     g('cal-f-title').value='';
     g('cal-f-type').value='general';
+    g('cal-f-job').querySelectorAll('option[data-deleted]').forEach(o=>o.remove());
     { const _jf=msValues('cal-filter-job'); g('cal-f-job').value = _jf.length===1 ? _jf[0] : ''; }
     g('cal-f-date').value=dateStr||_calTodayYMD();
     g('cal-f-allday').checked=false;
@@ -5273,7 +5280,7 @@ function calOpenDay(ymd){
     list.innerHTML = tasks.length ? tasks.map(t=>{
       const ty=_calType(t.type); const done=t.status==='completed'||t.status==='cancelled';
       const time = t.allDay ? 'All day' : ((t.startTime?_calFmtTime(t.startTime):'')+(t.endTime?' – '+_calFmtTime(t.endTime):''));
-      const meta = [t.jobName,t.assignee,t.location].filter(Boolean).map(eh).join(' · ');
+      const meta = [_calJobLabelHTML(t.jobName), eh(t.assignee||''), eh(t.location||'')].filter(Boolean).join(' · ');
       const editBtn = isAdmin() ? `<button class="btn" onclick="calCloseDayModal();calOpenTaskModal(null,'${ea(t.id)}')" style="margin:8px 0 0;padding:5px 12px;font-size:.75rem;font-weight:700;"><span class="ico ico-edit" aria-hidden="true"></span> Edit</button>` : '';
       // Checklist: owner or admin can tick it; it stays on this date, lined out as a Completed Task.
       const isDone = _calIsDone(t), canChk = _calCanComplete(t);
@@ -5365,7 +5372,7 @@ function tlRender(){
       `<span style="${overdue?'color:#ef4444;font-weight:700;':''}">${eh(_tlFmtDate(t.date))}${overdue?' · overdue':''}</span>`,
       time ? eh(time) : '',
       `<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:8px;height:8px;border-radius:2px;background:${ty.color};display:inline-block;"></span>${eh(ty.label)}</span>`,
-      t.jobName ? eh(t.jobName) : '',
+      _calJobLabelHTML(t.jobName),
       t.location ? eh(t.location) : '',
     ].filter(Boolean).join('<span style="opacity:.4;">·</span>');
     const doneInfo = isDone && t.completedAt ? `<div style="font-size:.72rem;color:#22c55e;margin-top:4px;">Completed ${eh(new Date(t.completedAt).toLocaleString())}</div>` : '';
@@ -8243,7 +8250,7 @@ async function diLoadCrewSet(id) {
     const existingRows = _diData[_diActiveCrew] || [];
     // Extend rows if needed
     while (existingRows.length < emps.length) {
-      existingRows.push({empNum:'', employee:'', area:'', costCode:'', description:''});
+      existingRows.push({empNum:'', employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]});
     }
     emps.forEach((emp, i) => {
       existingRows[i].employee = emp.name || '';
@@ -8251,6 +8258,9 @@ async function diLoadCrewSet(id) {
     });
     _diData[_diActiveCrew] = existingRows;
     if (jn && _diAllData[jn]) _diAllData[jn][_diActiveCrew] = existingRows;
+    // Show every loaded name — grow the visible Crew Members rows past the default 10.
+    _diEmpRowCount[_diActiveCrew] = Math.max(_diEmpRowCount[_diActiveCrew] || DI_EMP_ROWS, emps.length);
+    _diPersistEmpRowCount(_diActiveCrew);
     // Sync paysheet crew name
     if (_psState && _psState[_diActiveCrew]) {
       _psState[_diActiveCrew].header.crewName = s.name;
@@ -9832,8 +9842,9 @@ async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
     const seenEmp = new Set();
     let si = 0;
     entries.forEach(e => {
-      if (!e.employee || seenEmp.has(e.employee) || si >= PS_SPLIT_ROWS) return;
+      if (!e.employee || seenEmp.has(e.employee)) return;
       seenEmp.add(e.employee);
+      if (!state.splits[si]) state.splits[si] = _psEmptySplit();   // grow past the default rows
       state.splits[si].employee = e.employee;
       state.splits[si].empNum   = _resolveEmpNum(e.empNum || '', e.employee);
       si++;
@@ -11163,8 +11174,9 @@ function psAutoFillFromDaily() {
     const seenEmp = new Set();
     let si = 0;
     diRows.forEach(r => {
-      if (!r.employee || seenEmp.has(r.employee) || si >= PS_SPLIT_ROWS) return;
+      if (!r.employee || seenEmp.has(r.employee)) return;
       seenEmp.add(r.employee);
+      if (!state.splits[si]) state.splits[si] = _psEmptySplit();   // grow past the default rows
       state.splits[si].employee = r.employee;
       state.splits[si].empNum   = _resolveEmpNum(r.empNum || '', r.employee);
       si++;
@@ -11211,8 +11223,9 @@ function diAutoFillFromLog(id) {
       const seenEmp = new Set();
       let si = 0;
       entries.forEach(e => {
-        if (!e.employee || seenEmp.has(e.employee) || si >= PS_SPLIT_ROWS) return;
+        if (!e.employee || seenEmp.has(e.employee)) return;
         seenEmp.add(e.employee);
+        if (!state.splits[si]) state.splits[si] = _psEmptySplit();   // grow past the default rows
         state.splits[si].employee = e.employee;
         state.splits[si].empNum   = _resolveEmpNum(e.empNum || '', e.employee);
         si++;
@@ -11472,8 +11485,9 @@ function psAutoFillCrewFromDaily(crewNum) {
   const seenEmp = new Set();
   let si = 0;
   diRows.forEach(r => {
-    if (!r.employee || seenEmp.has(r.employee) || si >= PS_SPLIT_ROWS) return;
+    if (!r.employee || seenEmp.has(r.employee)) return;
     seenEmp.add(r.employee);
+    if (!state.splits[si]) state.splits[si] = _psEmptySplit();   // grow past the default rows
     state.splits[si].employee = r.employee;
     state.splits[si].empNum   = r.empNum || '';
     si++;
@@ -17115,7 +17129,7 @@ async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
         foremanSig: '',
       });
       const rows   = _psPadRows(Object.values(g.areaMap));
-      const splits = [...g.empSet].slice(0, PS_SPLIT_ROWS).map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
+      const splits = [...g.empSet].map(emp => Object.assign(_psEmptySplit(), { employee: emp, signatureData: '' }));
       while (splits.length < PS_SPLIT_ROWS) splits.push(_psEmptySplit());
       crews[String(i + 1)] = { header, rows, splits };
       crewNames.push(g.leadName || ('Crew ' + (i + 1)));
