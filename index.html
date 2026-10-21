@@ -3477,8 +3477,15 @@ async function removeCSVFile(name) {
       db.collection('jobs').doc(docId + '__MATERIAL'), // material sibling (no-op if none)
       db.collection('jobs').doc(docId + '__STOCKING'), // stocking sibling (no-op if none)
     ];
-    relatedPaysheets.forEach(p   => refs.push(db.collection('paysheets').doc(p.id)));
-    relatedDailyInputs.forEach(d => refs.push(db.collection('dailyinput').doc(d.id)));
+    // Query the server for ALL of this job's paysheets + daily inputs — the local cache can be
+    // partial (daily inputs only load once that tab is opened, and only the latest 300).
+    const _seen = new Set();
+    const _addRef = r => { if (r && !_seen.has(r.path)) { _seen.add(r.path); refs.push(r); } };
+    for (const coll of ['paysheets', 'dailyinput']) {
+      try { (await db.collection(coll).where('job', '==', name).get()).forEach(d => _addRef(d.ref)); } catch(_) {}
+    }
+    relatedPaysheets.forEach(p   => { if (p.id) _addRef(db.collection('paysheets').doc(p.id)); });
+    relatedDailyInputs.forEach(d => { if (d.id) _addRef(db.collection('dailyinput').doc(d.id)); });
     (_purLogDocs || []).filter(p => p.job === name).forEach(p => refs.push(db.collection('purchaseorders').doc(p.id)));
     (_mprEntries || []).filter(e => e.job === name).forEach(e => refs.push(db.collection('materialpayroll').doc(e.id)));
     // Change / Work Orders for this job + all their budgets (CO-linked and write-up-linked),
@@ -3527,8 +3534,15 @@ async function purgeOrphanedJobData() {
   add('CO budgets',           'corbudgets',         _cache.corbudgets,        'jobId');
   add('CO material budgets',  'comaterialbudgets',  _cache.comaterialbudgets, 'jobId');
   add('Write-ups',            'cowriteups',         _cache.cowriteups,        'jobId');
-  add('Saved paysheets',      'paysheets',          _cache.paysheets,         'job');
-  add('Daily inputs',         'dailyinput',         _cache.dailyInputs,       'job');
+  // Paysheets + daily inputs: read the full collections from the server (cache can be partial).
+  for (const [label, coll] of [['Saved paysheets', 'paysheets'], ['Daily inputs', 'dailyinput']]) {
+    try {
+      const snap = await db.collection(coll).get();
+      const orphans = snap.docs.filter(d => { const j = (d.data() || {}).job; return j && !existing.has(j); });
+      orphans.forEach(d => refs.push(d.ref));
+      if (orphans.length) counts[label] = orphans.length;
+    } catch(_) { add(label, coll, coll === 'paysheets' ? _cache.paysheets : _cache.dailyInputs, 'job'); }
+  }
   add('Purchase orders',      'purchaseorders',     _purLogDocs,              'job');
   add('Material payroll',     'materialpayroll',    _mprEntries,              'job');
   // CO notifications (not cached) — fetch all, keep only orphans.
@@ -9947,14 +9961,17 @@ function _psJobFolders() {
   };
   // Every known job gets a folder (so empty projects still appear)
   getSavedCSVFiles().forEach(f => { if (f && f.name) ensure(f.name); });
+  // Leftover records for a DELETED budget must not resurrect its folder.
+  const live = new Set(map.keys());
   // Compiled weekly paysheets
   (_cache.paysheets || [])
-    .filter(p => p.type === 'weekly' && p.job)
+    .filter(p => p.type === 'weekly' && p.job && live.has(p.job))
     .filter(p => !foreman || _psForemanOwnsPaysheet(p))
     .forEach(p => { const e = ensure(p.job); e.paysheets++; if (p.weekEnding) e.weeks.add(p.weekEnding); if (_psIsApproved(p)) e.approved++; });
   // Daily-input submissions
   (_diLogDocs || [])
     .filter(d => d && d.job)
+    .filter(d => live.has(d.job))
     .filter(d => !foreman || (_currentUser && d.submittedBy === _currentUser.email))
     .forEach(d => { ensure(d.job).submissions++; });
   return [...map.entries()]
@@ -10039,8 +10056,9 @@ function _diJobFolders() {
   const map = new Map(); // job → { subs, last }
   const ensure = j => { if (!map.has(j)) map.set(j, { subs: 0, last: '' }); return map.get(j); };
   getSavedCSVFiles().forEach(f => { if (f && f.name) ensure(f.name); });
+  const live = new Set(map.keys());   // deleted budgets don't get a folder
   (_diLogDocs || [])
-    .filter(d => d && d.job)
+    .filter(d => d && d.job && live.has(d.job))
     .filter(d => !foreman || (_currentUser && d.submittedBy === _currentUser.email))
     .forEach(d => { const e = ensure(d.job); e.subs++; const dt = d.date || ''; if (dt > e.last) e.last = dt; });
   return [...map.entries()]
