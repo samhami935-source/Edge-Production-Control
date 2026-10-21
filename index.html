@@ -1230,6 +1230,7 @@
       <input type="text" id="budgets-search" class="fi" placeholder="Search jobs…" oninput="renderBudgetsTable()" style="flex:1;min-width:180px;" />
       <button class="btn btn-outline" id="budgets-upload-btn" style="display:none" onclick="fileInput.click()">＋ Upload CSV</button>
       <button id="export-budgets-btn" class="btn" onclick="exportBudgetsCSV()">Export</button>
+      <button id="budgets-cleanup-btn" class="btn btn-outline" style="display:none;border-color:rgba(239,68,68,.5);color:#ef4444;" onclick="adminCleanupDeletedProjects()" title="Admin only — permanently delete leftover records for projects whose budget was deleted">Clean up deleted projects</button>
     </div>
     <!-- Accounting-style project folders (Labor + Material kept separate per job) -->
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
@@ -3360,6 +3361,8 @@ function updateAdminUI() {
   const admin = isAdmin();
   const uploadBtn = document.getElementById('budgets-upload-btn');
   if (uploadBtn) uploadBtn.style.display = canEdit() ? '' : 'none';
+  const cleanupBtn = document.getElementById('budgets-cleanup-btn');
+  if (cleanupBtn) cleanupBtn.style.display = admin ? '' : 'none';   // admin-only
   if (document.getElementById('budgets-content').style.display !== 'none') {
     document.getElementById('budgets-upload-area').style.display = canEdit() ? 'block' : 'none';
     const hasFiles = getSavedCSVFiles().length > 0;
@@ -3568,6 +3571,25 @@ async function purgeOrphanedJobData() {
   _cache.dailyInputs       = (_cache.dailyInputs       || []).filter(d => existing.has(d.job));
   alert(`Done — deleted ${refs.length} orphaned document(s). The database now only holds data for your live jobs.`);
   try { renderCOLog(); } catch(_) {}
+}
+
+// Admin button wrapper (Budgets tab) — runs purgeOrphanedJobData() from the iPad, where
+// there's no dev console. Same confirm + live-job safety; only orphaned records are deleted.
+async function adminCleanupDeletedProjects() {
+  if (!isAdmin()) { alert('Admin access required.'); return; }
+  const btn = document.getElementById('budgets-cleanup-btn');
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+  try {
+    await purgeOrphanedJobData();
+  } catch(e) {
+    console.error('cleanup:', e);
+    alert('Cleanup failed: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+    try { if (activeTab === 'paysheet' && _psNav === 'folders') psRenderFolders(); } catch(_) {}
+    try { if (activeTab === 'daily-inputs' && _diNav === 'folders') diRenderFolders(); } catch(_) {}
+  }
 }
 
 // ─── Payroll Entries ───
@@ -6115,6 +6137,8 @@ function showPanel(name) {
     document.getElementById('budgets-upload-area').style.display  = canEdit() ? 'block' : 'none';
     document.getElementById('budgets-locked-notice').style.display = (!canEdit() && !hasFiles) ? 'flex' : 'none';
     document.getElementById('budgets-upload-btn').style.display   = canEdit() ? '' : 'none';
+    const _cb = document.getElementById('budgets-cleanup-btn');
+    if (_cb) _cb.style.display = isAdmin() ? '' : 'none';
   }
 }
 
