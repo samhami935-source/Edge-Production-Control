@@ -8816,6 +8816,13 @@ function diRenderEntries() {
 let _diFilterAreas = null;  // null = no filter; Set<string> = show only these areas
 let _diFilterCodes = null;  // null = no filter; Set<string> = show only these codes
 let _diActiveFilter = null; // 'area' | 'code' | null — which panel is open
+let _diFilterPickOrder = [];  // values in the order they were ticked (areas fill rows in this order)
+function _diFilterTrackPick(cb) {
+  if (!cb) return;
+  const v = cb.value;
+  _diFilterPickOrder = _diFilterPickOrder.filter(x => x !== v);
+  if (cb.checked) _diFilterPickOrder.push(v);
+}
 
 function _diGetFilterPanel() {
   let p = document.getElementById('_di-filter-panel');
@@ -8845,6 +8852,7 @@ function diOpenFilter(type, btn) {
     return;
   }
   _diActiveFilter = type;
+  _diFilterPickOrder = [];
 
   // Use all available values for the job (not just what's already entered)
   const jobName = document.getElementById('ps-job-select').value || '';
@@ -8889,7 +8897,7 @@ function diOpenFilter(type, btn) {
     <div id="di-filter-list" style="max-height:240px;overflow-y:auto;padding:4px 0;display:flex;flex-direction:column;">
       ${items.length
         ? items.map(item => `<label style="display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:.83rem;cursor:pointer;width:100%;box-sizing:border-box;border-bottom:1px solid rgba(255,255,255,.04);" title="${eh(item.label)}">
-            <input type="checkbox" value="${eh(item.value)}" onchange="diFilterCheckChange('${type}')" style="cursor:pointer;flex-shrink:0;" />
+            <input type="checkbox" value="${eh(item.value)}" onchange="_diFilterTrackPick(this);diFilterCheckChange('${type}')" style="cursor:pointer;flex-shrink:0;" />
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">${eh(item.label)}</span>
           </label>`).join('')
         : `<p style="color:var(--muted);font-size:.8rem;padding:10px 12px;margin:0;">${type==='area'?'No areas found — select a job first.':'No labor codes available.'}</p>`
@@ -8932,7 +8940,7 @@ function diFilterSelectAll(cb) {
   list.querySelectorAll('label').forEach(lbl => {
     if (lbl.style.display !== 'none') {
       const input = lbl.querySelector('input[type="checkbox"]');
-      if (input) input.checked = cb.checked;
+      if (input && input.checked !== cb.checked) { input.checked = cb.checked; _diFilterTrackPick(input); }
     }
   });
   _diUpdateFilterCount();
@@ -8956,9 +8964,14 @@ function diApplyFilter(type) {
   // Apply ALL checked items, in list order — including ones hidden by the current
   // search term. This lets you search "70", pick some, search "20", pick more, then
   // Apply and get every selection (search only narrows the view, never the picks).
-  const checked = [...list.querySelectorAll('input[type="checkbox"]')]
+  let checked = [...list.querySelectorAll('input[type="checkbox"]')]
     .filter(cb => cb && cb.checked)
     .map(cb => cb.value);
+  // Areas fill rows in the order they were ticked (anything untracked keeps list order, after).
+  if (type === 'area') {
+    const rank = v => { const i = _diFilterPickOrder.indexOf(v); return i < 0 ? Infinity : i; };
+    checked = checked.map((v, i) => ({ v, i })).sort((a, b) => (rank(a.v) - rank(b.v)) || (a.i - b.i)).map(x => x.v);
+  }
   const panel   = document.getElementById('_di-filter-panel');
   if (panel) panel.style.display = 'none';
   _diActiveFilter = null;
