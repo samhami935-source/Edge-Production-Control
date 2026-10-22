@@ -1306,6 +1306,10 @@
           <label>&nbsp;</label>
           <button class="pr-add-btn" onclick="addEmployee()">+ Add Employee</button>
         </div>
+        <div class="field" style="margin:0;" id="emp-replace-wrap">
+          <label>&nbsp;</label>
+          <button class="btn btn-outline" style="margin:0;border-color:rgba(239,68,68,.5);color:#ef4444;white-space:nowrap;" onclick="empOpenReplace()" title="Admin only — replace the whole employee list">Replace List</button>
+        </div>
       </div>
     </div>
     <div class="filters" style="margin-bottom:16px;">
@@ -2336,6 +2340,23 @@
 </div>
 
 <!-- Crew Sets Modal (save + load) -->
+<!-- Replace Employee List Modal (admin only) -->
+<div class="modal-overlay" id="emp-replace-modal" onclick="if(event.target===this)empCloseReplace()">
+  <div class="modal" style="width:560px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <h2 style="margin:0;font-size:1.1rem;"><span class="ico ico-users" aria-hidden="true"></span> Replace Employee List</h2>
+      <button class="btn btn-outline" style="margin:0;padding:4px 12px;font-size:.82rem;" onclick="empCloseReplace()">✕ Close</button>
+    </div>
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;line-height:1.4;">One employee per line: <strong>number</strong> then <strong>name</strong> (e.g. <code>4456 Diaz, Carlos</code>). This <strong>replaces every current employee</strong>. The current list is backed up first. Past paysheets, daily inputs and saved crews keep the names/numbers they were saved with.</div>
+    <textarea id="emp-replace-text" class="fi" rows="14" oninput="empReplacePreview()" style="width:100%;flex:1;min-height:200px;resize:vertical;font-family:monospace;font-size:.8rem;"></textarea>
+    <div id="emp-replace-preview" style="font-size:.8rem;margin-top:8px;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+      <button class="btn btn-outline" style="margin:0;" onclick="empCloseReplace()">Cancel</button>
+      <button class="btn" id="emp-replace-go" style="margin:0;background:#ef4444;border-color:#ef4444;color:#fff;" onclick="empReplaceConfirm()">Replace List</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="di-crewsets-modal" onclick="if(event.target===this)diCloseCrewSetsModal()">
   <div class="modal" style="width:500px;max-width:96vw;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
@@ -4540,6 +4561,8 @@ function switchToEmployeeNames() {
   const canEdit = isAdmin() || isAccounting();
   document.getElementById('emp-admin-form').style.display = canEdit ? 'block' : 'none';
   document.getElementById('emp-action-col').textContent   = canEdit ? 'Action' : '';
+  const _rw = document.getElementById('emp-replace-wrap');
+  if (_rw) _rw.style.display = isAdmin() ? '' : 'none';   // Replace List is admin-only
   if (canEdit) {
     const maxN = getEmployees().reduce((m, e) => Math.max(m, e.n || 0), 0);
     document.getElementById('emp-new-num').placeholder = 'e.g. ' + (maxN + 1);
@@ -4624,6 +4647,179 @@ async function deleteEmployee(num, name) {
   const updated = getEmployees().filter(e => e.n !== num);
   saveEmployees(updated);
   renderEmpTable();
+}
+
+// ── Replace whole employee list (admin only) ──
+// Prefilled with the NGC SoCal Employee Contact List (10/16/26, 104 employees).
+const EMP_SOCAL_LIST = `4456 Diaz, Carlos
+4457 Diaz, Eder
+4458 Ramos, Efrain
+4455 Rico Cortes, Camerino
+4460 Rico, Jose Alberto
+4454 Rivera, Braulio
+4459 Tovar, Jesus
+4241 Castillo Amaya, Gonzalo De Jesus
+414 Sanchez, Gabino
+4306 Jimenez, Jose
+4279 Ajualip, Santiago
+4240 Arce, Carlos
+4247 Bonilla Hernandez, Alberto
+4226 Burciaga Carbajal, Jesus Fabian
+4243 Burciaga, Jesus
+4245 Hernandez Bonilla, Francisco
+4248 Hernandez, Yahir
+4227 Zavala Cortez, Luis David
+4239 Arambula, Jose
+4242 Bonilla Hernandez, Juan Carlos
+4232 Beltran, Ramiro
+4313 Canales, Angel
+4324 Ibarra, Jose Guillermo
+4276 Diaz, Rafael
+4323 Aviles, Yunibed
+4342 Jaimes, Jose
+4229 Roldan Saldivar, Tabiano
+4244 Martinez, Julio
+4236 Martinez, Leonel
+4391 Abundiz Valeriano, Jose Angel
+4372 Abundiz, Roberto
+4376 Aguilar, Cristian
+4389 Villasenor, Clodomiro
+4233 Cortes Saldivar, Jose Juan
+4312 Hernandez, Luis Fernando
+4373 Lara, Kevin Aniceto
+4291 Miranda Ceron, Jose M
+4256 Moreno, Pedro
+4292 Vazquez Castillo, Miguel A
+4441 Galdamez, Jimy
+4437 Galdamez, Ronald
+4362 Garcia, Antonio
+4438 Lopez, Andy
+4440 Mendoza Linares, Hugo
+4439 Patzan, Jorge
+4436 Tale Casasola, Estuardo
+4434 Xocol De Leon, Franklin J
+4433 Xocol De Leon, Iginio Benjamin
+4435 Zapon Coyoy, Luis Eduardo
+4311 Barajas, Juan
+4255 Bravo, Carlos
+4293 Casarrubias, Carlos
+4414 Garcia Flores, Rodrigo Daniel
+4354 Garrido, Omar
+4294 Venegas Lopez, Alfredo
+4477 Aguilar Garcia, Denni
+4469 Araujo, Franuel
+4463 Barahona, Juan R
+4462 Barahona, Kevin H
+4235 Canizales Sandoval, Juan
+4474 Cardenas, Carlos
+4421 Carranza Corpeno, Jairo Benjamin
+4392 Carvajal, Luis
+4393 Carvajal, Porfirio
+4263 Castro Reyes, Armando
+4473 Cisneros, Jose
+4466 Contreras, Ernesto
+4468 Corpeno Perez, Evin
+4432 Cubias Velasco, Douglas
+4352 Delgado, Salvador
+4230 Dias Martines, Isidro
+4228 Dias Roldan, Fernando
+4465 Duran, Emerson
+4413 Escobar, Maximo
+4412 Escorcia, Anyi
+4238 Esparza, Fernando
+4353 Garcia Coronado, Erick
+4467 Garmendia, Ever
+4081 Gonzalez Gama, Luis Miguel
+4196 Gonzalez Lopez, Jesus
+4476 Icho Saran, Mario
+4277 Lerma Jr, Miguel
+4472 Martinez Ramirez, Epifanio
+4471 Martinez, Ismael
+4363 Mejicanos, Jonathan
+4475 Nadal, Fidel
+4425 Perez Macias, Cecilio
+4422 Perez, Fidel
+4424 Perez, Miguel
+4479 Ponce, Jose De Jesus
+4234 Posada, Nelson
+4403 Ramirez Arcos, Misael
+4461 Ramos, Victor
+4442 Reyes, Jose
+4252 Roldan Saldivar, Diego
+4246 Roldan, Salvador
+4478 Romero, Bryan
+4346 Romero, Enrique
+4464 Rubio Molina, Fausto
+4231 Silva Luna, Omar
+4423 Solorzano, Arturo
+4390 Sosa Guzman, Jesus
+4347 Toscano, Alejandro
+4470 Ventura, Walter`;
+
+function _empParseList(text) {
+  const out = [], bad = [], seenN = new Set(), dupN = [];
+  const fixCase = s => (s === s.toUpperCase() ? s.toLowerCase().replace(/[a-z]+/g, w => w[0].toUpperCase() + w.slice(1)) : s);
+  String(text || '').split(/\r?\n/).forEach((line, i) => {
+    const t = line.trim();
+    if (!t) return;
+    const m = t.match(/^(\d+)[\s,;\t]+(.+)$/);
+    if (!m) { bad.push(i + 1); return; }
+    const n = parseInt(m[1], 10);
+    const name = fixCase(m[2].trim().replace(/\.\s*,/g, ',').replace(/\s+/g, ' '));
+    if (!n || !name) { bad.push(i + 1); return; }
+    if (seenN.has(n)) { dupN.push(n); return; }
+    seenN.add(n);
+    out.push({ n, name });
+  });
+  return { list: sortEmployees(out), bad, dupN };
+}
+
+function empOpenReplace() {
+  if (!isAdmin()) { alert('Admin access required.'); return; }
+  const ta = document.getElementById('emp-replace-text');
+  if (ta && !ta.value.trim()) ta.value = EMP_SOCAL_LIST;
+  document.getElementById('emp-replace-modal').classList.add('open');
+  empReplacePreview();
+}
+function empCloseReplace() { document.getElementById('emp-replace-modal').classList.remove('open'); }
+
+function empReplacePreview() {
+  const el = document.getElementById('emp-replace-preview');
+  if (!el) return;
+  const { list, bad, dupN } = _empParseList(document.getElementById('emp-replace-text').value);
+  const cur = getEmployees().length;
+  el.innerHTML = `<span style="color:var(--green);font-weight:700;">${list.length} employee${list.length !== 1 ? 's' : ''} ready</span> · replaces ${cur} current`
+    + (bad.length  ? `<div style="color:#ef4444;margin-top:4px;">Can't read line${bad.length !== 1 ? 's' : ''} ${bad.slice(0, 12).join(', ')}${bad.length > 12 ? '…' : ''} — use "number name".</div>` : '')
+    + (dupN.length ? `<div style="color:#f59e0b;margin-top:4px;">Duplicate #: ${[...new Set(dupN)].slice(0, 12).join(', ')} (first one kept)</div>` : '');
+  const go = document.getElementById('emp-replace-go');
+  if (go) go.disabled = !list.length || bad.length > 0;
+}
+
+async function empReplaceConfirm() {
+  if (!isAdmin()) { alert('Admin access required.'); return; }
+  const { list, bad } = _empParseList(document.getElementById('emp-replace-text').value);
+  if (!list.length || bad.length) { empReplacePreview(); return; }
+  const old = getEmployees();
+  if (!await uiConfirm(`Replace ALL ${old.length} current employees with ${list.length} new employees?\n\nThe current list is backed up first. Past paysheets, daily inputs and saved crews are not changed.`)) return;
+  const go = document.getElementById('emp-replace-go');
+  if (go) { go.disabled = true; go.textContent = 'Replacing…'; }
+  try {
+    const now = new Date().toISOString(), by = _currentUser ? _currentUser.email : 'unknown';
+    // Backup the outgoing list (restorable), then write the new one.
+    await db.collection('config').doc('employees_backup').set({ employees: old, replacedAt: now, replacedBy: by });
+    await db.collection('config').doc('employees').set({ employees: list });
+    _cache.employees = list;
+    const numEl = document.getElementById('emp-new-num');
+    if (numEl) numEl.placeholder = 'e.g. ' + (list.reduce((m, e) => Math.max(m, e.n || 0), 0) + 1);
+    empCloseReplace();
+    const s = document.getElementById('emp-search'); if (s) s.value = '';
+    renderEmpTable();
+    try { _diShowToast(`Employee list replaced — ${list.length} employees ✓`); } catch(_) { alert(`Employee list replaced — ${list.length} employees.`); }
+  } catch(e) {
+    alert('Could not replace the employee list: ' + e.message + '\n\nNothing was changed.');
+  } finally {
+    if (go) { go.disabled = false; go.textContent = 'Replace List'; }
+  }
 }
 
 function exportEmployeesExcel() {
@@ -8837,9 +9033,24 @@ function diClearFilter(type) {
 }
 
 async function diClearEmployees() {
-  if (!await uiConfirm('Clear all employee names for this crew?')) return;
+  if (!await uiConfirm('Clear the crew lead and all employee names for this crew?')) return;
   const crew = _diActiveCrew;
   (_diData[crew] || []).forEach(r => { r.employee = ''; r.empNum = ''; });
+  // Also clear the crew lead (name + #), mirrored into the per-job store like other lead edits.
+  const prevLead = (_diCrewLeadNames[crew] || '').trim();
+  _diCrewLeadNames[crew] = '';
+  _diCrewLeadNums[crew]  = '';
+  const jn = (document.getElementById('ps-job-select') || {}).value || '';
+  if (jn && _diAllData[jn]) {
+    if (_diAllData[jn].__crewLeadNames) _diAllData[jn].__crewLeadNames[crew] = '';
+    if (_diAllData[jn].__crewLeadNums)  _diAllData[jn].__crewLeadNums[crew]  = '';
+  }
+  // Paysheet crew name was synced from the lead (Load Crew) — reset it only if it still matches.
+  if (prevLead && _psState && _psState[crew] && (_psState[crew].header.crewName || '').trim() === prevLead) {
+    _psState[crew].header.crewName = '';
+    if (_psActiveCrew === crew) { const el = document.getElementById('ps-crew'); if (el) el.value = ''; }
+  }
+  diRenderCrewTabs();
   diRenderCrewTable();
   diAutoSaveDraft();
 }
