@@ -22201,19 +22201,21 @@ function computeCorPaid(corb) {
       const sat = { label: 'SAT', regH: 0, otH: otRem, dtH: 0, isSat: true, hasLunch, _out: 7 + otRem + (hasLunch ? 0.5 : 0) };
       rows.splice(2, 0, sat);   // display order: THU, FRI, SAT, MON, TUE, WED (calendar order)
     }
+    // Clock stamps follow the day's ACTUAL hours (reg + OT): IN 7:00a, OUT = 7:00a + hours
+    // worked (+30 min unpaid lunch when the day is over 5 hrs). A full 8-hr day is still
+    // 7:00a–3:30p; a 4-hr day is 7:00a–11:00a with no lunch / afternoon break. Breaks and
+    // lunch only print if the shift actually reaches them. Zero-hour days stay blank.
     rows.forEach(r => {
-      r.in = '7:00am';
-      if (r.isSat) {
-        const o = r._out;
-        r.brk1     = (9.1667 < o) ? '9:00-9:10am' : '';
-        r.lunchOut = (r.hasLunch && 10   < o) ? '10:00am' : '';
-        r.lunchIn  = (r.hasLunch && 10.5 < o) ? '10:30am' : '';
-        r.brk2     = (14   < o) ? '2:00-2:10pm' : '';
-        r.out = _acctClock(o);
-      } else {
-        r.brk1 = '9:00-9:10am'; r.lunchOut = '10:00am'; r.lunchIn = '10:30am'; r.brk2 = '2:00-2:10pm';
-        r.out = _acctClock(15.5 + r.otH);   // 3:30pm + that day's OT
-      }
+      const worked = r.isSat ? r.otH : (r.regH + r.otH + r.dtH);
+      if (!(worked > 1e-6)) { r.in = r.brk1 = r.lunchOut = r.lunchIn = r.brk2 = r.out = ''; return; }
+      const hasLunch = r.isSat ? r.hasLunch : worked > 5;
+      const o = r.isSat ? r._out : 7 + worked + (hasLunch ? 0.5 : 0);
+      r.in       = '7:00am';
+      r.brk1     = (9.1667 < o) ? '9:00-9:10am' : '';
+      r.lunchOut = (hasLunch && 10   < o) ? '10:00am' : '';
+      r.lunchIn  = (hasLunch && 10.5 < o) ? '10:30am' : '';
+      r.brk2     = (14.1667 < o) ? '2:00-2:10pm' : '';
+      r.out = _acctClock(o);
     });
     return rows;
   }
