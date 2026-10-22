@@ -1746,7 +1746,7 @@
               <tbody id="di-crew-tbody"></tbody>
             </table>
           </div>
-          <button onclick="diAddRow()" style="margin-top:8px;background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.4);border-radius:5px;font-size:.8rem;cursor:pointer;padding:5px 14px;color:#c9a84c;font-weight:700;">+ Add Row</button>
+          <button onclick="diAddEntryRow()" style="margin-top:8px;background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.4);border-radius:5px;font-size:.8rem;cursor:pointer;padding:5px 14px;color:#c9a84c;font-weight:700;">+ Add Row</button>
         </div>
         </div><!-- /di-table-wrap -->
 
@@ -11105,9 +11105,28 @@ function diAddRow() {
   diAutoSaveDraft();
 }
 
+// Daily Entries "+ Add Row": append a blank entry row at the very BOTTOM of the list.
+// (Crew Members' "+ Add Employee" still uses diAddRow, which inserts after the last
+// visible employee row.) The visible employee count is left unchanged.
+function diAddEntryRow() {
+  if (!_diData[_diActiveCrew]) _diData[_diActiveCrew] = [];
+  _diData[_diActiveCrew].push({empNum:'', employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]});
+  diRenderCrewTable();
+  diAutoSaveDraft();
+  // Bring the new row into view and focus its Area field.
+  const idx = _diData[_diActiveCrew].length - 1;
+  setTimeout(() => {
+    const el = document.querySelector(`#di-crew-tbody input[data-area-row="${idx}"]`) ||
+               [...document.querySelectorAll('#di-crew-tbody tr')].pop();
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, 0);
+}
+
 function diDeleteRow(crew, i) {
+  const empCount = _diEmpRowCount[crew] || DI_EMP_ROWS;
   _diData[crew].splice(i, 1);
-  _diEmpRowCount[crew] = Math.max(1, (_diEmpRowCount[crew] || DI_EMP_ROWS) - 1);
+  // Only shrink the Crew Members list when the removed row was one of its visible rows.
+  if (i < empCount) _diEmpRowCount[crew] = Math.max(1, empCount - 1);
   _diPersistEmpRowCount(crew);
   if (_diData[crew].length === 0) _diData[crew].push({empNum:'', employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]});
   diRenderCrewTable();
