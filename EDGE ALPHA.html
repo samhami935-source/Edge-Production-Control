@@ -9133,7 +9133,7 @@ function _diPsTagMap(jobName) {
   (_cache.dailyInputs || []).filter(d => d.job === jobName).forEach(d => {
     (d.crews || []).forEach(crew => {
       (crew.entries || []).forEach(e => {
-        if (e._psTag && e.area && !map[e.area]) map[e.area] = e._psTag;
+        if (e._psTag && e.area && !map[e.area] && (e._psTag !== 'removed' || _diIsRemovedNow(e, d))) map[e.area] = e._psTag;
       });
     });
   });
@@ -11005,12 +11005,40 @@ function diToggleLogDetail(safeId) {
   }
 }
 
+// Every "area|code" (and area) on ANY weekly paysheet for this job + week, plus the
+// weekly paysheet currently open in the builder. null when no weekly paysheet exists yet.
+function _diPsSheetPairsFor(job, weekEnding) {
+  const sheets = (_cache.paysheets || []).filter(p => p.type === 'weekly' && p.job === job && p.weekEnding === weekEnding);
+  const pairs = new Set(), areas = new Set();
+  const addRow = r => { const a = (r && r.area || '').trim(); if (!a) return; areas.add(a); pairs.add(a + '|' + String(r.costCode || '').trim()); };
+  sheets.forEach(p => Object.values(p.crews || {}).forEach(c => (c && c.rows || []).forEach(addRow)));
+  let live = false;
+  try {
+    const jn = (document.getElementById('ps-job-select') || {}).value || '';
+    if (_psCurrentType === 'weekly' && jn === job) {
+      for (let c = 1; c <= _psCrewCount; c++) {
+        const st = _psState[c]; if (!st || !st.header || st.header.weekEnding !== weekEnding) continue;
+        live = true; (st.rows || []).forEach(addRow);
+      }
+    }
+  } catch(_) {}
+  return (sheets.length || live) ? { pairs, areas } : null;
+}
+// "(Removed)" is only real when that area + labor code is no longer on the weekly paysheet.
+function _diIsRemovedNow(e, doc) {
+  if (!e || e._psTag !== 'removed') return false;
+  const sheet = doc ? _diPsSheetPairsFor(doc.job, doc.weekEnding) : null;
+  if (!sheet) return true;   // no weekly paysheet to compare against — trust the tag
+  const codes = _diEntryCodes(e);
+  return codes.length ? !codes.some(c => sheet.pairs.has(e.area + '|' + c)) : !sheet.areas.has(e.area);
+}
+
 // Returns colored HTML for an area cell in the DI log based on its _psTag
-function _diAreaTagHTML(e) {
+function _diAreaTagHTML(e, doc) {
   if (e._psTag === 'added') {
     return `<span style="color:#22c55e;">${eh(e.area||'—')}</span>&nbsp;<span style="color:#22c55e;font-size:.68rem;font-weight:700;">(Added)</span>`;
   }
-  if (e._psTag === 'removed') {
+  if (e._psTag === 'removed' && _diIsRemovedNow(e, doc)) {
     return `<s style="color:#ef4444;">${eh(e.area||'—')}</s>&nbsp;<span style="color:#ef4444;font-size:.68rem;font-weight:700;">(Removed)</span>`;
   }
   return eh(e.area||'—');
@@ -11068,7 +11096,7 @@ function _diLogDetailHTML(r) {
             const extras = (e.extraEntries||[]).filter(ex => (String(ex.costCode||'').trim()) || (String(ex.area||'').trim()));
             const primary = `<tr style="border-top:1px solid rgba(255,255,255,.04);">
             <td style="${tdStyle}">${eh(e.employee||'—')}</td>
-            <td style="${tdStyle}color:var(--muted);">${_diAreaTagHTML(e)}</td>
+            <td style="${tdStyle}color:var(--muted);">${_diAreaTagHTML(e, r)}</td>
             <td style="${tdStyle}color:var(--muted);text-align:center;">${eh(e.costCode||'—')}</td>
             ${_remCell(e.area, e.costCode)}
             <td style="${tdStyle}padding-left:12px;color:var(--muted);font-style:${e.description?'normal':'italic'};">${eh(e.description||'')}</td>
@@ -14788,10 +14816,10 @@ function psAreaChanged(i, area) {
   if (_psCurrentType === 'weekly' && !isForeman()) {
     if (!oldArea && area) {
       // Empty row → new area: ADD to DI (tagged green)
-      _psQueueDiChange({ type: 'add', area, costCode: newCode, crewNum: _psActiveCrew });
+      _psQueueDiChange({ type: 'add', area, costCode: newCode, crewNum: _psActiveCrew, crewName: (_ps().header && _ps().header.crewName) || '' });
     } else if (oldArea && !area) {
       // Area cleared: REMOVE — mark existing DI entries (tagged red) rather than deleting them
-      _psQueueDiChange({ type: 'remove', matchArea: oldArea, crewNum: _psActiveCrew });
+      _psQueueDiChange({ type: 'remove', matchArea: oldArea, matchCode: oldCode || '', crewNum: _psActiveCrew });
     } else if (oldArea && area && oldArea !== area) {
       // Old area → new area: CHANGE existing DI entries
       _psQueueDiChange({ type: 'change', matchArea: oldArea, matchCode: null, setArea: area, setCode: newCode });
@@ -14817,6 +14845,10 @@ function psCodeChanged(i, code) {
   // Propagate code change back to linked daily inputs (weekly paysheets, non-foremen only)
   if (_psCurrentType === 'weekly' && !isForeman() && area && oldCode && oldCode !== code) {
     _psQueueDiChange({ type: 'change', matchArea: area, matchCode: oldCode, setArea: area, setCode: code });
+  } else if (_psCurrentType === 'weekly' && !isForeman() && area && !oldCode && code) {
+    // First labor code picked on a newly added row → record it on the DI's "(Added)" entry
+    // (fills the blank code the area-add left, or adds a new tagged entry for this code).
+    _psQueueDiChange({ type: 'add', area, costCode: code, crewNum: _psActiveCrew, crewName: (_ps().header && _ps().header.crewName) || '' });
   }
   psRenderMainTable();
 }
@@ -14826,6 +14858,46 @@ function psCodeChanged(i, code) {
 // is propagated back to all underlying daily input documents for the same job+week.
 let _psDiSyncTimer  = null;
 const _psDiPendingChanges = [];
+
+// What's on the loaded weekly paysheet right now (all crews): "area|code" pairs + areas.
+function _psSheetAreaCodes() {
+  const pairs = new Set(), areas = new Set();
+  for (let c = 1; c <= _psCrewCount; c++) {
+    ((_psState[c] && _psState[c].rows) || []).forEach(r => {
+      const a = (r.area || '').trim(); if (!a) return;
+      areas.add(a); pairs.add(a + '|' + String(r.costCode || '').trim());
+    });
+  }
+  return { pairs, areas };
+}
+// An entry's codes = its primary code + any extra labor-code lines on the same area.
+function _diEntryCodes(e) { return [e.costCode, ...((e.extraEntries || []).map(x => x.costCode))].map(c => String(c || '').trim()).filter(Boolean); }
+
+// Undo stale "(Removed)" tags on this paysheet's source daily inputs when that area +
+// labor code is still on the paysheet (e.g. a row was cleared and re-entered).
+async function _psReconcileRemovedTags() {
+  try {
+    if (_psCurrentType !== 'weekly' || isForeman()) return;
+    const job = (document.getElementById('ps-job-select') || {}).value || '';
+    let week = '';
+    for (let c = 1; c <= _psCrewCount; c++) { if (_psState[c] && _psState[c].header && _psState[c].header.weekEnding) { week = _psState[c].header.weekEnding; break; } }
+    if (!job || !week) return;
+    let any = false;
+    for (const d of (_cache.dailyInputs || []).filter(x => x.job === job && x.weekEnding === week)) {
+      let changed = false;
+      const crews = (d.crews || []).map(crew => ({ ...crew, entries: (crew.entries || []).map(e => {
+        if (e._psTag !== 'removed' || _diIsRemovedNow(e, d)) return e;
+        changed = true; const n = { ...e }; delete n._psTag; return n;
+      }) }));
+      if (!changed) continue;
+      await db.collection('dailyinput').doc(d.id).update({ crews });
+      const idx = (_cache.dailyInputs || []).findIndex(x => x.id === d.id);
+      if (idx !== -1) _cache.dailyInputs[idx] = { ..._cache.dailyInputs[idx], crews };
+      any = true;
+    }
+    if (any) { try { diRenderLogRows(); } catch(_) {} }
+  } catch(e) { console.warn('[DI sync] reconcile failed', e); }
+}
 
 function _psQueueDiChange(change) {
   _psDiPendingChanges.push(change);
@@ -14856,24 +14928,67 @@ async function _psSyncToDailyInputs() {
 
     // ── ADD: new area on the paysheet → inject a tagged entry into the most recent DI doc ──
     if (ch.type === 'add') {
-      const sorted = [...freshDiDocs()].sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
-      const target = sorted.find(d => (d.crews || []).some(c => c.crewNum === ch.crewNum)) || sorted[0];
+      // Re-adding an area/code that was tagged "(Removed)" just restores it.
+      let restored = false;
+      for (const d of freshDiDocs()) {
+        let changed = false;
+        const crews = (d.crews || []).map(crew => ({ ...crew, entries: (crew.entries || []).map(e => {
+          if (e._psTag !== 'removed' || e.area !== ch.area) return e;
+          if (ch.costCode && !_diEntryCodes(e).includes(String(ch.costCode).trim())) return e;
+          changed = true; restored = true; const n = { ...e }; delete n._psTag; return n;
+        }) }));
+        if (!changed) continue;
+        try {
+          await db.collection('dailyinput').doc(d.id).update({ crews });
+          const idx = (_cache.dailyInputs || []).findIndex(x => x.id === d.id);
+          if (idx !== -1) _cache.dailyInputs[idx] = { ..._cache.dailyInputs[idx], crews };
+        } catch(e) { console.warn('[DI sync] RESTORE failed', d.id, e); }
+      }
+      if (restored && ch.costCode) continue;
+
+      // Prefer the daily inputs this paysheet was compiled from (compiled paysheets are
+      // per-foreman, so other foremen's submissions for the week are excluded).
+      let pool = freshDiDocs();
+      const curPs = _psCurrentDocId ? (_cache.paysheets || []).find(p => p.id === _psCurrentDocId) : null;
+      if (curPs && Array.isArray(curPs.sourceDailyInputIds) && curPs.sourceDailyInputIds.length) {
+        const src = new Set(curPs.sourceDailyInputIds);
+        const narrowed = pool.filter(d => src.has(d.id));
+        if (narrowed.length) pool = narrowed;
+      }
+      const sorted = [...pool].sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
+      // Pick the target crew: same crew lead name → same crew # → newest doc's first crew.
+      // (Compiled paysheet crew #s are per lead and don't always match the DI's crew #s —
+      // the old crew-# only match silently dropped the add.)
+      const lead = String(ch.crewName || '').trim().toLowerCase();
+      let target = null, targetCrewIdx = -1;
+      const pick = test => { for (const d of sorted) { const i = (d.crews || []).findIndex(test); if (i !== -1) { target = d; targetCrewIdx = i; return true; } } return false; };
+      (lead && pick(c => String(c.crewLeadName || '').trim().toLowerCase() === lead))
+        || pick(c => c.crewNum === ch.crewNum)
+        || pick(() => true);
       if (!target) continue;
 
-      const updatedCrews = (target.crews || []).map(crew => {
-        if (crew.crewNum !== ch.crewNum) return crew;
-        // Don't duplicate if same area already exists as an added entry
-        const alreadyAdded = (crew.entries || []).some(e => e.area === ch.area && e._psTag === 'added');
-        if (alreadyAdded) return crew;
-        return {
-          ...crew,
-          entries: [...(crew.entries || []), {
-            employee: '', area: ch.area, costCode: ch.costCode || '',
+      let changed = false;
+      const updatedCrews = (target.crews || []).map((crew, ci) => {
+        if (ci !== targetCrewIdx) return crew;
+        const entries = (crew.entries || []).slice();
+        const code = ch.costCode || '';
+        // Already tracked for this area + code → nothing to do.
+        if (entries.some(e => e._psTag === 'added' && e.area === ch.area && (e.costCode || '') === code)) return crew;
+        // An "(Added)" entry for this area still has no code → fill it in.
+        const blankIdx = code ? entries.findIndex(e => e._psTag === 'added' && e.area === ch.area && !(e.costCode || '')) : -1;
+        if (blankIdx !== -1) {
+          entries[blankIdx] = { ...entries[blankIdx], costCode: code };
+        } else {
+          entries.push({
+            employee: '', area: ch.area, costCode: code,
             description: '', corBudgetId: '', corNumber: '', extraEntries: [],
             _psTag: 'added'
-          }]
-        };
+          });
+        }
+        changed = true;
+        return { ...crew, entries };
       });
+      if (!changed) continue;
 
       try {
         await db.collection('dailyinput').doc(target.id).update({ crews: updatedCrews });
@@ -14885,16 +15000,24 @@ async function _psSyncToDailyInputs() {
 
     // ── REMOVE: area cleared on the paysheet → tag matching entries red in all DI docs ──
     if (ch.type === 'remove') {
+      // Only the cleared row's area + code is removed — and never if that area/code is
+      // still on the paysheet (another row, or the row was re-entered). Entries that were
+      // themselves "(Added)" from the paysheet are dropped instead of tagged.
+      const sheet = _psSheetAreaCodes();
+      const mCode = String(ch.matchCode || '').trim();
+      if (mCode ? sheet.pairs.has(ch.matchArea + '|' + mCode) : sheet.areas.has(ch.matchArea)) continue;
       for (const diDoc of freshDiDocs()) {
         let docChanged = false;
         const updatedCrews = (diDoc.crews || []).map(crew => ({
           ...crew,
-          entries: (crew.entries || []).map(entry => {
-            if (entry.area === ch.matchArea && entry._psTag !== 'removed') {
-              docChanged = true;
-              return { ...entry, _psTag: 'removed' };
-            }
-            return entry;
+          entries: (crew.entries || []).flatMap(entry => {
+            if (entry.area !== ch.matchArea || entry._psTag === 'removed') return [entry];
+            const codes = _diEntryCodes(entry);
+            if (mCode && !codes.includes(mCode)) return [entry];                  // different labor code
+            if (codes.some(c => sheet.pairs.has(entry.area + '|' + c))) return [entry]; // still on paysheet
+            docChanged = true;
+            if (entry._psTag === 'added') return [];
+            return [{ ...entry, _psTag: 'removed' }];
           })
         }));
         if (docChanged) {
@@ -14909,6 +15032,15 @@ async function _psSyncToDailyInputs() {
     }
 
     // ── CHANGE: area or code rename → update matching entries in all DI docs ──
+    {
+      const sheet = _psSheetAreaCodes();
+      const stillThere = ch.matchCode === null ? sheet.areas.has(ch.matchArea) : sheet.pairs.has(ch.matchArea + '|' + ch.matchCode);
+      if (stillThere) {
+        // Another row still uses the old value — don't rewrite those entries; record the new one as added.
+        changes.push({ type: 'add', area: ch.setArea, costCode: ch.setCode || '', crewNum: ch.crewNum || _psActiveCrew, crewName: ch.crewName || '' });
+        continue;
+      }
+    }
     for (const diDoc of freshDiDocs()) {
       let docChanged = false;
       const updatedCrews = (diDoc.crews || []).map(crew => ({
@@ -14958,6 +15090,7 @@ async function _psSyncToDailyInputs() {
     }
   }
 
+  await _psReconcileRemovedTags();
   // Refresh the DI submission log so the tags show immediately
   if (typeof diRenderLogRows === 'function') diRenderLogRows();
 }
@@ -18375,6 +18508,7 @@ async function loadPaysheetFromCloud(docId) {
   _psCurrentType  = 'weekly';
   _psCurrentDocId = docId;
   _psEditMode     = false;
+  setTimeout(_psReconcileRemovedTags, 800);   // clear stale "(Removed)" tags for rows still on this sheet
 
   // Foreman: jump to their own crew tab (skip crews belonging to other foremen)
   if (isForeman() && _currentUser) {
