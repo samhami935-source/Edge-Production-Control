@@ -21638,6 +21638,10 @@ function computeCorPaid(corb) {
   const ACCT_REG_RATE       = 25;          // $/hr
   const ACCT_REG_PAY_CENTS  = 100000;      // 40 * $25 = $1,000.00  (also the weekly minimum)
   const ACCT_OT_RATE        = 37.5;        // $25 * 1.5
+  // Salaried labor code: 907 SUPERVISION. Earnings on it are spread over a flat 40-hr
+  // week (rate = pay ÷ 40) instead of $25/hr + overtime.
+  const ACCT_SALARY_CODE    = '907';
+  function _acctIsSalaryCode(code) { return new RegExp('^\\s*' + ACCT_SALARY_CODE + '(\\D|$)').test(String(code || '')); }
 
   function _acctCents(dollars)  { return Math.round((parseFloat(String(dollars == null ? 0 : dollars).replace(/[^0-9.\-]/g, '')) || 0) * 100); }
   function _acctMoney(cents)    { return fm((cents || 0) / 100); }         // "$1,234.50"
@@ -21870,6 +21874,24 @@ function computeCorPaid(corb) {
     // 40 hrs / $1,000; anything earned above that becomes overtime at $37.50/hr.
     // Total Payroll always equals the earned amount (matches the Weekly Paysheet).
     const E = emp.totalCents;
+    // Salaried (every dollar is on labor code 907) earning a full week ($1,000+): 40 regular
+    // hours at pay ÷ 40, no OT. A part-time supervisor (< $1,000) falls through to the
+    // normal $25/hr math below — which never produces OT under $1,000 — so the rate is
+    // never below $25 and the hours reflect what was actually earned.
+    const allocs = emp.allocations || [];
+    if (E >= ACCT_REG_PAY_CENTS && allocs.length && allocs.every(a => _acctIsSalaryCode(a.laborCode))) {
+      const rate = (E / 100) / ACCT_REG_HOURS;
+      return {
+        name: emp.name, empNum: emp.empNum,
+        areaEarningsCents: E,
+        regHours: ACCT_REG_HOURS, regRate: rate, regPayCents: E,
+        otHours: 0, otRate: rate * 1.5, otPayCents: 0,
+        minAdjCents: 0,
+        totalHours: ACCT_REG_HOURS,
+        grossCents: E,
+        isSalary: true,
+      };
+    }
     const regPayCents = Math.min(E, ACCT_REG_PAY_CENTS);      // regular pay never exceeds $1,000
     const regHours    = (regPayCents / 100) / ACCT_REG_RATE;  // ≤ 40, partial when earned < $1,000
     let otPayCents = 0, otHours = 0;
@@ -22190,7 +22212,7 @@ function computeCorPaid(corb) {
   // Fixed schedule: IN 7:00a · 1st break 9:00–9:10 · lunch 10:00–10:30 · 2nd break
   // 2:00–2:10p. The two 10-min breaks are paid; the 30-min lunch is unpaid.
   function _acctDailyTimeCard(ts) {
-    const regPerDay = _acctSpreadPayHours(ts.regPayCents, ACCT_REG_RATE); // 5 even values
+    const regPerDay = _acctSpreadPayHours(ts.regPayCents, ts.regRate || ACCT_REG_RATE); // 5 even values
     let otRem = Math.max(0, ts.otHours || 0);
     const rows = ACCT_DAYS.map((d, i) => {
       const give = Math.min(2, otRem); otRem -= give;
@@ -22374,7 +22396,7 @@ function computeCorPaid(corb) {
         grid.push([ XC('EMP NAME:', {bold:true, border:false}), XC(ts.name, {bold:true}) ]);
         merges.push(_acctMrg(R0+1,1,R0+1,6));
         // Emp # / H-R / rate  +  TOTAL REG HOURS
-        grid.push([ XC('EMP #', {bold:true}), XC(ts.empNum || '', {align:'center'}), XC('H / R', {bold:true, align:'center'}), XC('$ 25.00', {align:'center'}),
+        grid.push([ XC('EMP #', {bold:true}), XC(ts.empNum || '', {align:'center'}), XC('H / R', {bold:true, align:'center'}), XC('$ ' + (ts.regRate || ACCT_REG_RATE).toFixed(2), {align:'center'}),
                     null, null, null, null, null, null, null,
                     XC('TOTAL REG HOURS', {bold:true, align:'center', wrap:true, size:8}), XC(Number(ts.regHours.toFixed(2)), {align:'center', z:'0.00'}) ]);
         // Header line 1  +  TOTAL OVER TIME
@@ -22552,7 +22574,7 @@ function computeCorPaid(corb) {
         cell(xLabel,y,wLabel,rh,'EMP #',{bold:true});
         cell(punchX[0],y,wP,rh, ts.empNum||'', {align:'center'});
         cell(punchX[1],y,wP,rh,'H / R',{bold:true,align:'center'});
-        cell(punchX[2],y,wP,rh,'$ 25.00',{align:'center'});
+        cell(punchX[2],y,wP,rh,'$ '+(ts.regRate||ACCT_REG_RATE).toFixed(2),{align:'center'});
         cell(punchX[3],y,wP,rh,''); cell(punchX[4],y,wP,rh,''); cell(punchX[5],y,wP,rh,'');
         dailyX.forEach(x=>cell(x,y,wDa,rh,''));
         cell(sumLX,y,wSL,rh,'TOTAL REG HOURS',{bold:true,align:'center'});
