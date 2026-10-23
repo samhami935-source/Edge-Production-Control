@@ -6731,7 +6731,7 @@ function displayCSVData(rows, name) {
 // ═══════════════════════════
 const _msReg = {};
 function msInit(id, allLabel, onChange, opts){
-  _msReg[id] = { sel:new Set(), options:[], allLabel, onChange, query:'', controls:!!(opts&&opts.controls), onApply:(opts&&opts.onApply)||null, labels:(opts&&opts.labels)||null };
+  _msReg[id] = { sel:new Set(), options:[], allLabel, onChange, query:'', controls:!!(opts&&opts.controls), onApply:(opts&&opts.onApply)||null, labels:(opts&&opts.labels)||null, allowAdd:!!(opts&&opts.allowAdd) };
   msRender(id);
 }
 // Display text for an option value — uses the optional label map (value stays the raw option).
@@ -6749,7 +6749,7 @@ function msEnsure(id, allLabel, options, onChange, opts){
   const st=_msReg[id];
   if(!st){ msInit(id, allLabel, onChange, opts); msSetOptions(id, options); return; }
   st.allLabel = allLabel; st.onChange = onChange;
-  if(opts){ st.controls = !!opts.controls; st.onApply = opts.onApply||null; st.labels = opts.labels||null; }
+  if(opts){ st.controls = !!opts.controls; st.onApply = opts.onApply||null; st.labels = opts.labels||null; st.allowAdd = !!opts.allowAdd; }
   const same = st.options.length===options.length && st.options.every((v,i)=>v===options[i]);
   const host = document.getElementById(id);
   const domOk = host && host.querySelector('.ms-btn');
@@ -6786,6 +6786,17 @@ function _msSyncAllCb(id){
 }
 // Apply/Done: run the optional onApply action, then close the panel.
 function msApply(id){ const st=_msReg[id]; if(!st) return; if(st.onApply) st.onApply(); msTogglePanel(id, false); }
+// allowAdd: add the search text as a new option and select it.
+function msAddOption(id){
+  const st=_msReg[id]; if(!st || !st.allowAdd) return;
+  const v=(st.query||'').trim(); if(!v) return;
+  const hit = st.options.find(o=>o.toLowerCase()===v.toLowerCase());
+  if(!hit) st.options.push(v);
+  st.sel.add(hit || v);
+  st.query='';
+  const host=document.getElementById(id); const s=host && host.querySelector('.ms-search'); if(s) s.value='';
+  msRenderOpts(id); msUpdateLabel(id); st.onChange && st.onChange();
+}
 function msFilter(id, q){
   const st=_msReg[id]; if(!st) return;
   st.query = q || '';
@@ -6813,8 +6824,12 @@ function msRenderOpts(id){
   const list = host.querySelector('.ms-list'); if(!list) return;
   const q = (st.query||'').toLowerCase().trim();
   const shown = q ? st.options.filter(o=>o.toLowerCase().includes(q)) : st.options;
+  // Opt-in (allowAdd): offer to add the typed text as a new option when nothing matches it exactly.
+  const raw = (st.query||'').trim();
+  const addRow = (st.allowAdd && raw && !st.options.some(o=>o.toLowerCase()===raw.toLowerCase()))
+    ? `<div class="ms-opt" style="color:var(--accent);font-weight:700;cursor:pointer;" onclick="msAddOption('${id}')">+ Add “${eh(raw)}”</div>` : '';
   if(!shown.length){
-    list.innerHTML = `<div class="ms-empty">${st.options.length ? 'No matches' : 'No options'}</div>`;
+    list.innerHTML = addRow || `<div class="ms-empty">${st.options.length ? 'No matches' : 'No options'}</div>`;
     return;
   }
   // Selections live in st.sel, independent of what the search shows — searching never unchecks anything.
@@ -6822,6 +6837,7 @@ function msRenderOpts(id){
     const checked = st.sel.has(o) ? 'checked' : '';
     return `<label class="ms-opt"><input type="checkbox" ${checked} value="${eh(o)}" onchange="msToggle('${id}', this.value)"><span>${eh(_msDisp(st,o))}</span></label>`;
   }).join('');
+  if(addRow) list.insertAdjacentHTML('afterbegin', addRow);
   _msSyncAllCb(id);
 }
 function msRender(id){
@@ -6838,7 +6854,7 @@ function msRender(id){
       <span class="ms-cntwrap" style="display:flex;align-items:center;gap:6px;flex-shrink:0;">${cnt}<span style="color:var(--muted);">▾</span></span>
     </button>
     <div class="ms-panel ${wasOpen?'':'hidden'}" onclick="event.stopPropagation()">
-      <input type="text" class="ms-search" placeholder="Search…" value="${eh(st.query||'')}" oninput="msFilter('${id}', this.value)">
+      <input type="text" class="ms-search" placeholder="${st.allowAdd?'Search or add…':'Search…'}" value="${eh(st.query||'')}" oninput="msFilter('${id}', this.value)"${st.allowAdd?` onkeydown="if(event.key==='Enter'){event.preventDefault();event.stopPropagation();msAddOption('${id}');}"`:''}>
       ${st.controls
         ? `<label class="ms-opt ms-allrow" style="font-weight:600;"><input type="checkbox" class="ms-allcb" onchange="msToggleSelectAll('${id}', this)"><span>Select All</span></label>`
         : `<div class="ms-opt ms-allrow" onclick="msSelectAll('${id}')">${eh(st.allLabel)}</div>`}
@@ -13340,8 +13356,13 @@ function cwPopulateDistFilters(job, selected) {
   getLaborCodes().forEach(lc => { lcDesc[String(lc.code)] = String(lc.code) + (lc.description ? ' — ' + lc.description : ''); });
   const codeLabels = {};
   codes.forEach(c => { codeLabels[c] = lcDesc[c] || c; });
-  msEnsure('cw-dist-area', 'Select areas', areas, cwDistChanged, { controls:true, onApply:cwDistChanged });
-  msEnsure('cw-dist-code', 'Select labor codes', codes, cwDistChanged, { controls:true, onApply:cwDistChanged, labels:codeLabels });
+  // Keep any areas/codes this write-up already uses (custom-added areas, labor-line codes)
+  // even when the job budget doesn't list them.
+  const extraA = ((_cwCur && _cwCur.areas) || []).filter(a => a && !areas.includes(a));
+  const extraC = ((_cwCur && _cwCur.laborCodes) || []).map(String).filter(c => c && !codes.includes(c));
+  extraC.forEach(c => { codeLabels[c] = lcDesc[c] || c; });
+  msEnsure('cw-dist-area', 'Select areas', areas.concat(extraA), cwDistChanged, { controls:true, onApply:cwDistChanged, allowAdd:true });
+  msEnsure('cw-dist-code', 'Select labor codes', codes.concat(extraC), cwDistChanged, { controls:true, onApply:cwDistChanged, labels:codeLabels });
   if (selected) { /* selection restored by caller via msValues on open */ }
 }
 function cwDistChanged() { if (_cwCur) { _cwCur.areas = msValues('cw-dist-area'); _cwCur.laborCodes = msValues('cw-dist-code'); } }
@@ -13393,6 +13414,25 @@ function _cwLaborField(i, key, val) {
   _cwUpdateLaborTotal();
   cwRecalc();
 }
+// § 5 Labor Codes follow the labor lines: every code used on a labor line is selected
+// automatically; a code that came from a line (and is no longer on any line) is dropped.
+// Codes picked by hand in § 5 are left alone.
+function _cwSyncDistCodesFromLabor() {
+  if (!_cwCur || _cwLocked) return;
+  const st = _msReg['cw-dist-code']; if (!st) return;
+  const cur = [...new Set((_cwCur.laborLines || []).map(l => String(l.laborCode || '').trim()).filter(Boolean))];
+  const prevAuto = _cwCur._autoDistCodes || [];
+  const missing = cur.filter(c => !st.options.includes(c));
+  if (missing.length) {
+    msSetOptions('cw-dist-code', st.options.concat(missing));
+    st.labels = st.labels || {};
+    missing.forEach(c => { const lc = getLaborCodes().find(x => String(x.code) === c); st.labels[c] = c + (lc && lc.description ? ' — ' + lc.description : ''); });
+  }
+  const keep = msValues('cw-dist-code').filter(c => !prevAuto.includes(c) || cur.includes(c));
+  msSetValues('cw-dist-code', [...new Set(keep.concat(cur))]);
+  _cwCur._autoDistCodes = cur;
+  cwDistChanged();
+}
 // Picking a labor code fills the trade (when blank); picking a trade fills the code.
 // Both are searchable single-select dropdowns sourced live from the Labor Codes tab.
 function _cwCodePick(i, code) {
@@ -13401,6 +13441,7 @@ function _cwCodePick(i, code) {
   const lc = getLaborCodes().find(x => String(x.code) === String(code));
   if (lc && !(_cwCur.laborLines[i].trade||'').trim()) _cwCur.laborLines[i].trade = lc.description || '';
   cwRenderLabor();
+  _cwSyncDistCodesFromLabor();
 }
 function _cwTradePick(i, desc) {
   if (!_cwCur || !_cwCur.laborLines[i]) return;
@@ -13408,6 +13449,7 @@ function _cwTradePick(i, desc) {
   const lc = getLaborCodes().find(x => (x.description||'').trim().toLowerCase() === String(desc).trim().toLowerCase());
   if (lc) _cwCur.laborLines[i].laborCode = lc.code;
   cwRenderLabor();
+  _cwSyncDistCodesFromLabor();
 }
 function cwAddLabor() { if (_cwCur) { _cwCur.laborLines.push({ trade:'', laborCode:'', rate:'', hours:'', burden:'', amount:'' }); cwRenderLabor(); } }
 // Multi-select of labor codes → add one labor line per pick in a single action.
@@ -13431,10 +13473,11 @@ function cwAddSelectedLabor() {
   _cwCur.laborLines = onlyEmpty ? newLines : _cwCur.laborLines.concat(newLines);
   msClear('cw-labor-multi');
   cwRenderLabor();
+  _cwSyncDistCodesFromLabor();
   cwRecalc();
   toast(`Added ${newLines.length} labor line${newLines.length!==1?'s':''}.`, 'success');
 }
-function cwRemoveLabor(i) { if (!_cwCur) return; _cwCur.laborLines.splice(i,1); if (!_cwCur.laborLines.length) _cwCur.laborLines.push({ trade:'', laborCode:'', rate:'', hours:'', burden:'', amount:'' }); cwRenderLabor(); cwRecalc(); }
+function cwRemoveLabor(i) { if (!_cwCur) return; _cwCur.laborLines.splice(i,1); if (!_cwCur.laborLines.length) _cwCur.laborLines.push({ trade:'', laborCode:'', rate:'', hours:'', burden:'', amount:'' }); cwRenderLabor(); _cwSyncDistCodesFromLabor(); cwRecalc(); }
 
 // Material lines
 function cwRenderMaterials() {
@@ -13741,6 +13784,7 @@ function cwOpenDoc(id) {
   cwPopulateDistFilters(_cwJob);
   msSetValues('cw-dist-area', doc.areas || []);
   msSetValues('cw-dist-code', doc.laborCodes || []);
+  _cwCur._autoDistCodes = [...new Set((_cwCur.laborLines || []).map(l => String(l.laborCode || '').trim()).filter(Boolean))].filter(c => (doc.laborCodes || []).map(String).includes(c));
   cwRecalc();
   // Approved change orders open view-only (already filled in); everything else stays editable.
   const _approved = doc.status === 'approved';
