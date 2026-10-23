@@ -8752,6 +8752,9 @@ function diRenderCrewTable() {
   // ── Section 2: Daily entries table ──
   _diUpdateFilterBtnState();
   tbody.innerHTML = rows.map((row, i) => {
+    // Rows created only for an extra employee stay out of Daily Entries until they hold entry data.
+    if (row._empOnly && !(row.area || '').trim() && !(row.costCode || '').trim() && !(row.description || '').trim()
+        && !(row.extraEntries || []).some(x => (x.area || x.costCode || x.description))) return '';
     const isCorRow = row.area && row.area.startsWith('[COR]');
     const bgStyle  = isCorRow ? 'background:rgba(201,168,76,.07);' : '';
     // Primary row
@@ -11049,6 +11052,37 @@ function _diIsRemovedNow(e, doc) {
   return codes.length ? !codes.some(c => sheet.pairs.has(e.area + '|' + c)) : !sheet.areas.has(e.area);
 }
 
+// ── Employee names edited on a weekly paysheet's Crew Splits ──
+// Tags are written to the daily input only when an admin adds / removes / renames a name
+// on the paysheet (see psSplitNameChanged → _psSyncToDailyInputs). "(Removed)" is also
+// double-checked live: it never shows while that name is still on the paysheet(s)
+// compiled from this submission.
+const _diNormName = s => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+function _diPsSplitNamesFor(doc) {
+  if (!doc) return null;
+  const who = String(doc.submittedBy || '').toLowerCase();
+  const names = new Set(); let found = false;
+  const addSheet = crewsObj => Object.values(crewsObj || {}).forEach(c => (c && c.splits || []).forEach(x => { if ((x.employee || '').trim()) names.add(_diNormName(x.employee)); }));
+  (_cache.paysheets || []).filter(p => p.type === 'weekly' && p.job === doc.job && p.weekEnding === doc.weekEnding)
+    .filter(p => (Array.isArray(p.sourceDailyInputIds) && p.sourceDailyInputIds.includes(doc.id)) || (p.foremanKey && String(p.foremanKey).toLowerCase() === who))
+    .forEach(p => {
+      found = true;
+      if (p.id === _psCurrentDocId && _psCurrentType === 'weekly') {
+        // The open builder overrides its saved copy so unsaved edits count right away.
+        for (let c = 1; c <= _psCrewCount; c++) (_psState[c] && _psState[c].splits || []).forEach(x => { if ((x.employee || '').trim()) names.add(_diNormName(x.employee)); });
+      } else addSheet(p.crews);
+    });
+  return found ? names : null;
+}
+function _diEmpCellHTML(e, doc) {
+  if (e._psEmpTag === 'added') return `<span style="color:#22c55e;">${eh(e.employee || '—')}</span>&nbsp;<span style="color:#22c55e;font-size:.68rem;font-weight:700;">(Added)</span>`;
+  if (e._psEmpTag === 'removed') {
+    const live = _diPsSplitNamesFor(doc);
+    if (!live || !live.has(_diNormName(e.employee))) return `<s style="color:#ef4444;">${eh(e.employee || '—')}</s>&nbsp;<span style="color:#ef4444;font-size:.68rem;font-weight:700;">(Removed)</span>`;
+  }
+  return eh(e.employee || '—');
+}
+
 // Returns colored HTML for an area cell in the DI log based on its _psTag
 function _diAreaTagHTML(e, doc) {
   if (e._psTag === 'added') {
@@ -11075,7 +11109,10 @@ function _diLogDetailHTML(r) {
     if (!area || !r.job) return `<td style="${tdStyle}"></td>`;
     let rem = null;
     if (isSpecialArea(area)) {
-      rem = _diAreaRemainingBudget(r.job, area);
+      // Change/Work Order: show THIS labor code's foreman budget remaining (not the
+      // sum across every code on the COR); fall back to the area total if no match.
+      const c = costCode ? corbsForArea(area, r.job).find(b => String(b.laborCode) === String(costCode)) : null;
+      rem = c ? corbForemanAmount(c) - computeCorPaid(c) : _diAreaRemainingBudget(r.job, area);
     } else {
       const d = psGetAreaCodeData(r.job, area, costCode||'');
       if (d.budget || d.ptd) {
@@ -11111,7 +11148,7 @@ function _diLogDetailHTML(r) {
             // same area — so every code on the entry shows without cluttering the list.
             const extras = (e.extraEntries||[]).filter(ex => (String(ex.costCode||'').trim()) || (String(ex.area||'').trim()));
             const primary = `<tr style="border-top:1px solid rgba(255,255,255,.04);">
-            <td style="${tdStyle}">${eh(e.employee||'—')}</td>
+            <td style="${tdStyle}">${_diEmpCellHTML(e, r)}</td>
             <td style="${tdStyle}color:var(--muted);">${_diAreaTagHTML(e, r)}</td>
             <td style="${tdStyle}color:var(--muted);text-align:center;">${eh(e.costCode||'—')}</td>
             ${_remCell(e.area, e.costCode)}
@@ -11141,8 +11178,14 @@ function _diPersistEmpRowCount(crew) {
 
 function diAddRow() {
   const empCount = _diEmpRowCount[_diActiveCrew] || DI_EMP_ROWS;
-  // Insert new row right after the last employee-visible row so it appears in both sections
-  _diData[_diActiveCrew].splice(empCount, 0, {empNum:'', employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]});
+  // "+ Add Employee" only adds a Crew Members row. If the crew already has a row past the
+  // visible employee rows, just reveal its employee slot (no new Daily Entries row). Only
+  // when there isn't one do we append a row — flagged _empOnly so the Daily Entries table
+  // keeps it hidden until it actually gets an area / labor code.
+  const rows = _diData[_diActiveCrew];
+  if (rows.length <= empCount) {
+    rows.push({empNum:'', employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[], _empOnly:true});
+  }
   _diEmpRowCount[_diActiveCrew] = empCount + 1;
   _diPersistEmpRowCount(_diActiveCrew);
   diRenderCrewTable();
@@ -14943,6 +14986,16 @@ async function _psReconcileRemovedTags() {
   } catch(e) { console.warn('[DI sync] reconcile failed', e); }
 }
 
+// Crew Splits name edited on a weekly paysheet (management) → tag the daily input.
+function psSplitNameChanged(oldName, newName) {
+  if (_psCurrentType !== 'weekly' || isForeman()) return;
+  const o = String(oldName || '').trim(), n = String(newName || '').trim();
+  if (_diNormName(o) === _diNormName(n)) return;
+  const crewName = (_ps().header && _ps().header.crewName) || '';
+  if (o) _psQueueDiChange({ type: 'empRemove', name: o, crewNum: _psActiveCrew, crewName });
+  if (n) _psQueueDiChange({ type: 'empAdd',    name: n, crewNum: _psActiveCrew, crewName });
+}
+
 function _psQueueDiChange(change) {
   _psDiPendingChanges.push(change);
   clearTimeout(_psDiSyncTimer);
@@ -14969,6 +15022,63 @@ async function _psSyncToDailyInputs() {
   if (!freshDiDocs().length) return;
 
   for (const ch of changes) {
+
+    // ── Employee names (Crew Splits) ──
+    if (ch.type === 'empRemove' || ch.type === 'empAdd') {
+      const key = _diNormName(ch.name);
+      // Names still on this paysheet (all crews) — never tag those removed.
+      const onSheet = new Set();
+      for (let c = 1; c <= _psCrewCount; c++) (_psState[c] && _psState[c].splits || []).forEach(x => { if ((x.employee || '').trim()) onSheet.add(_diNormName(x.employee)); });
+      let pool = freshDiDocs();
+      const curPs = _psCurrentDocId ? (_cache.paysheets || []).find(p => p.id === _psCurrentDocId) : null;
+      if (curPs && Array.isArray(curPs.sourceDailyInputIds) && curPs.sourceDailyInputIds.length) {
+        const src = new Set(curPs.sourceDailyInputIds); const nar = pool.filter(d => src.has(d.id)); if (nar.length) pool = nar;
+      }
+      const writeDoc = async (d, crews) => {
+        try {
+          await db.collection('dailyinput').doc(d.id).update({ crews });
+          const idx = (_cache.dailyInputs || []).findIndex(x => x.id === d.id);
+          if (idx !== -1) _cache.dailyInputs[idx] = { ..._cache.dailyInputs[idx], crews };
+        } catch(e) { console.warn('[DI sync] employee', ch.type, d.id, e); }
+      };
+      if (ch.type === 'empRemove') {
+        if (onSheet.has(key)) continue;
+        for (const d of pool) {
+          let changed = false;
+          const crews = (d.crews || []).map(crew => ({ ...crew, entries: (crew.entries || []).flatMap(e => {
+            if (_diNormName(e.employee) !== key || e._psEmpTag === 'removed') return [e];
+            changed = true;
+            if (e._psEmpTag === 'added' && !(e.area || e.costCode)) return [];   // added then removed → drop it
+            return [{ ...e, _psEmpTag: 'removed' }];
+          }) }));
+          if (changed) await writeDoc(d, crews);
+        }
+        continue;
+      }
+      // empAdd: restore a "(Removed)" tag if there is one; otherwise add a tagged entry once.
+      let exists = false;
+      for (const d of pool) {
+        let changed = false;
+        const crews = (d.crews || []).map(crew => ({ ...crew, entries: (crew.entries || []).map(e => {
+          if (_diNormName(e.employee) !== key) return e;
+          exists = true;
+          if (e._psEmpTag !== 'removed') return e;
+          changed = true; const n2 = { ...e }; delete n2._psEmpTag; return n2;
+        }) }));
+        if (changed) await writeDoc(d, crews);
+      }
+      if (exists) continue;
+      const sorted = [...pool].sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
+      const lead = _diNormName(ch.crewName);
+      let target = null, ti = -1;
+      const pick = test => { for (const d of sorted) { const i = (d.crews || []).findIndex(test); if (i !== -1) { target = d; ti = i; return true; } } return false; };
+      (lead && pick(c => _diNormName(c.crewLeadName) === lead)) || pick(c => c.crewNum === ch.crewNum) || pick(() => true);
+      if (!target) continue;
+      const crews = (target.crews || []).map((crew, ci) => ci !== ti ? crew : ({ ...crew, entries: [...(crew.entries || []),
+        { employee: ch.name, empNum: '', area: '', costCode: '', description: '', corBudgetId: '', corNumber: '', extraEntries: [], _psEmpTag: 'added' }] }));
+      await writeDoc(target, crews);
+      continue;
+    }
 
     // ── ADD: new area on the paysheet → inject a tagged entry into the most recent DI doc ──
     if (ch.type === 'add') {
@@ -16664,7 +16774,9 @@ function psRenderCrewTable() {
       </td>
       <td style="border:1px solid #000;padding:2px 4px;">
         <input style="${inp}" value="${eh(s.employee)}"
-          oninput="_ps().splits[${i}].employee=this.value;psScheduleAnyAutoSave()" />
+          onfocus="this.dataset.old=this.value"
+          oninput="_ps().splits[${i}].employee=this.value;psScheduleAnyAutoSave()"
+          onchange="psSplitNameChanged(this.dataset.old||'', this.value);this.dataset.old=this.value" />
       </td>
       ${optCols}
     </tr>`;
