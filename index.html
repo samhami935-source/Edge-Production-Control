@@ -14700,18 +14700,18 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
     : (!isDaily && jobName && row.area && row.costCode)
       ? (psGetAreaCodeData(jobName, row.area, row.costCode).ptd || 0)
       : (parseFloat(row.ptd) || 0);
-  // Once THIS weekly paysheet is approved, its own W/E amounts are already in payroll.
-  // Leave them out of its PTD so this week isn't counted twice (PTD + W/E Earned →
-  // ~200% complete). The sheet reads the same before and after approval.
+  // PTD / Remaining show everything paid to date — including this sheet once approved.
+  // Once THIS weekly paysheet is approved its own W/E is already inside PTD, so % Complete
+  // must not add W/E again (that double count showed ~200%).
   const ownPaid = (!isDaily && _psCurrentDocId && row.area && (row.costCode || (isCOR && corb)))
     ? _psOwnSyncedPaid(jobName, row.area, row.costCode, isCOR ? corb : null) : 0;
-  const ptdValAdj  = Math.max(0, ptdVal - ownPaid);
+  const ptdValAdj  = ptdVal;
   const weAmount   = parseFloat(row.weAmount) || 0;
-  const remaining  = budgetVal - ptdValAdj;
+  const remaining  = budgetVal - ptdVal;
   const budgetDisp = budgetVal > 0 ? _fmt$(budgetVal) : '';
   const remainDisp = budgetVal > 0 || ptdValAdj > 0 ? _fmt$(remaining) : '';
   const rColor     = remaining < 0 ? '#ef4444' : '#333';
-  const pctComplete = budgetVal > 0 ? ((ptdValAdj + weAmount) / budgetVal * 100) : 0;
+  const pctComplete = budgetVal > 0 ? ((Math.max(0, ptdVal - ownPaid) + weAmount) / budgetVal * 100) : 0;
   const pctDisp     = budgetVal > 0 ? pctComplete.toFixed(1) + '%' : '—';
   const pctColor    = pctComplete > 100 ? '#ef4444' : pctComplete >= 80 ? '#c9a84c' : '#333';
   // COR rows use the COR's labor code + description; regular rows look up from CSV/PAYROLL_GROUPS
@@ -16190,13 +16190,14 @@ async function _psExportSheetsAsZip(sheets, zipLabel, asSinglePDF) {
           : (!isDaily && jobName && row.area && row.costCode)
             ? (psGetAreaCodeData(jobName, row.area, row.costCode).ptd || 0)
             : (parseFloat(row.ptd) || 0);
-        // Same as on screen: leave this paysheet's own posted W/E out of its PTD.
-        const ptdVal  = (!isDaily && doc && doc.id && row.area)
-          ? Math.max(0, ptdRaw - _psOwnSyncedPaid(jobName, row.area, row.costCode, (isCOR && corb) ? corb : null, doc.id))
-          : ptdRaw;
+        // Same as on screen: PTD/Remaining = everything paid; % Complete doesn't re-add
+        // this sheet's own W/E once it's approved (already inside PTD).
+        const ptdVal  = ptdRaw;
+        const ownPd   = (!isDaily && doc && doc.id && row.area)
+          ? _psOwnSyncedPaid(jobName, row.area, row.costCode, (isCOR && corb) ? corb : null, doc.id) : 0;
         const weAmt   = parseFloat(row.weAmount) || 0;
         const rem     = budgetVal - ptdVal;
-        const pct     = budgetVal > 0 ? ((ptdVal + weAmt) / budgetVal * 100) : 0;
+        const pct     = budgetVal > 0 ? ((Math.max(0, ptdVal - ownPd) + weAmt) / budgetVal * 100) : 0;
         const budDisp = budgetVal > 0 ? fmtMoney(budgetVal) : '';
         const remDisp = (budgetVal > 0 || ptdVal > 0) ? fmtMoney(rem) : '';
         const pctDisp = budgetVal > 0 ? pct.toFixed(1)+'%' : '\u2014';
