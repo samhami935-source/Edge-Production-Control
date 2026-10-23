@@ -8794,7 +8794,7 @@ function diRenderCrewTable() {
           oninput="_diData[${_diActiveCrew}][${i}].description=this.value;diAutoSaveDraft()" />
       </td>
       <td style="padding:10px 4px;width:52px;text-align:center;white-space:nowrap;vertical-align:top;">
-        <button onclick="diClearEntry(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 3px;line-height:1;" title="Clear this entry">✕</button>
+        <button onclick="diDeleteEntryRow(${_diActiveCrew},${i})" style="background:none;border:none;color:#ef4444;font-size:1.1rem;cursor:pointer;padding:2px 3px;line-height:1;" title="Remove this area row">✕</button>
       </td>
     </tr>`;
     // Sub-rows: one per extra labor code on this area
@@ -11209,13 +11209,43 @@ function diAddEntryRow() {
   }, 0);
 }
 
+// Each _diData row carries one Crew Members slot (employee/empNum) AND one Daily Entries
+// slot (area/code/notes…). The two lists are independent, so deleting from one list
+// shifts ONLY that list's fields up — the other list is never touched.
+const _DI_EMP_FIELDS   = ['employee', 'empNum'];
+const _DI_ENTRY_FIELDS = ['area', 'costCode', 'description', 'corBudgetId', 'corNumber', 'extraEntries'];
+const _diBlankRow = () => ({empNum:'', employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]});
+const _diRowHasEntry = r => !!(r && ((r.area||'').trim() || (r.costCode||'').trim() || (r.description||'').trim() || (r.extraEntries||[]).some(x => x.area || x.costCode || x.description)));
+
+// Crew Members ✕ — remove one employee; Daily Entries rows stay exactly as they are.
 function diDeleteRow(crew, i) {
-  const empCount = _diEmpRowCount[crew] || DI_EMP_ROWS;
-  _diData[crew].splice(i, 1);
-  // Only shrink the Crew Members list when the removed row was one of its visible rows.
-  if (i < empCount) _diEmpRowCount[crew] = Math.max(1, empCount - 1);
+  const rows = _diData[crew]; if (!rows || !rows[i]) return;
+  const empCount = Math.min(_diEmpRowCount[crew] || DI_EMP_ROWS, rows.length);
+  if (i >= empCount) { rows[i].employee = ''; rows[i].empNum = ''; }
+  else {
+    for (let j = i; j < empCount - 1; j++) _DI_EMP_FIELDS.forEach(f => { rows[j][f] = rows[j + 1][f]; });
+    const last = empCount - 1;
+    rows[last].employee = ''; rows[last].empNum = '';
+    // A trailing helper row that only existed for that employee slot goes away with it.
+    if (rows[last]._empOnly && !_diRowHasEntry(rows[last])) rows.splice(last, 1);
+    _diEmpRowCount[crew] = Math.max(1, empCount - 1);
+  }
   _diPersistEmpRowCount(crew);
-  if (_diData[crew].length === 0) _diData[crew].push({empNum:'', employee:'', area:'', costCode:'', description:'', corBudgetId:'', corNumber:'', extraEntries:[]});
+  if (rows.length === 0) rows.push(_diBlankRow());
+  diRenderCrewTable();
+  diAutoSaveDraft();
+}
+
+// Daily Entries ✕ — remove one area row; Crew Members stay exactly as they are.
+function diDeleteEntryRow(crew, i) {
+  const rows = _diData[crew]; if (!rows || !rows[i]) return;
+  for (let j = i; j < rows.length - 1; j++) _DI_ENTRY_FIELDS.forEach(f => { rows[j][f] = rows[j + 1][f]; });
+  const last = rows.length - 1;
+  rows[last].area = ''; rows[last].costCode = ''; rows[last].description = '';
+  rows[last].corBudgetId = ''; rows[last].corNumber = ''; rows[last].extraEntries = [];
+  // Drop the now-empty last row only if it isn't holding a visible employee slot.
+  const empCount = _diEmpRowCount[crew] || DI_EMP_ROWS;
+  if (rows.length > 1 && last >= empCount && !(rows[last].employee || '').trim()) rows.pop();
   diRenderCrewTable();
   diAutoSaveDraft();
 }
