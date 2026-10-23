@@ -9000,11 +9000,19 @@ function diApplyFilter(type) {
   const jobName = document.getElementById('ps-job-select').value || '';
 
   if (type === 'area') {
-    // Fill existing rows; if there aren't enough, add new blank rows automatically
-    checked.forEach((area, i) => {
-      if (i >= _diData[crew].length) {
-        _diData[crew].push({ empNum: '', employee: '', area: '', costCode: '', description: '', corBudgetId: '', corNumber: '', extraEntries: [] });
+    // Picked areas always go BELOW the areas already entered — so you can filter, add,
+    // filter again and add more without overwriting anything. Blank rows after the last
+    // filled area are reused first; new rows are added when they run out.
+    const rowsArr = _diData[crew];
+    let lastFilled = -1;
+    rowsArr.forEach((r, idx) => { if (_diRowHasEntry(r)) lastFilled = idx; });
+    let next = lastFilled + 1;
+    checked.forEach(area => {
+      while (next < rowsArr.length && _diRowHasEntry(rowsArr[next])) next++;
+      if (next >= rowsArr.length) {
+        rowsArr.push({ empNum: '', employee: '', area: '', costCode: '', description: '', corBudgetId: '', corNumber: '', extraEntries: [] });
       }
+      const i = next++;
       _diData[crew][i].area = area;
       if (isSpecialArea(area)) {
         const allC = corbsForArea(area, jobName);
