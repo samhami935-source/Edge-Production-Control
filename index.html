@@ -10511,6 +10511,39 @@ function renderDiWeekCompile() {
     }).join('');
 }
 
+// A daily input that a weekly paysheet was compiled from (sourceDailyInputIds) belongs
+// to THAT paysheet's week. If its weekEnding drifted (e.g. an older re-file used the save
+// time), re-file it to the paysheet's week so the Pay Week filter, folders and Compile all
+// agree. Only fixes inputs claimed by paysheets of ONE week; ambiguous ones are untouched.
+let _diWeekHealBusy = false;
+async function _diHealWeeksFromPaysheets() {
+  if (_diWeekHealBusy || !canCompilePaysheet()) return;
+  const claim = new Map();   // diId -> Set(weekEnding)
+  (_cache.paysheets || []).forEach(p => {
+    if (p.type !== 'weekly' || !p.weekEnding || !Array.isArray(p.sourceDailyInputIds)) return;
+    p.sourceDailyInputIds.forEach(id => { if (!claim.has(id)) claim.set(id, new Set()); claim.get(id).add(p.weekEnding); });
+  });
+  const fixes = [];
+  (_diLogDocs || []).forEach(d => {
+    const wk = claim.get(d.id);
+    if (wk && wk.size === 1) { const w = [...wk][0]; if (w && d.weekEnding !== w) fixes.push({ d, w }); }
+  });
+  if (!fixes.length) return;
+  _diWeekHealBusy = true;
+  try {
+    for (let i = 0; i < fixes.length; i += 450) {
+      const b = db.batch();
+      fixes.slice(i, i + 450).forEach(f => b.update(db.collection('dailyinput').doc(f.d.id), { weekEnding: f.w }));
+      await b.commit();
+    }
+    fixes.forEach(f => { f.d.weekEnding = f.w; });
+    try { renderDiWeekSelect(); } catch(_) {}
+    try { diRenderLogRows(); } catch(_) {}
+    try { renderDiWeekCompile(); } catch(_) {}
+  } catch(e) { console.warn('[DI week heal] failed', e); }
+  finally { _diWeekHealBusy = false; }
+}
+
 function diLoadLog() {
   // Tear down previous listener
   if (_diLogUnsub) { _diLogUnsub(); _diLogUnsub = null; }
@@ -10526,6 +10559,7 @@ function diLoadLog() {
       .onSnapshot(snap => {
         _diLogDocs = snap.docs.map(d => d.data());
         _cache.dailyInputs = _diLogDocs; // expose to compile + folder list
+        setTimeout(_diHealWeeksFromPaysheets, 0);
         renderDiWeekSelect();
         diRenderLogRows();
         // Keep the project folder counts fresh while the overview is showing
@@ -10540,6 +10574,7 @@ function diLoadLog() {
         _diLogUnsub = db.collection('dailyinput').onSnapshot(snap => {
           _diLogDocs = snap.docs.map(d => d.data()).sort((a,b) => (b.submittedAt||'').localeCompare(a.submittedAt||''));
           _cache.dailyInputs = _diLogDocs;
+          setTimeout(_diHealWeeksFromPaysheets, 0);
           renderDiWeekSelect();
           diRenderLogRows();
           try { if (activeTab === 'paysheet' && _psNav === 'folders') psRenderFolders(); } catch(_) {}
@@ -10672,7 +10707,10 @@ function diRenderLogRows() {
   // Merge supplemental paysheets into the log as pseudo-entries
   const suppSheets = (_cache.paysheets || []).filter(p =>
     p.type === 'weekly' && (p.isSupplemental === true || (p.id && p.id.includes('_add_'))) &&
-    (!jobName || p.job === jobName)
+    (!jobName || p.job === jobName) &&
+    // Same Pay Week filter as the daily inputs above — a supplemental paysheet only
+    // shows under its own week ending.
+    (!_diWeekFilter || p.weekEnding === _diWeekFilter)
   ).map(p => {
     // Normalize to a shape compatible with the log renderer, tagged _isPS:true
     const crewKeys = Object.keys(p.crews || {});
@@ -18636,7 +18674,9 @@ async function deleteSavedPaysheet(docId, e) {
       const refiles = [];
       targetInputs.forEach(d => {
         // No timestamp to map from → leave its current week untouched (don't drop it).
-        const proper = d.submittedAt ? _calcPayWeekEnding(d.submittedAt) : d.weekEnding;
+        // Same rule as submit: the week of the ENTERED date (save time only if no date).
+        const proper = d.date ? _calcPayWeekEndingFromDate(d.date)
+                     : (d.submittedAt ? _calcPayWeekEnding(d.submittedAt) : d.weekEnding);
         if (proper && proper !== d.weekEnding) {
           refiles.push(db.collection('dailyinput').doc(d.id).update({ weekEnding: proper }));
           d.weekEnding = proper; // immediate cache update; live listener also reconciles
