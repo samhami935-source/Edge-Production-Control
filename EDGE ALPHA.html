@@ -22626,6 +22626,19 @@ function computeCorPaid(corb) {
   // $75 (= 2 hrs × $37.50) per day starting Thursday. Any overflow OT (the Saturday
   // portion, when weekly OT > 10 hrs) is returned separately. Weekday cents sum to the
   // weekly total when there is no Saturday.
+  // Earnings day columns follow the Weekly Time Sheet: a SAT column (between FRI and MON)
+  // appears only when someone on the job that week has Saturday overtime. Daily cents then
+  // sum exactly to the WEEKLY TOTAL, row by row — same as the time card.
+  function _acctEarnHasSat(employees) {
+    return (employees || []).some(emp => _acctDailyPayCents(acctBuildTimeSheet(emp)).satCents > 0);
+  }
+  function _acctEarnDays(hasSat) { return hasSat ? ['THU','FRI','SAT','MON','TUE','WED'] : ACCT_DAYS.slice(); }
+  function _acctEarnDaily(emp, hasSat) {   // cents per displayed day (null = blank SAT)
+    const d = _acctDailyPayCents(acctBuildTimeSheet(emp));
+    const out = d.weekday.slice();
+    if (hasSat) out.splice(2, 0, d.satCents > 0 ? d.satCents : null);
+    return out;
+  }
   function _acctDailyPayCents(ts) {
     const reg = _acctSplitCentsInt(ts.regPayCents, ACCT_DAYS.length);
     let otRem = Math.round(ts.otPayCents || 0);
@@ -22678,7 +22691,8 @@ function computeCorPaid(corb) {
     jobs.forEach(job => {
       const data = acctEmployeeEarnings(job, week);
       const grid = [], merges = [];
-      const ND = ACCT_DAYS.length, cTot = 2 + ND;   // last column index (WEEKLY TOTAL)
+      const hasSat = _acctEarnHasSat(data.employees), DAYS = _acctEarnDays(hasSat);
+      const ND = DAYS.length, cTot = 2 + ND;   // last column index (WEEKLY TOTAL)
       // ── Title block (NGC Weekly Time Card — earnings grid) ──
       grid.push([ null, null, XC('NGC CONSTRUCTION INC  DBA DRYWALL', {bold:true, size:12, align:'center', border:false}) ]);
       merges.push(_acctMrg(0,2,0,cTot));
@@ -22686,7 +22700,7 @@ function computeCorPaid(corb) {
                   XC('WEEKLY EMPLOYEE EARNINGS', {bold:true, size:14, align:'center', border:false}) ]);
       merges.push(_acctMrg(1,3,1,cTot-1));
       grid.push([]);
-      grid.push(['EMPLOYEE NAME','EMP. #', ...ACCT_DAYS, 'WEEKLY TOTAL']
+      grid.push(['EMPLOYEE NAME','EMP. #', ...DAYS, 'WEEKLY TOTAL']
         .map(h => XC(h, {bold:true, align:'center', fill:'FFF2F2F2', wrap:true})));
       let R = grid.length;
       if (!data.employees.length) {
@@ -22696,9 +22710,9 @@ function computeCorPaid(corb) {
       data.employees.forEach(emp => {
         // Daily $ mirror the Weekly Time Sheet's hour split (reg even across weekdays,
         // OT $75/day from Thursday), so the paysheet lines up with the time card.
-        const daily   = _acctDailyPayCents(acctBuildTimeSheet(emp)).weekday.map(c => c / 100);
+        const daily   = _acctEarnDaily(emp, hasSat).map(c => c == null ? null : c / 100);
         const nameRow = [ XC(emp.name, {bold:true}), XC(emp.empNum || '', {align:'center'}) ];
-        daily.forEach(d => nameRow.push(XC(d, {align:'right', z:_MONEYZ})));
+        daily.forEach(d => nameRow.push(d == null ? XC('') : XC(d, {align:'right', z:_MONEYZ})));
         nameRow.push(XC(emp.totalCents/100, {bold:true, align:'right', z:_MONEYZ}));
         grid.push(nameRow); R++;
         // JOB NAME / EWO / JOB # (template labels)
@@ -22732,7 +22746,7 @@ function computeCorPaid(corb) {
       grid.push([]); R = grid.length;
       grid.push([ null, null, null, null, XC('SUPERINTENDENT AUTHORIZATION:', {bold:true, border:false}) ]);
       merges.push(_acctMrg(R,4,R,cTot));
-      const cols = [{wch:28},{wch:10}].concat(ACCT_DAYS.map(() => ({wch:11}))).concat([{wch:15}]);
+      const cols = [{wch:28},{wch:10}].concat(DAYS.map(() => ({wch:11}))).concat([{wch:15}]);
       const ws = _acctXSheet(grid, cols, merges);
       XL.utils.book_append_sheet(wb, ws, (job.replace(/[:\\/?*[\]]/g,'').slice(0,28)||'Job'));
     });
@@ -22824,7 +22838,8 @@ function computeCorPaid(corb) {
     const pdf = new jsPDF({orientation:'landscape', unit:'pt', format:'letter'});
     const PW=792, PH=612, M=36, BLK=[0,0,0];
     const weDisp = _acctWeekEndDisp(week);
-    const xName=M, wName=150, xEmp=xName+wName, wEmp=60, xDay=xEmp+wEmp, wDay=84, xTot=xDay+wDay*ACCT_DAYS.length, wTot=90;
+    const xName=M, wName=150, xEmp=xName+wName, wEmp=60, xDay=xEmp+wEmp, wTot=90;
+    let DAYS=ACCT_DAYS, wDay=84, xTot=xDay+wDay*DAYS.length, hasSat=false;   // set per job below
     const cell=(x,y,w,h,txt,o)=>{ o=o||{};
       if(o.fill){ pdf.setFillColor(242,242,242); pdf.rect(x,y,w,h,'F'); }
       pdf.setDrawColor(0); pdf.setLineWidth(o.heavy?1:0.5); pdf.rect(x,y,w,h,'S');
@@ -22834,6 +22849,8 @@ function computeCorPaid(corb) {
     let first=true;
     jobs.forEach(job=>{
       const data=acctEmployeeEarnings(job,week);
+      hasSat=_acctEarnHasSat(data.employees); DAYS=_acctEarnDays(hasSat);
+      wDay=Math.floor(420/DAYS.length); xTot=xDay+wDay*DAYS.length;   // same overall table width
       if(!first) pdf.addPage(); first=false;
       let y=M;
       pdf.setFont('helvetica','bold'); pdf.setTextColor(...BLK); pdf.setFontSize(12);
@@ -22845,25 +22862,25 @@ function computeCorPaid(corb) {
       const header=()=>{
         cell(xName,y,wName,hh,'EMPLOYEE NAME',{bold:true,align:'center',fill:true});
         cell(xEmp,y,wEmp,hh,'EMP. #',{bold:true,align:'center',fill:true});
-        ACCT_DAYS.forEach((d,i)=>cell(xDay+wDay*i,y,wDay,hh,d,{bold:true,align:'center',fill:true}));
+        DAYS.forEach((d,i)=>cell(xDay+wDay*i,y,wDay,hh,d,{bold:true,align:'center',fill:true}));
         cell(xTot,y,wTot,hh,'WEEKLY TOTAL',{bold:true,align:'center',fill:true});
         y+=hh;
       };
       header();
       const ensure=(need)=>{ if(y+need>PH-M){ pdf.addPage(); y=M; header(); } };
-      if(!data.employees.length){ cell(xName,y,wName+wEmp+wDay*ACCT_DAYS.length+wTot,rh,'No approved weekly paysheets for this week.',{}); y+=rh; }
+      if(!data.employees.length){ cell(xName,y,wName+wEmp+wDay*DAYS.length+wTot,rh,'No approved weekly paysheets for this week.',{}); y+=rh; }
       data.employees.forEach(emp=>{
         ensure(rh*(5+emp.allocations.length)+18);
-        const daily=_acctDailyPayCents(acctBuildTimeSheet(emp)).weekday;   // cents, matches time card
+        const daily=_acctEarnDaily(emp,hasSat);   // cents, matches time card (incl. SAT when present)
         cell(xName,y,wName,rh,emp.name,{bold:true});
         cell(xEmp,y,wEmp,rh,emp.empNum||'',{align:'center'});
-        daily.forEach((c,i)=>cell(xDay+wDay*i,y,wDay,rh,_acctPdfAmt(c),{align:'right'}));
+        daily.forEach((c,i)=>cell(xDay+wDay*i,y,wDay,rh,c==null?'':_acctPdfAmt(c),{align:'right'}));
         cell(xTot,y,wTot,rh,_acctPdfAmt(emp.totalCents),{bold:true,align:'right'});
         y+=rh;
         const ewo=[...new Set(emp.allocations.filter(a=>a.sourceType==='COR').map(a=>a.corNumber).filter(Boolean))].join(', ');
         [['JOB NAME',job],['EWO',ewo],['JOB #','']].forEach(([lab,val])=>{
           cell(xName,y,wName,rh,lab,{bold:true});
-          cell(xEmp,y,wEmp+wDay*ACCT_DAYS.length+wTot,rh,val,{});
+          cell(xEmp,y,wEmp+wDay*DAYS.length+wTot,rh,val,{});
           y+=rh;
         });
         // Per-area breakdown — mirrors the on-screen Employee Earnings Detail row-for-row
