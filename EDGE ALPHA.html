@@ -14444,6 +14444,25 @@ function switchToAccounting() {
   renderTabBar();
   showPanel('accounting');
   acctInit();
+  _acctSilentRefresh();
+}
+
+// Pull the latest weekly paysheets from the server when Accounting opens, so split
+// amounts a foreman saved on another device show up without a manual refresh.
+// Renders from cache first; re-renders in place (keeps the current folder/week).
+async function _acctSilentRefresh() {
+  try {
+    const snap = await db.collection('paysheets').where('type', '==', 'weekly').get({ source: 'server' });
+    const fresh = new Map(snap.docs.map(d => [d.id, Object.assign({ id: d.id }, d.data())]));
+    _cache.paysheets = (_cache.paysheets || [])
+      .filter(p => p.type !== 'weekly' || fresh.has(p.id))
+      .map(p => (p.type === 'weekly' && fresh.has(p.id)) ? fresh.get(p.id) : p);
+    fresh.forEach((d, id) => { if (!_cache.paysheets.some(p => p.id === id)) _cache.paysheets.push(d); });
+    if (activeTab !== 'accounting') return;
+    acctPopulateWeekSelect();
+    acctPopulateJobSelect();
+    acctRenderRouter();
+  } catch (e) { console.warn('_acctSilentRefresh:', e); }
 }
 
 function psPopulateJobSelect() {
@@ -16977,9 +16996,24 @@ async function psSaveWeeklySummaryForeman(silent = false) {
       return Object.assign({}, r, { weAmount: stateRow ? (stateRow.weAmount || '') : (r.weAmount || '') });
     });
 
-    // Splits: preserve Employee # and Name; only update pctSplit, amount, signatureData
-    const mergedSplits = (existing.splits || []).map((s, idx) => {
-      const ss = state.splits[idx];
+    // Splits: preserve Employee # and Name; only update pctSplit, amount, signatureData.
+    // Match by EMPLOYEE NAME, not row position: loading de-duplicates names, so the
+    // on-screen rows can sit at different indexes than the saved ones — matching by
+    // index wrote amounts onto the wrong employee (Accounting then showed $0).
+    const _spNm = s => ((s && s.employee) || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    const _stateByName = new Map();
+    (state.splits || []).forEach(ss => { const k = _spNm(ss); if (k && !_stateByName.has(k)) _stateByName.set(k, ss); });
+    const _seenSp = new Set();
+    const mergedSplits = (existing.splits || []).filter(s => {
+      const k = _spNm(s);
+      if (!k) return true;
+      if (_seenSp.has(k)) return false;   // duplicate name — the screen (and admin save) shows it once
+      _seenSp.add(k);
+      return true;
+    }).map((s, idx) => {
+      const k  = _spNm(s);
+      const ss = k ? _stateByName.get(k)
+                   : (state.splits[idx] && !_spNm(state.splits[idx]) ? state.splits[idx] : null);
       if (!ss) return s;
       return Object.assign({}, s, {
         pctSplit:      ss.pctSplit      !== undefined ? ss.pctSplit      : (s.pctSplit      || ''),
