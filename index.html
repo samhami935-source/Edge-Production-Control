@@ -19536,7 +19536,7 @@ function _acctBuildJobCard(jobData, weekEnding) {
 
       <!-- Letterhead -->
       <div style="text-align:center;margin-bottom:24px;border-bottom:3px solid #1a56db;padding-bottom:16px;">
-        <div style="font-size:1.5rem;font-weight:900;color:#1a56db;letter-spacing:.04em;">D9 EDGE</div>
+        <div style="font-size:1.5rem;font-weight:900;color:#1a56db;letter-spacing:.04em;">NGC CONSTRUCTION INC</div>
         <div style="font-size:.95rem;font-weight:700;color:#333;margin-top:4px;text-transform:uppercase;letter-spacing:.08em;">Accounting Weekly Paysheet</div>
       </div>
 
@@ -19885,9 +19885,9 @@ function acctExportPDF() {
     const approvedBy = [...new Set(approvedDocs.map(d => d.approvedBy||'').filter(Boolean))].join(', ') || '—';
     let y = M;
 
-    // ── D9 EDGE header ──
+    // ── NGC CONSTRUCTION INC header ──
     pdf.setFont('helvetica','bold'); pdf.setFontSize(20); pdf.setTextColor(...C_BLUE);
-    pdf.text('D9 EDGE', PW/2, y+15, {align:'center'});
+    pdf.text('NGC CONSTRUCTION INC', PW/2, y+15, {align:'center'});
     y += 22;
     pdf.setFontSize(9); pdf.setTextColor(...C_BLK);
     pdf.text('ACCOUNTING WEEKLY PAYSHEET', PW/2, y+8, {align:'center'});
@@ -19981,7 +19981,7 @@ function acctExportExcel() {
     const approvedBy = [...new Set(approvedDocs.map(d => d.approvedBy || '').filter(Boolean))].join(', ') || '—';
 
     const sheetData = [
-      ['D9 EDGE — Accounting Weekly Paysheet'],
+      ['NGC CONSTRUCTION INC — Accounting Weekly Paysheet'],
       [],
       ['Week Ending:', _fmtWeekDate(weekEnding)],
       ['Job:', jobName],
