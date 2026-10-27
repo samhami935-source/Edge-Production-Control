@@ -310,7 +310,7 @@
     #pending-screen h2 { color:var(--accent); font-size:1.4rem; }
     #pending-screen p  { color:var(--muted); max-width:400px; line-height:1.6; }
 
-    /* Paysheet */
+    /* Pay Sheet */
     .ps-editable-cell { border:none; outline:none; width:100%; background:transparent; font-size:13px; font-family:Arial,sans-serif; text-align:right; padding:2px 4px; }
     .ps-area-select { border:none; outline:none; width:100%; background:transparent; font-size:12px; font-family:Arial,sans-serif; cursor:pointer; }
     .ps-readonly { color:#333; text-align:right; padding:4px 8px; }
@@ -367,7 +367,7 @@
       text-transform:uppercase;
       letter-spacing:.05em;
     }
-    /* Center the white paysheet card */
+    /* Center the white pay sheet card */
     #acct-print-area > div[style*="background:#fff"] {
       margin-left:auto;
       margin-right:auto;
@@ -376,7 +376,7 @@
     /* ── DI toolbar: scroll horizontally on narrow screens so layout never breaks ── */
     .di-toolbar-outer { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 
-    /* ── Paysheet header grid: stack to single column on small screens ── */
+    /* ── Pay Sheet header grid: stack to single column on small screens ── */
     @media(max-width:560px) {
       .ps-header-grid { grid-template-columns:1fr !important; }
       #ps-foreman-sig-wrap { align-items:flex-start !important; }
@@ -736,7 +736,7 @@
       <span><span class="ico ico-edit" aria-hidden="true"></span></span><span class="tab-name">Daily Inputs</span>
     </div>
     <div class="tab" id="paysheet-tab" onclick="switchToPaysheet()">
-      <span><span class="ico ico-file" aria-hidden="true"></span></span><span class="tab-name">Paysheet</span>
+      <span><span class="ico ico-file" aria-hidden="true"></span></span><span class="tab-name">Pay Sheet</span>
     </div>
     <div class="tab" id="accounting-tab" onclick="switchToAccounting()">
       <span><span class="ico ico-receipt" aria-hidden="true"></span></span><span class="tab-name">Accounting</span>
@@ -1604,7 +1604,7 @@
     </div>
   </div>
 
-  <!-- Paysheet content -->
+  <!-- Pay Sheet content -->
   <div id="paysheet-content" style="display:none;">
 
     <!-- Hidden job selector — synced from di-job-select in Daily Input -->
@@ -1756,7 +1756,7 @@
     </div><!-- /di-workspace -->
     </div><!-- /di-tab-group -->
 
-    <!-- ═══ PAYSHEET tab group: crew tab bar + printable weekly paysheet ═══ -->
+    <!-- ═══ PAY SHEET tab group: crew tab bar + printable weekly pay sheet ═══ -->
     <div id="ps-tab-group">
 
     <!-- Project navigation (accounting-style): folders overview + Back button -->
@@ -1765,7 +1765,7 @@
     </div>
     <div id="ps-folders-wrap" style="display:none;"></div>
 
-    <!-- Workspace: everything scoped to the active project (compiled paysheets, submission log, builder) -->
+    <!-- Workspace: everything scoped to the active project (compiled pay sheets, submission log, builder) -->
     <div id="ps-workspace">
 
     <!-- Pay Week compile controls — moved here from Daily Inputs so "Load" populates the visible builder -->
@@ -1787,7 +1787,7 @@
       <div id="di-week-compile-wrap" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;"></div>
     </div>
 
-    <!-- Compiled paysheets log for selected pay week -->
+    <!-- Compiled pay sheets log for selected pay week -->
     <div id="di-week-paysheets" style="display:none;margin-top:8px;margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden;"></div>
 
     <!-- Submission Log — moved here so it sits with the compile controls -->
@@ -1816,19 +1816,19 @@
       </div>
     </div>
 
-    <!-- Crew tab bar for paysheet + action buttons -->
+    <!-- Crew tab bar for pay sheet + action buttons -->
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
       <div id="ps-crew-tab-bar" style="display:flex;gap:4px;flex-wrap:wrap;flex:1;"></div>
       <div id="ps-action-btns" style="display:flex;gap:6px;flex-shrink:0;"></div>
     </div>
 
 
-    <!-- Printable paysheet -->
+    <!-- Printable pay sheet -->
     <div id="paysheet-print-area" style="background:#fff;color:#000;border-radius:8px;padding:32px;font-family:Arial,sans-serif;font-size:13px;overflow-x:auto;">
 
       <!-- Title bar -->
       <div id="ps-title-bar" style="text-align:center;font-size:15px;font-weight:700;margin-bottom:16px;padding-bottom:10px;border-bottom:2.5px solid #000;letter-spacing:.01em;">
-        Weekly Summary Paysheet
+        Weekly Summary Pay Sheet
       </div>
 
       <!-- Header fields — 3-column: [Project+Foreman] [Week Ending+Crew] [Signature] -->
@@ -1886,7 +1886,7 @@
 
 <!-- ════════════════════════════════════════════════════════════
      ACCOUNTING CONTENT PANEL
-     Source of truth: approved weekly paysheets in _cache.paysheets
+     Source of truth: approved weekly pay sheets in _cache.paysheets
      ════════════════════════════════════════════════════════════ -->
 <div id="accounting-content" style="display:none;">
 
@@ -1902,8 +1902,8 @@
         <option value="">All Jobs</option>
       </select>
       <button class="btn btn-outline" style="padding:7px 14px;font-size:.8rem;" onclick="acctRefreshFromFirestore()">⟳ Refresh</button>
-      <button id="acct-backfill-btn" class="btn btn-outline" style="display:none;padding:7px 14px;font-size:.8rem;border-color:#0e7490;color:#22d3ee;" onclick="psBackfillAccountingWeek()" title="Approve + sync every crew of this week's already-approved paysheets (idempotent — no double-count)">⟳ Sync this week</button>
-      <button id="acct-cleanup-btn" class="btn btn-outline" style="display:none;padding:7px 14px;font-size:.8rem;border-color:#ef4444;color:#ef4444;" onclick="acctCleanupOrphanedPaysheets()" title="Delete paysheets and daily inputs for jobs that no longer exist"><span class="ico ico-trash" aria-hidden="true"></span> Clean Up</button>
+      <button id="acct-backfill-btn" class="btn btn-outline" style="display:none;padding:7px 14px;font-size:.8rem;border-color:#0e7490;color:#22d3ee;" onclick="psBackfillAccountingWeek()" title="Approve + sync every crew of this week's already-approved pay sheets (idempotent — no double-count)">⟳ Sync this week</button>
+      <button id="acct-cleanup-btn" class="btn btn-outline" style="display:none;padding:7px 14px;font-size:.8rem;border-color:#ef4444;color:#ef4444;" onclick="acctCleanupOrphanedPaysheets()" title="Delete pay sheets and daily inputs for jobs that no longer exist"><span class="ico ico-trash" aria-hidden="true"></span> Clean Up</button>
       <button id="acct-export-pdf-btn" class="btn" style="padding:7px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="acctExportActivePDF()"><span class="ico ico-download" aria-hidden="true"></span> Export PDF</button>
       <button id="acct-export-excel-btn" class="btn" style="padding:7px 14px;font-size:.8rem;background:#16a34a;color:#fff;border:none;" onclick="acctExportActiveExcel()"><span class="ico ico-download" aria-hidden="true"></span> Export Excel</button>
     </div>
@@ -1914,23 +1914,23 @@
     <button class="btn btn-outline" onclick="acctNavBack()" style="font-size:.82rem;padding:6px 14px;" title="Back">← Back</button>
   </div>
 
-  <!-- Sub-tab navigation: Weekly Paysheet (existing) | Employee Earnings Detail | Weekly Time Sheets (new) -->
+  <!-- Sub-tab navigation: Weekly Pay Sheet (existing) | Employee Earnings Detail | Weekly Time Sheets (new) -->
   <div id="acct-subtabs">
-    <button type="button" class="acct-subtab-btn active" data-sub="paysheet"   onclick="acctSetSubTab('paysheet')">Weekly Paysheet</button>
+    <button type="button" class="acct-subtab-btn active" data-sub="paysheet"   onclick="acctSetSubTab('paysheet')">Weekly Pay Sheet</button>
     <button type="button" class="acct-subtab-btn"        data-sub="earnings"   onclick="acctSetSubTab('earnings')">Employee Earnings Detail</button>
     <button type="button" class="acct-subtab-btn"        data-sub="timesheets" onclick="acctSetSubTab('timesheets')">Weekly Time Sheets</button>
   </div>
 
   <!-- Admin notice about approvals -->
   <div id="acct-admin-notice" style="display:none;padding:10px 16px;background:rgba(26,86,219,.08);border:1px solid rgba(26,86,219,.3);border-radius:8px;font-size:.82rem;color:#93c5fd;margin-bottom:16px;">
-    <strong style="color:#1a56db;">Admin tip:</strong> Only <em>approved</em> weekly paysheets appear here. Open the Paysheet tab, load a Weekly Summary, and click <strong>✓ Approve for Accounting</strong> to make it visible.
+    <strong style="color:#1a56db;">Admin tip:</strong> Only <em>approved</em> weekly pay sheets appear here. Open the Pay Sheet tab, load a Weekly Summary, and click <strong>✓ Approve for Accounting</strong> to make it visible.
   </div>
 
   <!-- Main printable area -->
   <div id="acct-print-area">
     <!-- Populated by acctRender() -->
     <div style="padding:48px;text-align:center;color:var(--muted);">
-      Select a week ending above to view the accounting paysheet.
+      Select a week ending above to view the accounting pay sheet.
     </div>
   </div>
 
@@ -2318,7 +2318,7 @@
   </div>
 </div>
 
-<!-- Pull Daily Inputs Modal (admin: multiselect inputs to re-file into a paysheet's week) -->
+<!-- Pull Daily Inputs Modal (admin: multiselect inputs to re-file into a pay sheet's week) -->
 <div class="modal-overlay" id="ps-pull-modal" onclick="if(event.target===this)psPullClose()">
   <div class="modal" style="width:640px;max-width:96vw;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
@@ -2347,7 +2347,7 @@
       <h2 style="margin:0;font-size:1.1rem;"><span class="ico ico-users" aria-hidden="true"></span> Replace Employee List</h2>
       <button class="btn btn-outline" style="margin:0;padding:4px 12px;font-size:.82rem;" onclick="empCloseReplace()">✕ Close</button>
     </div>
-    <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;line-height:1.4;">One employee per line: <strong>number</strong> then <strong>name</strong> (e.g. <code>4456 Diaz, Carlos</code>). This <strong>replaces every current employee</strong>. The current list is backed up first. Past paysheets, daily inputs and saved crews keep the names/numbers they were saved with.</div>
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;line-height:1.4;">One employee per line: <strong>number</strong> then <strong>name</strong> (e.g. <code>4456 Diaz, Carlos</code>). This <strong>replaces every current employee</strong>. The current list is backed up first. Past pay sheets, daily inputs and saved crews keep the names/numbers they were saved with.</div>
     <textarea id="emp-replace-text" class="fi" rows="14" oninput="empReplacePreview()" style="width:100%;flex:1;min-height:200px;resize:vertical;font-family:monospace;font-size:.8rem;"></textarea>
     <div id="emp-replace-preview" style="font-size:.8rem;margin-top:8px;"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
@@ -2396,7 +2396,7 @@
   <div class="modal" style="width:400px;max-width:96vw;">
     <h2 style="margin:0 0 10px;"><span class="ico ico-save" aria-hidden="true"></span> Save Daily Input</h2>
     <div id="di-save-input-summary" style="margin-bottom:18px;font-size:.87rem;color:var(--muted);line-height:1.5;"></div>
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:18px;">Once saved this record will appear in the Submission Log and be included in the weekly paysheet compile. Make sure the crews and hours are correct before confirming.</div>
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:18px;">Once saved this record will appear in the Submission Log and be included in the weekly pay sheet compile. Make sure the crews and hours are correct before confirming.</div>
     <div style="display:flex;gap:10px;">
       <button class="btn btn-outline" style="flex:1;margin:0;" onclick="diCancelSaveInput()">Cancel</button>
       <button class="btn" style="flex:1;margin:0;" onclick="diConfirmSaveInput()">Confirm &amp; Save</button>
@@ -2474,7 +2474,7 @@
       <div id="cw-approve-file-name" style="font-size:.8rem;color:var(--green);margin-top:6px;min-height:1.1em;"></div>
     </div>
 
-    <div style="font-size:.78rem;color:var(--muted);margin:14px 0 18px;">On approval: labor is written to each area × labor code (Daily Input / paysheet tracking), materials (cost + tax) are added to the material budget, and the material markup profit is added to the Dashboard margin for this job.</div>
+    <div style="font-size:.78rem;color:var(--muted);margin:14px 0 18px;">On approval: labor is written to each area × labor code (Daily Input / pay sheet tracking), materials (cost + tax) are added to the material budget, and the material markup profit is added to the Dashboard margin for this job.</div>
 
     <div style="display:flex;gap:10px;">
       <button class="btn btn-outline" style="flex:1;margin:0;" onclick="cwApproveCancel()">Cancel</button>
@@ -2499,11 +2499,11 @@
 </div><!-- /app-screen -->
 
 <!-- Users Management Modal -->
-<!-- Load Paysheet Modal -->
+<!-- Load Pay Sheet Modal -->
 <div class="modal-overlay" id="ps-load-modal">
   <div class="modal" style="width:800px;max-width:96vw;">
-    <h2><span class="ico ico-folder" aria-hidden="true"></span> Saved Paysheets</h2>
-    <p style="color:var(--muted);font-size:.85rem;margin-top:0;">Organized by week ending. Create a folder, then save paysheets into it.</p>
+    <h2><span class="ico ico-folder" aria-hidden="true"></span> Saved Pay Sheets</h2>
+    <p style="color:var(--muted);font-size:.85rem;margin-top:0;">Organized by week ending. Create a folder, then save pay sheets into it.</p>
     <div style="margin-bottom:10px;display:flex;gap:10px;align-items:center;">
       <input id="ps-load-search" class="fi" placeholder="Search by job, week ending, or foreman…" style="flex:1;" oninput="renderPSLoadList()">
       <button id="ps-new-folder-btn" class="btn btn-outline" style="white-space:nowrap;padding:7px 14px;margin-top:0;font-size:.83rem;" onclick="psToggleNewFolderForm()">+ New Folder</button>
@@ -2531,7 +2531,7 @@
 <div class="modal-overlay" id="ps-save-dest-modal">
   <div class="modal" style="width:520px;max-width:96vw;">
     <h2><span class="ico ico-save" aria-hidden="true"></span> Choose Save Folder</h2>
-    <p style="color:var(--muted);font-size:.85rem;margin-top:4px;">Select which week ending folder to save this paysheet into:</p>
+    <p style="color:var(--muted);font-size:.85rem;margin-top:4px;">Select which week ending folder to save this pay sheet into:</p>
     <div id="ps-save-dest-list" style="margin:14px 0;max-height:280px;overflow-y:auto;"></div>
     <div id="ps-save-dest-new-section" style="border-top:1px solid var(--border);padding-top:12px;">
       <div style="font-size:.82rem;color:var(--muted);margin-bottom:8px;font-weight:600;">Or save to a new week ending:</div>
@@ -2882,8 +2882,8 @@ async function loadAllData(source) {
     const metaSnap = await db.collection('jobmeta').get();
     metaSnap.docs.forEach(d => { _jobMeta[d.id] = d.data(); });
   } catch(e) { /* jobmeta collection may not exist yet */ }
-  // Backfill _jobMeta from saved paysheets for any job that has no explicit meta entry.
-  // Sort most-recent-first so the latest saved header wins when multiple paysheets exist.
+  // Backfill _jobMeta from saved pay sheets for any job that has no explicit meta entry.
+  // Sort most-recent-first so the latest saved header wins when multiple pay sheets exist.
   (_cache.paysheets || [])
     .slice().sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''))
     .forEach(p => {
@@ -2901,9 +2901,9 @@ function isAdmin()   { return _currentUserRole === 'admin'; }
 function isPM()      { return ['project_manager','vp_operations','operations_manager','estimating_manager'].includes(_currentUserRole); }
 function isForeman() { return ['foreman','pickup_foreman'].includes(_currentUserRole); }
 
-// A foreman "owns" a weekly paysheet if any of its crews was submitted under
+// A foreman "owns" a weekly pay sheet if any of its crews was submitted under
 // their own login email (header.foreman). Used to show foremen only their own
-// paysheets in the lists. Admins/PMs are never restricted by this.
+// pay sheets in the lists. Admins/PMs are never restricted by this.
 function _psForemanOwnsPaysheet(p) {
   if (!_currentUser || !p) return false;
   const email = _currentUser.email;
@@ -3148,7 +3148,7 @@ firebase.auth().onAuthStateChanged(async user => {
   const _loaded = await _loadAllDataWithRetry();
   if (!_loaded) { if (!_painted) _showLoadRetry(); return; }
   dashLoadMarginThreshold().catch(() => {});
-  // One-time: regroup any older weekly paysheets into one-per-foreman (submitter).
+  // One-time: regroup any older weekly pay sheets into one-per-foreman (submitter).
   psRegroupPaysheetsBySubmitter().catch(() => {});
   if (_painted) {
     _refreshActiveView();   // replace the cache paint with fresh server data
@@ -3406,7 +3406,7 @@ function updateAdminUI() {
   if (purchasingTab) purchasingTab.style.display = isAdmin() ? '' : 'none';  // Purchasing is admin-only
   if (accountingTab) accountingTab.style.display = isForeman() ? 'none' : '';  // foremen can't see Accounting
   const psTab = document.getElementById('paysheet-tab');
-  if (psTab)         psTab.style.display         = isAccounting() ? 'none' : '';  // accounting can't see Paysheet
+  if (psTab)         psTab.style.display         = isAccounting() ? 'none' : '';  // accounting can't see Pay Sheet
   const diTab = document.getElementById('daily-inputs-tab');
   if (diTab)         diTab.style.display         = isAccounting() ? 'none' : '';  // accounting can't see Daily Inputs
   if (lcTab)         lcTab.style.display         = isAccounting() ? 'none' : '';  // accounting can't see Labor Codes
@@ -3479,7 +3479,7 @@ async function removeCSVFile(name) {
   let msg = `Delete job "${name}"?`;
   if (total > 0) {
     const parts = [];
-    if (relatedPaysheets.length)   parts.push(`${relatedPaysheets.length} saved paysheet${relatedPaysheets.length !== 1 ? 's' : ''}`);
+    if (relatedPaysheets.length)   parts.push(`${relatedPaysheets.length} saved pay sheet${relatedPaysheets.length !== 1 ? 's' : ''}`);
     if (relatedDailyInputs.length) parts.push(`${relatedDailyInputs.length} daily input${relatedDailyInputs.length !== 1 ? 's' : ''}`);
     msg += `\n\nThis will also permanently delete ${parts.join(' and ')} for this job.\n\nThis cannot be undone.`;
   }
@@ -3501,7 +3501,7 @@ async function removeCSVFile(name) {
       db.collection('jobs').doc(docId + '__MATERIAL'), // material sibling (no-op if none)
       db.collection('jobs').doc(docId + '__STOCKING'), // stocking sibling (no-op if none)
     ];
-    // Query the server for ALL of this job's paysheets + daily inputs — the local cache can be
+    // Query the server for ALL of this job's pay sheets + daily inputs — the local cache can be
     // partial (daily inputs only load once that tab is opened, and only the latest 300).
     const _seen = new Set();
     const _addRef = r => { if (r && !_seen.has(r.path)) { _seen.add(r.path); refs.push(r); } };
@@ -3558,8 +3558,8 @@ async function purgeOrphanedJobData() {
   add('CO budgets',           'corbudgets',         _cache.corbudgets,        'jobId');
   add('CO material budgets',  'comaterialbudgets',  _cache.comaterialbudgets, 'jobId');
   add('Write-ups',            'cowriteups',         _cache.cowriteups,        'jobId');
-  // Paysheets + daily inputs: read the full collections from the server (cache can be partial).
-  for (const [label, coll] of [['Saved paysheets', 'paysheets'], ['Daily inputs', 'dailyinput']]) {
+  // Pay Sheets + daily inputs: read the full collections from the server (cache can be partial).
+  for (const [label, coll] of [['Saved pay sheets', 'paysheets'], ['Daily inputs', 'dailyinput']]) {
     try {
       const snap = await db.collection(coll).get();
       const orphans = snap.docs.filter(d => { const j = (d.data() || {}).job; return j && !existing.has(j); });
@@ -4800,7 +4800,7 @@ async function empReplaceConfirm() {
   const { list, bad } = _empParseList(document.getElementById('emp-replace-text').value);
   if (!list.length || bad.length) { empReplacePreview(); return; }
   const old = getEmployees();
-  if (!await uiConfirm(`Replace ALL ${old.length} current employees with ${list.length} new employees?\n\nThe current list is backed up first. Past paysheets, daily inputs and saved crews are not changed.`)) return;
+  if (!await uiConfirm(`Replace ALL ${old.length} current employees with ${list.length} new employees?\n\nThe current list is backed up first. Past pay sheets, daily inputs and saved crews are not changed.`)) return;
   const go = document.getElementById('emp-replace-go');
   if (go) { go.disabled = true; go.textContent = 'Replacing…'; }
   try {
@@ -5004,7 +5004,7 @@ function dashGetApprovedWorkOrders(jobName) {
       return s + (corb ? corbInternalAmount(corb) : (c.burnAmount || 0));
     }, 0);
 }
-// Paysheet over-budget — itemized. For each REGULAR (non-COR/burn) area+code where
+// Pay Sheet over-budget — itemized. For each REGULAR (non-COR/burn) area+code where
 // approved spend exceeds budget, returns the overage (paid − budget) plus a
 // representative date (latest week-ending) so it can be plotted on the margin graph.
 function dashGetOverBudgetItems(jobName) {
@@ -5035,7 +5035,7 @@ function dashGetOverBudgetItems(jobName) {
 function dashGetOverBudget(jobName) {
   return dashGetOverBudgetItems(jobName).reduce((s, i) => s + i.over, 0);
 }
-// Combined amount subtracted from margin (approved work orders + paysheet over-budget).
+// Combined amount subtracted from margin (approved work orders + pay sheet over-budget).
 function dashGetMarginDeductions(jobName) {
   return dashGetApprovedWorkOrders(jobName) + dashGetOverBudget(jobName);
 }
@@ -6058,7 +6058,7 @@ function dashRenderMarginChart(jobName) {
   if (noContract) noContract.style.display = 'none';
   if (chartBox)   chartBox.style.display   = '';
 
-  // Clean starting margin (Contract − Budget). Approved Work Orders and paysheet
+  // Clean starting margin (Contract − Budget). Approved Work Orders and pay sheet
   // over-budget then erode it as tracked points over time, ending exactly at the
   // Margin card value (Contract − Budget − work orders − over-budget).
   const startingMargin = contractAmt - totalBudget;
@@ -8368,7 +8368,7 @@ function diAddCrew() {
     _diAllData[jobName].__crewLeadNames[_diCrewCount] = '';
     _diAllData[jobName].__crewLeadNums[_diCrewCount]  = '';
   }
-  // Keep paysheet state in sync
+  // Keep pay sheet state in sync
   _psEnsureCrew(_diCrewCount);
   _diActiveCrew = _diCrewCount;
   diRenderCrewTabs();
@@ -8511,7 +8511,7 @@ async function diLoadCrewSet(id) {
     // Show every loaded name — grow the visible Crew Members rows past the default 10.
     _diEmpRowCount[_diActiveCrew] = Math.max(_diEmpRowCount[_diActiveCrew] || DI_EMP_ROWS, emps.length);
     _diPersistEmpRowCount(_diActiveCrew);
-    // Sync paysheet crew name
+    // Sync pay sheet crew name
     if (_psState && _psState[_diActiveCrew]) {
       _psState[_diActiveCrew].header.crewName = s.name;
       if (_psActiveCrew === _diActiveCrew) {
@@ -8665,7 +8665,7 @@ function diRenderCrewTable() {
         }
       }
 
-      // Sync crew lead name → paysheet Crew header field for this crew
+      // Sync crew lead name → pay sheet Crew header field for this crew
       if (_psState && _psState[_diActiveCrew]) {
         _psState[_diActiveCrew].header.crewName = val.trim();
         if (_psActiveCrew === _diActiveCrew) {
@@ -9085,7 +9085,7 @@ async function diClearEmployees() {
     if (_diAllData[jn].__crewLeadNames) _diAllData[jn].__crewLeadNames[crew] = '';
     if (_diAllData[jn].__crewLeadNums)  _diAllData[jn].__crewLeadNums[crew]  = '';
   }
-  // Paysheet crew name was synced from the lead (Load Crew) — reset it only if it still matches.
+  // Pay Sheet crew name was synced from the lead (Load Crew) — reset it only if it still matches.
   if (prevLead && _psState && _psState[crew] && (_psState[crew].header.crewName || '').trim() === prevLead) {
     _psState[crew].header.crewName = '';
     if (_psActiveCrew === crew) { const el = document.getElementById('ps-crew'); if (el) el.value = ''; }
@@ -9138,7 +9138,7 @@ function _diAreaList() {
     .slice()
     .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
     .map(corbAreaKey);
-  // Also surface areas that were added by a weekly paysheet edit — they may not
+  // Also surface areas that were added by a weekly pay sheet edit — they may not
   // appear in the CSV or budget, so they wouldn't be in psGetAreas() otherwise.
   const psExtra = [];
   (_cache.dailyInputs || []).filter(d => d.job === jobName).forEach(d => {
@@ -9378,10 +9378,10 @@ function _diCodeItems(area, jobName, csvFile) {
   } else if (csvFile && area) {
     const areaRows = csvFile.rows.filter(r => r.area === area);
     if (areaRows.length) {
-      // Remaining comes from the SAME source the paysheet + Budget-by-Area use
+      // Remaining comes from the SAME source the pay sheet + Budget-by-Area use
       // (psGetAreaCodeData): exact per-code budget minus exact per-code payroll, with
       // a group fallback only for legacy group-code rows. Routing all three through one
-      // function guarantees the dropdown, the Budget-by-Area table, and the paysheet
+      // function guarantees the dropdown, the Budget-by-Area table, and the pay sheet
       // always line up. One entry per code (repeats collapsed to the code total).
       const seenCodes = new Set();
       areaRows.filter(r => isForemanAllowedCode(r.costCode)).forEach(r => {
@@ -9848,7 +9848,7 @@ async function diLoadDraftById(docId) {
     const diSel = document.getElementById('di-job-select');
     if (psSel) { psSel.value = d.job || ''; }
     if (diSel) { diSel.value = d.job || ''; }
-    // Trigger job change so Budget by Area, paysheet, and lock state all update
+    // Trigger job change so Budget by Area, pay sheet, and lock state all update
     onJobChanged();
     // Store draft data into the per-job store then switch to it (overwrites blank data onJobChanged just set)
     const jobName = d.job || '';
@@ -10102,9 +10102,9 @@ async function diConfirmSaveInput() {
   await submitDailyInput(date, jobName, crews);
 }
 
-// Fill paysheet from a just-submitted daily input and auto-save into the matching week-ending folder.
+// Fill pay sheet from a just-submitted daily input and auto-save into the matching week-ending folder.
 async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
-  // Ensure all submitted crews have paysheet state
+  // Ensure all submitted crews have pay sheet state
   crews.forEach(c => { if (c.crewNum) _psEnsureCrew(c.crewNum); });
   crews.forEach(c => {
     const crewNum = c.crewNum;
@@ -10115,7 +10115,7 @@ async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
     // Use PS_MAX_ROWS (60) so ri can reach up to PS_MAIN_ROWS-1 without going out of bounds
     state.rows              = Array.from({length: PS_MAX_ROWS}, () => _psEmptyRow());
     state.splits            = _psEmptySplits();
-    state.header.foremanSig = ''; // never carry a sig from a previous paysheet
+    state.header.foremanSig = ''; // never carry a sig from a previous pay sheet
 
     // Set header fields
     state.header.weekEnding = date;
@@ -10171,7 +10171,7 @@ async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
     });
   });
 
-  // Switch paysheet view to the active daily input crew
+  // Switch pay sheet view to the active daily input crew
   _psSaveHeaderFields();
   _psActiveCrew = _diActiveCrew;
   _psEnsureCrew(_psActiveCrew); // guarantee state exists for active crew
@@ -10185,7 +10185,7 @@ async function psAutoFillFromSubmission(crews, jobName, date, submissionId) {
   psRenderMainTable();
   psRenderCrewTable();
 
-  // Scroll to paysheet so user can see it before choosing folder
+  // Scroll to pay sheet so user can see it before choosing folder
   const el = document.getElementById('paysheet-print-area');
   if (el) el.scrollIntoView({ behavior: 'smooth' });
 
@@ -10198,7 +10198,7 @@ let _diLogDocs   = [];   // cached from real-time listener
 let _diLogUnsub  = null; // firestore unsubscribe handle
 let _diWeekFilter = '';  // currently selected pay-week ending date (YYYY-MM-DD), or '' for all
 
-// Active job for paysheet scoping. Use the canonical hidden ps-job-select — the
+// Active job for pay sheet scoping. Use the canonical hidden ps-job-select — the
 // SAME source the Submission Log reads — so the compiled list, count, Export and
 // the log can never show two different jobs. diJobChanged keeps it in sync with
 // the visible ACTIVE JOB selector on every change.
@@ -10206,7 +10206,7 @@ function _psActiveJob() {
   return (document.getElementById('ps-job-select') || {}).value || '';
 }
 
-// A compiled paysheet counts as approved (for the at-a-glance marker) when any of
+// A compiled pay sheet counts as approved (for the at-a-glance marker) when any of
 // its crews is approved, or the legacy doc-level approvedAt flag is set. Reuses the
 // existing approval state only — does not change how approval works. Un-approving
 // the last crew clears these, so the marker disappears automatically.
@@ -10217,19 +10217,19 @@ function _psIsApproved(p) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PAYSHEET TAB — project folder navigation (mirrors the Accounting tab).
+// PAY SHEET TAB — project folder navigation (mirrors the Accounting tab).
 // Level 1: one folder card per project. Click → opens that project's workspace
-// (compiled paysheets + submission log + builder, all scoped to the active job,
+// (compiled pay sheets + submission log + builder, all scoped to the active job,
 // exactly as before). A ← Back button returns to the folders overview.
 // This is purely a navigation wrapper — no compile/approval/save logic changes.
 // ═══════════════════════════════════════════════════════════════════════════
-let _psNav = 'folders';   // 'folders' | 'detail' — Paysheet subtab navigation
+let _psNav = 'folders';   // 'folders' | 'detail' — Pay Sheet subtab navigation
 
 // Per-project aggregates for the overview cards. Respects foreman scoping so a
-// foreman only sees folders/counts for their own submissions and paysheets.
+// foreman only sees folders/counts for their own submissions and pay sheets.
 function _psJobFolders() {
   const foreman = isForeman();
-  const map = new Map(); // job → { paysheets, approved, submissions, weeks:Set }
+  const map = new Map(); // job → { pay sheets, approved, submissions, weeks:Set }
   const ensure = j => {
     if (!map.has(j)) map.set(j, { paysheets: 0, approved: 0, submissions: 0, weeks: new Set() });
     return map.get(j);
@@ -10238,7 +10238,7 @@ function _psJobFolders() {
   getSavedCSVFiles().forEach(f => { if (f && f.name) ensure(f.name); });
   // Leftover records for a DELETED budget must not resurrect its folder.
   const live = new Set(map.keys());
-  // Compiled weekly paysheets
+  // Compiled weekly pay sheets
   (_cache.paysheets || [])
     .filter(p => p.type === 'weekly' && p.job && live.has(p.job))
     .filter(p => !foreman || _psForemanOwnsPaysheet(p))
@@ -10271,7 +10271,7 @@ function psRenderFolders() {
       onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'">
       <div style="font-size:.9rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${eh(f.job)}</div>
       <div style="font-size:1.6rem;font-weight:800;color:var(--accent);line-height:1;margin-top:8px;">${f.paysheets}</div>
-      <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-top:3px;">Compiled Paysheet${f.paysheets !== 1 ? 's' : ''}</div>
+      <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-top:3px;">Compiled Pay Sheet${f.paysheets !== 1 ? 's' : ''}</div>
       <div style="margin-top:11px;border-top:1px solid var(--border);padding-top:8px;font-size:.78rem;color:var(--muted);">
         ${f.submissions} submission${f.submissions !== 1 ? 's' : ''} &middot; ${f.approved} approved
       </div>
@@ -10279,7 +10279,7 @@ function psRenderFolders() {
   wrap.innerHTML = `
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
       <span style="font-weight:700;font-size:1rem;color:var(--text);">Projects</span>
-      <span style="font-size:.82rem;color:var(--muted);">${folders.length} project${folders.length !== 1 ? 's' : ''} &middot; ${totalPS} paysheet${totalPS !== 1 ? 's' : ''}</span>
+      <span style="font-size:.82rem;color:var(--muted);">${folders.length} project${folders.length !== 1 ? 's' : ''} &middot; ${totalPS} pay sheet${totalPS !== 1 ? 's' : ''}</span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;">${cards}</div>`;
 }
@@ -10300,7 +10300,7 @@ function psBackToFolders() {
   psApplyNavVisibility();
 }
 
-// Toggle folders overview vs. the project workspace. Only acts on the Paysheet
+// Toggle folders overview vs. the project workspace. Only acts on the Pay Sheet
 // subtab; the Daily Inputs subtab manages its own layout.
 function psApplyNavVisibility() {
   if (activeTab !== 'paysheet') return;
@@ -10316,7 +10316,7 @@ function psApplyNavVisibility() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// DAILY INPUTS SUBTAB — project folder navigation (mirrors the Paysheet subtab).
+// DAILY INPUTS SUBTAB — project folder navigation (mirrors the Pay Sheet subtab).
 // Level 1: one folder card per project. Click → opens that project's daily-input
 // workspace (Budget by Area + Daily Input), scoped to the active job exactly as
 // before. A ← Back button returns to the overview. Navigation wrapper only — no
@@ -10402,7 +10402,7 @@ function diApplyNavVisibility() {
 }
 
 // Populate the Pay Week dropdown from daily input data AND compiled weekly
-// paysheets, so a paysheet moved/edited to a week with no daily inputs of its
+// pay sheets, so a pay sheet moved/edited to a week with no daily inputs of its
 // own still appears in the dropdown. Scoped to the ACTIVE JOB so weeks belonging
 // to other jobs don't appear while a job is selected.
 function renderDiWeekSelect() {
@@ -10422,7 +10422,7 @@ function renderDiWeekSelect() {
   if (!sel.value && _diWeekFilter) sel.value = _diWeekFilter;
 }
 
-// Render/hide the Compile button + compiled paysheets log for the selected pay week.
+// Render/hide the Compile button + compiled pay sheets log for the selected pay week.
 function renderDiWeekCompile() {
   const wrap      = document.getElementById('di-week-compile-wrap');
   const psLog     = document.getElementById('di-week-paysheets');
@@ -10444,7 +10444,7 @@ function renderDiWeekCompile() {
     const hasDone = !!activeJob && (_cache.paysheets || []).some(p => p.type === 'weekly' && p.weekEnding === we && p.job === activeJob);
     wrap.style.display = 'flex';
     wrap.innerHTML =
-      `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileAllUncompiled('${we}')"><span class="ico ico-clipboard" aria-hidden="true"></span> Compile into Weekly Paysheet</button>` +
+      `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileAllUncompiled('${we}')"><span class="ico ico-clipboard" aria-hidden="true"></span> Compile into Weekly Pay Sheet</button>` +
       (activeJob
         ? (hasDone
             ? `<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>`
@@ -10452,15 +10452,15 @@ function renderDiWeekCompile() {
         : `<span style="font-size:.75rem;color:var(--muted);">Select a job to compile</span>`);
   }
 
-  // ── Compiled paysheets log for this week ──
+  // ── Compiled pay sheets log for this week ──
   if (!psLog) return;
-  const allWeeks = !we;   // "— All weeks —" selected → show every week's paysheets
+  const allWeeks = !we;   // "— All weeks —" selected → show every week's pay sheets
 
   // Scope strictly to the ACTIVE JOB: require an exact job match so other jobs'
-  // paysheets never leak in. With no active job selected, nothing is shown.
+  // pay sheets never leak in. With no active job selected, nothing is shown.
   const sheets = !activeJob ? [] : (_cache.paysheets || [])
     .filter(p => (allWeeks || p.weekEnding === we) && p.job === activeJob)
-    // Foremen see only their own paysheets here; admins/PMs see all.
+    // Foremen see only their own pay sheets here; admins/PMs see all.
     .filter(p => !isForeman() || _psForemanOwnsPaysheet(p))
     // All-weeks view: newest week first, then by crew; single week: by crew.
     .sort((a, b) => (b.weekEnding || '').localeCompare(a.weekEnding || '') || (a.crewNum || 0) - (b.crewNum || 0) || (a.savedAt || '').localeCompare(b.savedAt || ''));
@@ -10470,10 +10470,10 @@ function renderDiWeekCompile() {
   psLog.style.display = '';
   psLog.innerHTML =
     `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 14px;background:var(--surface2);border-bottom:1px solid var(--border);">
-      <span style="font-size:.76rem;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.06em;">★ Compiled Paysheets — ${allWeeks ? 'All Weeks' : 'Week Ending ' + _fmtWeekDate(we)}</span>
+      <span style="font-size:.76rem;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.06em;">★ Compiled Pay Sheets — ${allWeeks ? 'All Weeks' : 'Week Ending ' + _fmtWeekDate(we)}</span>
       <span style="display:flex;align-items:center;gap:10px;">
         ${(!isForeman() && !allWeeks) ? `<button class="btn" style="font-size:.72rem;padding:4px 10px;margin:0;background:#1a56db;color:#fff;border:none;white-space:nowrap;" onclick="psExportCompiledWeekPDF('${we}')"><span class="ico ico-download" aria-hidden="true"></span> Export all PDF</button>` : ''}
-        <span style="font-size:.74rem;color:var(--muted);">${sheets.length} paysheet${sheets.length !== 1 ? 's' : ''}</span>
+        <span style="font-size:.74rem;color:var(--muted);">${sheets.length} pay sheet${sheets.length !== 1 ? 's' : ''}</span>
       </span>
     </div>` +
     sheets.map(p => {
@@ -10488,7 +10488,7 @@ function renderDiWeekCompile() {
         : (p.crewName ? eh(p.crewName) : '');
       const crewCount  = p.crewCount || (p.crewNames && p.crewNames.length) || (p.crewName ? 1 : '');
       // Foreman label uses the REAL foreman field (submitter), not the crew string,
-      // so each paysheet is clearly tagged with whose it is.
+      // so each pay sheet is clearly tagged with whose it is.
       const foremanLabel = p.foreman ? eh(p.foreman) : (p.crewName ? eh(p.crewName) : '');
       return `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid var(--border);flex-wrap:wrap;">
         <div style="flex:1;min-width:120px;">
@@ -10504,17 +10504,17 @@ function renderDiWeekCompile() {
           <div style="font-size:.74rem;color:var(--muted);">Saved ${savedStr}${p.savedBy ? ' · ' + eh(p.savedBy) : ''}</div>
         </div>
         <button class="btn" style="font-size:.78rem;padding:5px 12px;white-space:nowrap;margin-top:0;" onclick="loadPaysheetFromCloud('${safeId}')">Load</button>
-        ${!isForeman() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;white-space:nowrap;margin-top:0;border-color:#1a56db;color:#60a5fa;" onclick="psExportOnePaysheetPDF('${safeId}')" title="Export this foreman's paysheet to PDF"><span class="ico ico-download" aria-hidden="true"></span> PDF</button>` : ''}
-        ${isAdmin() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;white-space:nowrap;margin-top:0;color:var(--muted);border-color:var(--border);" onclick="psPullInputsToWeek('${safeId}')" title="Re-file daily inputs from another week into this paysheet's week (keeps original entry timestamps)"><span class="ico ico-corner-down-right" aria-hidden="true"></span> Pull inputs</button>` : ''}
+        ${!isForeman() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;white-space:nowrap;margin-top:0;border-color:#1a56db;color:#60a5fa;" onclick="psExportOnePaysheetPDF('${safeId}')" title="Export this foreman's pay sheet to PDF"><span class="ico ico-download" aria-hidden="true"></span> PDF</button>` : ''}
+        ${isAdmin() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;white-space:nowrap;margin-top:0;color:var(--muted);border-color:var(--border);" onclick="psPullInputsToWeek('${safeId}')" title="Re-file daily inputs from another week into this pay sheet's week (keeps original entry timestamps)"><span class="ico ico-corner-down-right" aria-hidden="true"></span> Pull inputs</button>` : ''}
         ${canManagePSFolders() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;border-color:#ef4444;color:#ef4444;white-space:nowrap;margin-top:0;" onclick="deleteSavedPaysheet('${safeId}',event)">Delete</button>` : ''}
       </div>`;
     }).join('');
 }
 
-// A daily input that a weekly paysheet was compiled from (sourceDailyInputIds) belongs
-// to THAT paysheet's week. If its weekEnding drifted (e.g. an older re-file used the save
-// time), re-file it to the paysheet's week so the Pay Week filter, folders and Compile all
-// agree. Only fixes inputs claimed by paysheets of ONE week; ambiguous ones are untouched.
+// A daily input that a weekly pay sheet was compiled from (sourceDailyInputIds) belongs
+// to THAT pay sheet's week. If its weekEnding drifted (e.g. an older re-file used the save
+// time), re-file it to the pay sheet's week so the Pay Week filter, folders and Compile all
+// agree. Only fixes inputs claimed by pay sheets of ONE week; ambiguous ones are untouched.
 let _diWeekHealBusy = false;
 async function _diHealWeeksFromPaysheets() {
   if (_diWeekHealBusy || !canCompilePaysheet()) return;
@@ -10638,9 +10638,9 @@ function _renderCompileSelectedBar() {
 
 // Compile ONLY the selected submission-log daily inputs. Groups the selection by
 // job + week (never merges across jobs/weeks) and runs the SAME compile path once
-// per group, scoped to just those inputs. Other foremen's paysheets are untouched.
+// per group, scoped to just those inputs. Other foremen's pay sheets are untouched.
 async function psCompileSelectedInputs() {
-  if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can compile weekly paysheets.'); return; }
+  if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can compile weekly pay sheets.'); return; }
   if (!_diSelectedInputs.size) { alert('Select one or more daily inputs in the Submission Log first.'); return; }
 
   const inputs = (_cache.dailyInputs || []).filter(d => _diSelectedInputs.has(d.id));
@@ -10662,7 +10662,7 @@ async function psCompileSelectedInputs() {
     return `  • ${g.job} — Week Ending ${_fmtWeekDate(g.week)} (${g.ids.length} input${g.ids.length !== 1 ? 's' : ''})`;
   }).join('\n');
   const totalSel = inputs.length;
-  if (!await uiConfirm(`Compile ${totalSel} selected daily input${totalSel !== 1 ? 's' : ''} into weekly paysheets?\n\n${groupKeys.length} group${groupKeys.length !== 1 ? 's' : ''} (by job + week):\n${groupDesc}\n\nEach selected daily input becomes its OWN separate paysheet for its week. Other paysheets for these weeks are left untouched.`)) return;
+  if (!await uiConfirm(`Compile ${totalSel} selected daily input${totalSel !== 1 ? 's' : ''} into weekly pay sheets?\n\n${groupKeys.length} group${groupKeys.length !== 1 ? 's' : ''} (by job + week):\n${groupDesc}\n\nEach selected daily input becomes its OWN separate pay sheet for its week. Other pay sheets for these weeks are left untouched.`)) return;
 
   const summaries = [];
   for (const k of groupKeys) {
@@ -10678,7 +10678,7 @@ async function psCompileSelectedInputs() {
   try { renderDiWeekCompile(); } catch(_) {}
   try { diRenderLogRows(); } catch(_) {}
   alert(summaries.length
-    ? `Compiled selected inputs into weekly paysheets:\n\n${summaries.join('\n\n')}`
+    ? `Compiled selected inputs into weekly pay sheets:\n\n${summaries.join('\n\n')}`
     : 'No crew data found in the selected inputs to compile.');
 }
 
@@ -10704,11 +10704,11 @@ function diRenderLogRows() {
   // Foremen only see their own submissions
   if (isForeman() && _currentUser) docs = docs.filter(r => r.submittedBy === _currentUser.email);
 
-  // Merge supplemental paysheets into the log as pseudo-entries
+  // Merge supplemental pay sheets into the log as pseudo-entries
   const suppSheets = (_cache.paysheets || []).filter(p =>
     p.type === 'weekly' && (p.isSupplemental === true || (p.id && p.id.includes('_add_'))) &&
     (!jobName || p.job === jobName) &&
-    // Same Pay Week filter as the daily inputs above — a supplemental paysheet only
+    // Same Pay Week filter as the daily inputs above — a supplemental pay sheet only
     // shows under its own week ending.
     (!_diWeekFilter || p.weekEnding === _diWeekFilter)
   ).map(p => {
@@ -10779,7 +10779,7 @@ function diRenderLogRows() {
       () => { _diLogFilters[c.key] = msValues('dilog-ms-'+c.key); diRenderLogRows(); }));
   }
 
-  // Apply active filters (only to daily input rows; supplemental paysheets always show)
+  // Apply active filters (only to daily input rows; supplemental pay sheets always show)
   let filteredDI = docs;
   if (_diLogFilters.date.length)     filteredDI = filteredDI.filter(r => _diLogFilters.date.includes(r.date));
   if (_diLogFilters.job.length)      filteredDI = filteredDI.filter(r => _diLogFilters.job.includes(r.job));
@@ -10803,7 +10803,7 @@ function diRenderLogRows() {
     const isOpen   = _diLogExpanded.has(r.id);
 
     if (isPS) {
-      // ── Supplemental paysheet row ──
+      // ── Supplemental pay sheet row ──
       const p        = r._psDoc;
       const crewNums = Object.keys(p.crews || {}).map(ck => {
         const c = p.crews[ck];
@@ -10820,7 +10820,7 @@ function diRenderLogRows() {
             title="Show details">▶</button>
         </td>
         <td style="padding:8px 10px;">
-          <span style="font-size:.68rem;background:rgba(26,86,219,.15);color:#93c5fd;border:1px solid rgba(26,86,219,.3);padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;">ADDED PAYSHEET</span>${approved}
+          <span style="font-size:.68rem;background:rgba(26,86,219,.15);color:#93c5fd;border:1px solid rgba(26,86,219,.3);padding:1px 6px;border-radius:4px;font-weight:700;white-space:nowrap;">ADDED PAY SHEET</span>${approved}
         </td>
         <td style="padding:8px 10px;color:var(--muted);">${r.submittedTime||'—'}</td>
         <td style="padding:8px 10px;color:var(--accent);">${eh(r.job)}</td>
@@ -10841,12 +10841,12 @@ function diRenderLogRows() {
     const crewNums  = (r.crews||[]).map(crewLabel).join(', ');
     const empCount  = countEmps(r);
     // Green row = THIS specific daily input was actually compiled into a weekly
-    // paysheet — matched by the paysheet's exact sourceDailyInputIds (per-input),
-    // NOT merely sharing a job+week with some paysheet (which lit up every row).
+    // pay sheet — matched by the pay sheet's exact sourceDailyInputIds (per-input),
+    // NOT merely sharing a job+week with some pay sheet (which lit up every row).
     const hasPaysheet = (_cache.paysheets||[]).some(p =>
       p.type === 'weekly' && Array.isArray(p.sourceDailyInputIds) && p.sourceDailyInputIds.includes(r.id));
     const rowBg = hasPaysheet ? 'background:rgba(34,197,94,.08);border-left:3px solid #22c55e;' : '';
-    // Build Open buttons — one per crew that has a compiled paysheet doc
+    // Build Open buttons — one per crew that has a compiled pay sheet doc
     const openBtns = (r.crews||[]).map(crew => {
       const docId = (r.job + '_' + r.weekEnding + '_crew' + crew.crewNum).replace(/[^\w-]/g, '_');
       const ps    = (_cache.paysheets||[]).find(p => p.id === docId);
@@ -10861,7 +10861,7 @@ function diRenderLogRows() {
           style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.78rem;padding:2px 5px;border-radius:3px;transition:transform .15s;transform:${isOpen?'rotate(90deg)':''}"
           title="Show details">▶</button>
       </td>
-      <td style="padding:8px 10px;">${fmtDate(r.date)}${hasPaysheet ? '&nbsp;<span style="font-size:.68rem;color:#22c55e;font-weight:700;">✓ Paysheet</span>' : ''}</td>
+      <td style="padding:8px 10px;">${fmtDate(r.date)}${hasPaysheet ? '&nbsp;<span style="font-size:.68rem;color:#22c55e;font-weight:700;">✓ Pay Sheet</span>' : ''}</td>
       <td style="padding:8px 10px;color:var(--muted);">${r.submittedTime||'—'}</td>
       <td style="padding:8px 10px;color:var(--accent);">${eh(r.job)}</td>
       <td style="padding:8px 10px;">${crewNums}</td>
@@ -10999,7 +10999,7 @@ async function diMigratePayWeeks() {
   }
 }
 
-/** Detail expand view for a supplemental paysheet entry in the submission log. */
+/** Detail expand view for a supplemental pay sheet entry in the submission log. */
 function _diPsLogDetailHTML(p) {
   const thStyle = 'text-align:left;padding:3px 8px 3px 0;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;';
   const tdStyle = 'padding:4px 8px 4px 0;font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
@@ -11008,7 +11008,7 @@ function _diPsLogDetailHTML(p) {
     const c = p.crews[k];
     return c && (c.rows||[]).some(r => r.area || r.costCode);
   });
-  if (!crewKeys.length) return `<div style="padding:8px 16px 10px;color:var(--muted);font-size:.8rem;font-style:italic;">No rows saved yet — open the paysheet to fill it in.</div>`;
+  if (!crewKeys.length) return `<div style="padding:8px 16px 10px;color:var(--muted);font-size:.8rem;font-style:italic;">No rows saved yet — open the pay sheet to fill it in.</div>`;
   return `<div style="padding:6px 14px 12px 42px;background:rgba(255,255,255,.025);border-top:1px solid rgba(255,255,255,.06);">
     ${crewKeys.map(ck => {
       const c = p.crews[ck];
@@ -11036,10 +11036,10 @@ function _diPsLogDetailHTML(p) {
   </div>`;
 }
 
-/** Delete a supplemental paysheet from Firestore + cache and refresh the log. */
+/** Delete a supplemental pay sheet from Firestore + cache and refresh the log. */
 async function diDeleteSuppPaysheet(docId) {
   if (!isAdmin()) { alert('Admin access required.'); return; }
-  if (!await uiConfirm('Delete this added paysheet? This cannot be undone.')) return;
+  if (!await uiConfirm('Delete this added pay sheet? This cannot be undone.')) return;
   try {
     await db.collection('paysheets').doc(docId).delete();
     if (_cache.paysheets) _cache.paysheets = _cache.paysheets.filter(p => p.id !== docId);
@@ -11070,8 +11070,8 @@ function diToggleLogDetail(safeId) {
   }
 }
 
-// Every "area|code" (and area) on ANY weekly paysheet for this job + week, plus the
-// weekly paysheet currently open in the builder. null when no weekly paysheet exists yet.
+// Every "area|code" (and area) on ANY weekly pay sheet for this job + week, plus the
+// weekly pay sheet currently open in the builder. null when no weekly pay sheet exists yet.
 function _diPsSheetPairsFor(job, weekEnding) {
   const sheets = (_cache.paysheets || []).filter(p => p.type === 'weekly' && p.job === job && p.weekEnding === weekEnding);
   const pairs = new Set(), areas = new Set();
@@ -11089,19 +11089,19 @@ function _diPsSheetPairsFor(job, weekEnding) {
   } catch(_) {}
   return (sheets.length || live) ? { pairs, areas } : null;
 }
-// "(Removed)" is only real when that area + labor code is no longer on the weekly paysheet.
+// "(Removed)" is only real when that area + labor code is no longer on the weekly pay sheet.
 function _diIsRemovedNow(e, doc) {
   if (!e || e._psTag !== 'removed') return false;
   const sheet = doc ? _diPsSheetPairsFor(doc.job, doc.weekEnding) : null;
-  if (!sheet) return true;   // no weekly paysheet to compare against — trust the tag
+  if (!sheet) return true;   // no weekly pay sheet to compare against — trust the tag
   const codes = _diEntryCodes(e);
   return codes.length ? !codes.some(c => sheet.pairs.has(e.area + '|' + c)) : !sheet.areas.has(e.area);
 }
 
-// ── Employee names edited on a weekly paysheet's Crew Splits ──
+// ── Employee names edited on a weekly pay sheet's Crew Splits ──
 // Tags are written to the daily input only when an admin adds / removes / renames a name
-// on the paysheet (see psSplitNameChanged → _psSyncToDailyInputs). "(Removed)" is also
-// double-checked live: it never shows while that name is still on the paysheet(s)
+// on the pay sheet (see psSplitNameChanged → _psSyncToDailyInputs). "(Removed)" is also
+// double-checked live: it never shows while that name is still on the pay sheet(s)
 // compiled from this submission.
 const _diNormName = s => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
 function _diPsSplitNamesFor(doc) {
@@ -11357,7 +11357,7 @@ function _diEmpNameBlur(crew, i, val) {
     const leadNumEl  = document.getElementById('di-crew-lead-num');
     if (leadNameEl && crew === _diActiveCrew) leadNameEl.value = val;
     if (leadNumEl  && crew === _diActiveCrew) leadNumEl.value  = resolvedNum;
-    // Also sync paysheet crew header
+    // Also sync pay sheet crew header
     if (_psState && _psState[crew]) {
       _psState[crew].header.crewName = val.trim();
       if (_psActiveCrew === crew) {
@@ -11535,7 +11535,7 @@ function diViewSubmission(id) {
   db.collection('dailyinput').doc(id).get().then(async doc => {
     if (!doc.exists) { alert('Submission not found.'); return; }
     const r = doc.data();
-    // Find the daily paysheet — first try exact submissionId match, then fall back to job+date
+    // Find the daily pay sheet — first try exact submissionId match, then fall back to job+date
     let ps = (_cache.paysheets || []).find(p => p.submissionId === r.id)
           || (_cache.paysheets || []).find(p => p.job === r.job && p.date === r.date);
     if (!ps) {
@@ -11554,7 +11554,7 @@ function diViewSubmission(id) {
             .get();
         }
         if (snap.empty) {
-          alert('No saved paysheet found for this submission. Save daily input to a folder first.');
+          alert('No saved pay sheet found for this submission. Save daily input to a folder first.');
           return;
         }
         ps = snap.docs[0].data();
@@ -11562,7 +11562,7 @@ function diViewSubmission(id) {
         _cache.paysheets.push(ps);
       } catch(e) { alert('Load failed: ' + e.message); return; }
     }
-    // Load the daily paysheet into the paysheet view — detect how many crews were saved
+    // Load the daily pay sheet into the pay sheet view — detect how many crews were saved
     const savedCrewKeys = Object.keys(ps.crews || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
     const savedMax = savedCrewKeys.length ? Math.max(...savedCrewKeys) : 10;
     const loadMax = Math.max(_psCrewCount, savedMax);
@@ -11605,7 +11605,7 @@ async function diDeleteSubmission(id) {
   } catch(e) { alert('Delete failed: ' + e.message); }
 }
 
-// Auto-fill paysheet from current daily input state (manual button)
+// Auto-fill pay sheet from current daily input state (manual button)
 function psAutoFillFromDaily() {
   const jobName = document.getElementById('ps-job-select').value;
   if (!jobName) { alert('Please select a job using the "Active Job" selector at the top.'); return; }
@@ -11645,10 +11645,10 @@ function psAutoFillFromDaily() {
 
   psRenderMainTable();
   psRenderCrewTable();
-  alert('Paysheet filled from Daily Input for all crews.');
+  alert('Pay Sheet filled from Daily Input for all crews.');
 }
 
-// Auto-fill paysheet from a saved submission
+// Auto-fill pay sheet from a saved submission
 function diAutoFillFromLog(id) {
   db.collection('dailyinput').doc(id).get().then(doc => {
     if (!doc.exists) { alert('Submission not found.'); return; }
@@ -11659,7 +11659,7 @@ function diAutoFillFromLog(id) {
     psJobSel.value = r.job;
     onJobChanged();
 
-    // Fill each crew's paysheet from the submission
+    // Fill each crew's pay sheet from the submission
     (r.crews || []).forEach(c => {
       const crewNum = c.crewNum;
       if (!crewNum) return;
@@ -11700,13 +11700,13 @@ function diAutoFillFromLog(id) {
     psRenderMainTable();
     psRenderCrewTable();
 
-    // Scroll to paysheet
+    // Scroll to pay sheet
     document.getElementById('paysheet-print-area').scrollIntoView({behavior:'smooth'});
   }).catch(e => alert('Error loading submission: ' + e.message));
 }
 
 // ═══════════════════════════
-//  PAYSHEET
+//  PAY SHEET
 // ═══════════════════════════
 const PS_PAGE_ROWS  = 15;   // rows displayed per page
 const PS_MAX_ROWS   = 60;   // max rows stored (4 pages)
@@ -11715,7 +11715,7 @@ let _psCrewCount  = 10;  // grows when DI adds crews
 // Alias kept so old references to PS_MAIN_ROWS still resolve
 const PS_MAIN_ROWS  = PS_MAX_ROWS;
 
-// Per-crew paysheet state
+// Per-crew pay sheet state
 let _psActiveCrew = 1;
 /// Main table row: area/labor-code tracking
 // corBudgetId + corNumber are set for COR rows so psApproveSync can use ID-based lookup
@@ -11745,10 +11745,10 @@ function _psEnsureCrew(c) {
   if (c > _psCrewCount) _psCrewCount = c;
 }
 
-// 'weekly' = the only paysheet type used (daily input sheet removed)
+// 'weekly' = the only pay sheet type used (daily input sheet removed)
 let _psCurrentType  = 'weekly';
-let _psCurrentDocId = null;  // Firestore doc ID of the paysheet currently loaded in the view
-let _psEditMode    = false;  // true = daily paysheet in edit mode (admin/PM only)
+let _psCurrentDocId = null;  // Firestore doc ID of the pay sheet currently loaded in the view
+let _psEditMode    = false;  // true = daily pay sheet in edit mode (admin/PM only)
 let _psFilterCode  = '';     // active labor code filter (weekly only)
 let _psCurrentPage = 0;      // current page index for single-page navigation
 
@@ -11795,7 +11795,7 @@ function psLoadHeaderFields() {
     el.style.pointerEvents = locked ? 'none' : '';
     el.style.color         = locked ? '#555'  : '';
   });
-  // Foreman signature: only show on weekly paysheet
+  // Foreman signature: only show on weekly pay sheet
   const sigWrap = document.getElementById('ps-foreman-sig-wrap');
   if (sigWrap) sigWrap.style.display = (_psCurrentType === 'weekly') ? 'flex' : 'none';
   if (_psCurrentType === 'weekly') _psUpdateForemanSigArea();
@@ -11807,7 +11807,7 @@ function psUpdateTitle() {
   if (!titleEl) return;
   const jobName = document.getElementById('ps-job-select')?.value || '';
   const isDaily = _psCurrentType === 'daily';
-  const type    = isDaily ? 'Daily Input' : 'Weekly Summary Paysheet';
+  const type    = isDaily ? 'Daily Input' : 'Weekly Summary Pay Sheet';
   titleEl.textContent = jobName
     ? `${type} \u2014 ${jobName}`
     : `${type}`;
@@ -11839,7 +11839,7 @@ function psRenderCrewTabs() {
     return _colorByForeman[k];
   };
   for (let c=1; c<=_psCrewCount; c++) {
-    // Foreman on weekly paysheet: only show their own crew tab(s)
+    // Foreman on weekly pay sheet: only show their own crew tab(s)
     if (_weeklyForemanView && _currentUser && (_psState[c].header.foreman || '') !== _currentUser.email) continue;
     const hasData = _psState[c].rows.some(r => r.area || r.costCode || r.weAmount) ||
                     _psState[c].splits.some(s => s.employee || s.empNum);
@@ -11867,7 +11867,7 @@ function psRenderCrewTabs() {
   const isDaily  = _psCurrentType === 'daily';
 
   if (!isDaily) {
-    // Summary (weekly) paysheet action buttons
+    // Summary (weekly) pay sheet action buttons
     if (_psEditMode) {
       // Management full-edit mode: Save Edits / Cancel
       actWrap.innerHTML = `
@@ -11878,7 +11878,7 @@ function psRenderCrewTabs() {
       actWrap.innerHTML = `
         <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="psSaveWeeklySummaryForeman()"><span class="ico ico-save" aria-hidden="true"></span> Save My Entries</button>`;
     } else {
-      // Management view: Edit + Export PDF + Approve + Save Paysheet
+      // Management view: Edit + Export PDF + Approve + Save Pay Sheet
       // Per-crew approval: read the ACTIVE crew's approval state from the loaded doc.
       // Legacy docs (doc-level approvedAt, no per-crew flags) count as approved.
       const _acctDoc   = _psCurrentDocId ? (_cache.paysheets||[]).find(p => p.id === _psCurrentDocId) : null;
@@ -11897,14 +11897,14 @@ function psRenderCrewTabs() {
             : `<span style="font-size:.78rem;color:var(--muted);font-weight:600;white-space:nowrap;padding:0 4px;">Not approved</span>`);
       actWrap.innerHTML = `
         <span id="ps-autosave-status" style="font-size:.78rem;font-weight:600;white-space:nowrap;padding:0 4px;"></span>
-        <button class="btn btn-outline" style="white-space:nowrap;color:var(--muted);border-color:var(--border);" onclick="openLoadPaysheetModal()" title="Load saved daily or weekly paysheets"><span class="ico ico-folder" aria-hidden="true"></span> Saved Paysheets</button>
+        <button class="btn btn-outline" style="white-space:nowrap;color:var(--muted);border-color:var(--border);" onclick="openLoadPaysheetModal()" title="Load saved daily or weekly pay sheets"><span class="ico ico-folder" aria-hidden="true"></span> Saved Pay Sheets</button>
         <button class="btn btn-outline" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);" onclick="psEnterEditMode()"><span class="ico ico-edit" aria-hidden="true"></span> Edit</button>
         ${_approveBtn}
-        ${isAdmin() ? `<button class="btn" style="background:#0e7490;color:#fff;white-space:nowrap;border:none;" onclick="psApproveAllCrews()" title="Approve EVERY crew tab of this paysheet for Accounting in one click">✓ Approve all crews</button>` : ''}
-        <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="savePaysheetToCloud(false, {docId: _psCurrentDocId})"><span class="ico ico-save" aria-hidden="true"></span> Save Paysheet</button>`;
+        ${isAdmin() ? `<button class="btn" style="background:#0e7490;color:#fff;white-space:nowrap;border:none;" onclick="psApproveAllCrews()" title="Approve EVERY crew tab of this pay sheet for Accounting in one click">✓ Approve all crews</button>` : ''}
+        <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="savePaysheetToCloud(false, {docId: _psCurrentDocId})"><span class="ico ico-save" aria-hidden="true"></span> Save Pay Sheet</button>`;
     }
   } else {
-    // Daily paysheet
+    // Daily pay sheet
     if (_psEditMode) {
       actWrap.innerHTML = `
         <button class="btn" style="background:var(--green);color:#000;white-space:nowrap;" onclick="psFinishEdit()"><span class="ico ico-save" aria-hidden="true"></span> Save Edits</button>
@@ -11914,7 +11914,7 @@ function psRenderCrewTabs() {
         ? `<button class="btn btn-outline" style="white-space:nowrap;border-color:var(--accent);color:var(--accent);" onclick="psEnterEditMode()"><span class="ico ico-edit" aria-hidden="true"></span> Edit</button>`
         : '';
       actWrap.innerHTML = `
-        <button class="btn btn-outline" style="white-space:nowrap;color:var(--muted);border-color:var(--border);" onclick="openLoadPaysheetModal()" title="Load saved daily or weekly paysheets"><span class="ico ico-folder" aria-hidden="true"></span> Saved Paysheets</button>
+        <button class="btn btn-outline" style="white-space:nowrap;color:var(--muted);border-color:var(--border);" onclick="openLoadPaysheetModal()" title="Load saved daily or weekly pay sheets"><span class="ico ico-folder" aria-hidden="true"></span> Saved Pay Sheets</button>
         ${editBtn}`;
     }
   }
@@ -13189,7 +13189,7 @@ function _purExportDocPDF(doc) {
 //  CHANGE ORDER WRITE-UPS (admin only) — priced CO proposals
 //  Mirrors the Purchasing builder (folders → builder + log → PDF → approve). Saves to
 //  `cowriteups`. On approval: labor → corbudgets (per area × labor code, drives DI /
-//  paysheet), materials (cost + tax) → `comaterialbudgets` (adds to the material budget in
+//  pay sheet), materials (cost + tax) → `comaterialbudgets` (adds to the material budget in
 //  Purchasing + Payroll → Material), and the material markup profit → Dashboard margin.
 // ═══════════════════════════════════════════
 let _cwNav       = 'folders';
@@ -14447,7 +14447,7 @@ function switchToAccounting() {
   _acctSilentRefresh();
 }
 
-// Pull the latest weekly paysheets from the server when Accounting opens, so split
+// Pull the latest weekly pay sheets from the server when Accounting opens, so split
 // amounts a foreman saved on another device show up without a manual refresh.
 // Renders from cache first; re-renders in place (keeps the current folder/week).
 async function _acctSilentRefresh() {
@@ -14485,11 +14485,11 @@ function onJobChanged() {
   // Reset filters and page on job change
   _psFilterCode = '';
   _psCurrentPage = 0;
-  // Clear loaded paysheet context so Save Paysheet derives a fresh docId for the new job
+  // Clear loaded pay sheet context so Save Pay Sheet derives a fresh docId for the new job
   _psCurrentDocId = null;
-  // Auto-fill paysheet header from job metadata
+  // Auto-fill pay sheet header from job metadata
   if (jobName) diAutoFillPaysheetHeader(jobName);
-  // Update paysheet
+  // Update pay sheet
   psPopulateAreaBudgetSelect();
   psRenderMainTable();
   psUpdateTitle();
@@ -14498,7 +14498,7 @@ function onJobChanged() {
   // Update daily input
   diRenderCrewTable();
   renderDiWeekSelect();  // re-scope the Pay Week dropdown to the new job's weeks
-  try { renderDiWeekCompile(); } catch(_) {}  // re-scope the compiled paysheets list to the new job
+  try { renderDiWeekCompile(); } catch(_) {}  // re-scope the compiled pay sheets list to the new job
   diRenderLogRows(); // re-filter existing live data for the new job
   diLoadDraftIfExists();
   diUpdateLockState();
@@ -14573,7 +14573,7 @@ function renderPSAreaBudgetTable() {
     return;
   }
   const rows = areaRows.map(r => {
-    // Budget & paid come from the SAME per-code function the paysheet + Daily Inputs
+    // Budget & paid come from the SAME per-code function the pay sheet + Daily Inputs
     // dropdown use (psGetAreaCodeData) so all three always reconcile. When one code
     // spans multiple rows, split that code's paid across the rows by budget share, so
     // the individual rows still sum exactly to the code total.
@@ -14604,7 +14604,7 @@ function renderPSAreaBudgetTable() {
 // ── COR / BURN area key helpers ─────────────────────────────────────────────
 // A corbudget's parent is "live" when its source record still exists — either a change
 // order (b.changeOrderId) or a Change Order write-up (b.writeUpId). Used to keep a CO's
-// areas/codes flowing into Daily Input / paysheet only while the source order exists.
+// areas/codes flowing into Daily Input / pay sheet only while the source order exists.
 function _corbParentLive(b) {
   if (!b) return false;
   if (b.writeUpId) return (_cache.cowriteups || []).some(w => w.id === b.writeUpId);
@@ -14726,7 +14726,7 @@ function _psTableThead(isDaily) {
   </tr>`;
 }
 
-// Payroll already posted FROM the open weekly paysheet for this area/code (or COR line).
+// Payroll already posted FROM the open weekly pay sheet for this area/code (or COR line).
 // Mirrors psGetAreaCodeData's exact-code-then-group match for regular rows.
 function _psOwnSyncedPaid(jobName, area, costCode, corb, docId) {
   const sid = docId || _psCurrentDocId; if (!sid) return 0;
@@ -14766,7 +14766,7 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
       ? (psGetAreaCodeData(jobName, row.area, row.costCode).ptd || 0)
       : (parseFloat(row.ptd) || 0);
   // PTD / Remaining show everything paid to date — including this sheet once approved.
-  // Once THIS weekly paysheet is approved its own W/E is already inside PTD, so % Complete
+  // Once THIS weekly pay sheet is approved its own W/E is already inside PTD, so % Complete
   // must not add W/E again (that double count showed ~200%).
   const ownPaid = (!isDaily && _psCurrentDocId && row.area && (row.costCode || (isCOR && corb)))
     ? _psOwnSyncedPaid(jobName, row.area, row.costCode, isCOR ? corb : null) : 0;
@@ -14796,7 +14796,7 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
   const cell = 'border:1px solid #000;padding:4px 8px;font-size:12px;';
 
   if (isDaily && !_psEditMode) {
-    // Daily paysheet read-only view — plain text
+    // Daily pay sheet read-only view — plain text
     return `<tr>
       <td style="${cell}word-break:break-word;overflow-wrap:break-word;white-space:normal;">${eh(areaDisplayLabel(row.area)||'')}</td>
       <td style="${cell}word-break:break-word;overflow-wrap:break-word;white-space:normal;">${eh(codeLabel)}</td>
@@ -14808,7 +14808,7 @@ function _psRenderRow(row, i, jobName, areas, isDaily) {
   }
 
   if (isDaily && _psEditMode) {
-    // Daily paysheet edit mode — Area, Labor Code, PTD editable (no W/E Earned / % Complete)
+    // Daily pay sheet edit mode — Area, Labor Code, PTD editable (no W/E Earned / % Complete)
     const areaOpts = ['<option value=""></option>',
       ...areas.map(a => `<option value="${eh(a)}" ${row.area===a?'selected':''}>${eh(areaDisplayLabel(a))}</option>`)
     ].join('');
@@ -15013,7 +15013,7 @@ function psAreaChanged(i, area) {
     _ps().rows[i].corBudgetId = '';
     _ps().rows[i].corNumber   = '';
   }
-  // Propagate area change back to linked daily inputs (weekly paysheets, non-foremen only)
+  // Propagate area change back to linked daily inputs (weekly pay sheets, non-foremen only)
   if (_psCurrentType === 'weekly' && !isForeman()) {
     if (!oldArea && area) {
       // Empty row → new area: ADD to DI (tagged green)
@@ -15043,7 +15043,7 @@ function psCodeChanged(i, code) {
       _ps().rows[i].corNumber   = matched.corNumber || '';
     }
   }
-  // Propagate code change back to linked daily inputs (weekly paysheets, non-foremen only)
+  // Propagate code change back to linked daily inputs (weekly pay sheets, non-foremen only)
   if (_psCurrentType === 'weekly' && !isForeman() && area && oldCode && oldCode !== code) {
     _psQueueDiChange({ type: 'change', matchArea: area, matchCode: oldCode, setArea: area, setCode: code });
   } else if (_psCurrentType === 'weekly' && !isForeman() && area && !oldCode && code) {
@@ -15054,13 +15054,13 @@ function psCodeChanged(i, code) {
   psRenderMainTable();
 }
 
-// ─── Weekly Paysheet → Daily Input sync ──────────────────────────────────────
-// When a manager edits area or labor code on a weekly paysheet row, the change
+// ─── Weekly Pay Sheet → Daily Input sync ──────────────────────────────────────
+// When a manager edits area or labor code on a weekly pay sheet row, the change
 // is propagated back to all underlying daily input documents for the same job+week.
 let _psDiSyncTimer  = null;
 const _psDiPendingChanges = [];
 
-// What's on the loaded weekly paysheet right now (all crews): "area|code" pairs + areas.
+// What's on the loaded weekly pay sheet right now (all crews): "area|code" pairs + areas.
 function _psSheetAreaCodes() {
   const pairs = new Set(), areas = new Set();
   for (let c = 1; c <= _psCrewCount; c++) {
@@ -15074,8 +15074,8 @@ function _psSheetAreaCodes() {
 // An entry's codes = its primary code + any extra labor-code lines on the same area.
 function _diEntryCodes(e) { return [e.costCode, ...((e.extraEntries || []).map(x => x.costCode))].map(c => String(c || '').trim()).filter(Boolean); }
 
-// Undo stale "(Removed)" tags on this paysheet's source daily inputs when that area +
-// labor code is still on the paysheet (e.g. a row was cleared and re-entered).
+// Undo stale "(Removed)" tags on this pay sheet's source daily inputs when that area +
+// labor code is still on the pay sheet (e.g. a row was cleared and re-entered).
 async function _psReconcileRemovedTags() {
   try {
     if (_psCurrentType !== 'weekly' || isForeman()) return;
@@ -15100,7 +15100,7 @@ async function _psReconcileRemovedTags() {
   } catch(e) { console.warn('[DI sync] reconcile failed', e); }
 }
 
-// Crew Splits name edited on a weekly paysheet (management) → tag the daily input.
+// Crew Splits name edited on a weekly pay sheet (management) → tag the daily input.
 function psSplitNameChanged(oldName, newName) {
   if (_psCurrentType !== 'weekly' || isForeman()) return;
   const o = String(oldName || '').trim(), n = String(newName || '').trim();
@@ -15140,7 +15140,7 @@ async function _psSyncToDailyInputs() {
     // ── Employee names (Crew Splits) ──
     if (ch.type === 'empRemove' || ch.type === 'empAdd') {
       const key = _diNormName(ch.name);
-      // Names still on this paysheet (all crews) — never tag those removed.
+      // Names still on this pay sheet (all crews) — never tag those removed.
       const onSheet = new Set();
       for (let c = 1; c <= _psCrewCount; c++) (_psState[c] && _psState[c].splits || []).forEach(x => { if ((x.employee || '').trim()) onSheet.add(_diNormName(x.employee)); });
       let pool = freshDiDocs();
@@ -15194,7 +15194,7 @@ async function _psSyncToDailyInputs() {
       continue;
     }
 
-    // ── ADD: new area on the paysheet → inject a tagged entry into the most recent DI doc ──
+    // ── ADD: new area on the pay sheet → inject a tagged entry into the most recent DI doc ──
     if (ch.type === 'add') {
       // Re-adding an area/code that was tagged "(Removed)" just restores it.
       let restored = false;
@@ -15214,7 +15214,7 @@ async function _psSyncToDailyInputs() {
       }
       if (restored && ch.costCode) continue;
 
-      // Prefer the daily inputs this paysheet was compiled from (compiled paysheets are
+      // Prefer the daily inputs this pay sheet was compiled from (compiled pay sheets are
       // per-foreman, so other foremen's submissions for the week are excluded).
       let pool = freshDiDocs();
       const curPs = _psCurrentDocId ? (_cache.paysheets || []).find(p => p.id === _psCurrentDocId) : null;
@@ -15225,7 +15225,7 @@ async function _psSyncToDailyInputs() {
       }
       const sorted = [...pool].sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
       // Pick the target crew: same crew lead name → same crew # → newest doc's first crew.
-      // (Compiled paysheet crew #s are per lead and don't always match the DI's crew #s —
+      // (Compiled pay sheet crew #s are per lead and don't always match the DI's crew #s —
       // the old crew-# only match silently dropped the add.)
       const lead = String(ch.crewName || '').trim().toLowerCase();
       let target = null, targetCrewIdx = -1;
@@ -15266,11 +15266,11 @@ async function _psSyncToDailyInputs() {
       continue;
     }
 
-    // ── REMOVE: area cleared on the paysheet → tag matching entries red in all DI docs ──
+    // ── REMOVE: area cleared on the pay sheet → tag matching entries red in all DI docs ──
     if (ch.type === 'remove') {
       // Only the cleared row's area + code is removed — and never if that area/code is
-      // still on the paysheet (another row, or the row was re-entered). Entries that were
-      // themselves "(Added)" from the paysheet are dropped instead of tagged.
+      // still on the pay sheet (another row, or the row was re-entered). Entries that were
+      // themselves "(Added)" from the pay sheet are dropped instead of tagged.
       const sheet = _psSheetAreaCodes();
       const mCode = String(ch.matchCode || '').trim();
       if (mCode ? sheet.pairs.has(ch.matchArea + '|' + mCode) : sheet.areas.has(ch.matchArea)) continue;
@@ -15282,7 +15282,7 @@ async function _psSyncToDailyInputs() {
             if (entry.area !== ch.matchArea || entry._psTag === 'removed') return [entry];
             const codes = _diEntryCodes(entry);
             if (mCode && !codes.includes(mCode)) return [entry];                  // different labor code
-            if (codes.some(c => sheet.pairs.has(entry.area + '|' + c))) return [entry]; // still on paysheet
+            if (codes.some(c => sheet.pairs.has(entry.area + '|' + c))) return [entry]; // still on pay sheet
             docChanged = true;
             if (entry._psTag === 'added') return [];
             return [{ ...entry, _psTag: 'removed' }];
@@ -15363,11 +15363,11 @@ async function _psSyncToDailyInputs() {
   if (typeof diRenderLogRows === 'function') diRenderLogRows();
 }
 
-// ─── Daily Paysheet Edit Mode (Admin / PM only) ───
+// ─── Daily Pay Sheet Edit Mode (Admin / PM only) ───
 let _psEditSnapshot = null; // deep copy of state before editing, for cancel
 
 function psEnterEditMode() {
-  if (!canEdit()) { alert('Admin or Project Manager access required to edit daily paysheets.'); return; }
+  if (!canEdit()) { alert('Admin or Project Manager access required to edit daily pay sheets.'); return; }
   clearTimeout(_psAutoSaveTimer); _psAutoSaveTimer = null;
   // Snapshot current state for cancel
   _psEditSnapshot = JSON.parse(JSON.stringify(_psState));
@@ -15387,12 +15387,12 @@ async function psFinishEdit() {
     type: isDaily ? 'daily' : 'weekly',
     dailyDate: _ps().header.weekEnding || document.getElementById('di-date').value,
     submissionId: _psSavePendingData?.submissionId || null,
-    docId: _psCurrentDocId || null   // preserve original doc ID when editing a loaded paysheet
+    docId: _psCurrentDocId || null   // preserve original doc ID when editing a loaded pay sheet
   });
 
-  // If this weekly paysheet was already approved, re-sync payroll entries
+  // If this weekly pay sheet was already approved, re-sync payroll entries
   // so they reflect the updated W/E Earned amounts (no duplicates — sync
-  // always replaces entries tagged with this paysheet's sourceDocId).
+  // always replaces entries tagged with this pay sheet's sourceDocId).
   if (!isDaily && savedDoc) {
     const freshDoc = (_cache.paysheets||[]).find(p => p.id === savedDoc.id);
     if (freshDoc && freshDoc.approvedAt) {
@@ -15403,7 +15403,7 @@ async function psFinishEdit() {
         }
       } catch(syncErr) {
         console.error('psFinishEdit: payroll re-sync failed:', syncErr);
-        alert('Paysheet saved, but payroll re-sync failed: ' + syncErr.message + '\n\nRe-approve the paysheet to retry.');
+        alert('Pay Sheet saved, but payroll re-sync failed: ' + syncErr.message + '\n\nRe-approve the pay sheet to retry.');
       }
     }
   }
@@ -15416,7 +15416,7 @@ async function psFinishEdit() {
 }
 
 function psDeleteRow(i) {
-  // Propagate area removal to linked daily inputs (weekly paysheets, non-foremen only)
+  // Propagate area removal to linked daily inputs (weekly pay sheets, non-foremen only)
   const deletedRow = _ps().rows[i];
   if (_psCurrentType === 'weekly' && !isForeman() && deletedRow && deletedRow.area) {
     _psQueueDiChange({ type: 'remove', matchArea: deletedRow.area, crewNum: _psActiveCrew });
@@ -15426,25 +15426,25 @@ function psDeleteRow(i) {
   psUpdateTotal();
 }
 
-// ─── Admin: Approve a SINGLE crew's weekly paysheet for the Accounting tab ───
+// ─── Admin: Approve a SINGLE crew's weekly pay sheet for the Accounting tab ───
 // Approval is per-crew: each foreman/crew tab is approved on its own. The
 // doc-level approvedAt/approvedBy is kept as a derived "≥1 crew approved" flag
 // so the Accounting dropdowns (which filter on it) keep working unchanged.
 async function psApprovePaysheet(crew) {
-  if (!isAdmin()) { alert('Admin access required to approve paysheets.'); return; }
-  if (!_psCurrentDocId) { alert('No paysheet loaded. Load a saved weekly summary first.'); return; }
-  if (_psCurrentType !== 'weekly') { alert('Only weekly summary paysheets can be approved for accounting.'); return; }
+  if (!isAdmin()) { alert('Admin access required to approve pay sheets.'); return; }
+  if (!_psCurrentDocId) { alert('No pay sheet loaded. Load a saved weekly summary first.'); return; }
+  if (_psCurrentType !== 'weekly') { alert('Only weekly summary pay sheets can be approved for accounting.'); return; }
 
   const c   = crew || _psActiveCrew;
   const doc = (_cache.paysheets||[]).find(p => p.id === _psCurrentDocId);
-  if (!doc) { alert('Paysheet not found. Please save it to the cloud first.'); return; }
+  if (!doc) { alert('Pay Sheet not found. Please save it to the cloud first.'); return; }
   const crewObj = doc.crews && doc.crews[String(c)];
-  if (!crewObj) { alert('This crew tab has no saved data. Save the paysheet first.'); return; }
+  if (!crewObj) { alert('This crew tab has no saved data. Save the pay sheet first.'); return; }
 
   const jobName   = doc.job      || '';
   const weekEnd   = doc.weekEnding || '';
   const crewLabel = (crewObj.header && (crewObj.header.crewName || '').trim()) || (`Crew ${c}`);
-  if (!(await uiConfirm(`Approve the "${crewLabel}" paysheet for "${jobName}" — Week Ending ${_fmtWeekDate(weekEnd)} for Accounting?\n\nThis will:\n• Publish this crew's employee pay to the Accounting tab\n• Auto-create Payroll entries for this crew's labor codes\n\nOther crews are unaffected. You can re-approve after editing to update payroll entries.`, { title: 'Approve Paysheet', okLabel: '✓ Approve' }))) return;
+  if (!(await uiConfirm(`Approve the "${crewLabel}" pay sheet for "${jobName}" — Week Ending ${_fmtWeekDate(weekEnd)} for Accounting?\n\nThis will:\n• Publish this crew's employee pay to the Accounting tab\n• Auto-create Payroll entries for this crew's labor codes\n\nOther crews are unaffected. You can re-approve after editing to update payroll entries.`, { title: 'Approve Pay Sheet', okLabel: '✓ Approve' }))) return;
 
   const approvedAt = new Date().toISOString();
   const approvedBy = _currentUser ? _currentUser.email : 'unknown';
@@ -15473,24 +15473,24 @@ async function psApprovePaysheet(crew) {
     // immediately when the user switches tabs (avoids stale dropdown state).
     acctPopulateWeekSelect();
     acctPopulateJobSelect();
-    alert(`"${crewLabel}" paysheet approved.\n\n${syncCount} payroll entr${syncCount === 1 ? 'y' : 'ies'} created/updated in the Payroll tab.`);
+    alert(`"${crewLabel}" pay sheet approved.\n\n${syncCount} payroll entr${syncCount === 1 ? 'y' : 'ies'} created/updated in the Payroll tab.`);
   } catch(e) {
     alert('Approval failed: ' + e.message);
   }
 }
 
-// ─── Admin: Approve ALL crew tabs of the loaded weekly paysheet at once ───
-// Restores the original "one click = whole paysheet" transfer. In the per-foreman
-// model a paysheet holds many crew tabs, and the per-tab Approve only published the
+// ─── Admin: Approve ALL crew tabs of the loaded weekly pay sheet at once ───
+// Restores the original "one click = whole pay sheet" transfer. In the per-foreman
+// model a pay sheet holds many crew tabs, and the per-tab Approve only published the
 // ACTIVE tab — so the rest of the pay never reached Accounting. This approves every
 // crew tab that has data and syncs them all. Reuses psApproveSync (multi-crew).
 async function psApproveAllCrews() {
-  if (!isAdmin()) { alert('Admin access required to approve paysheets.'); return; }
-  if (!_psCurrentDocId) { alert('No paysheet loaded. Load a saved weekly summary first.'); return; }
-  if (_psCurrentType !== 'weekly') { alert('Only weekly summary paysheets can be approved for accounting.'); return; }
+  if (!isAdmin()) { alert('Admin access required to approve pay sheets.'); return; }
+  if (!_psCurrentDocId) { alert('No pay sheet loaded. Load a saved weekly summary first.'); return; }
+  if (_psCurrentType !== 'weekly') { alert('Only weekly summary pay sheets can be approved for accounting.'); return; }
 
   const doc = (_cache.paysheets || []).find(p => p.id === _psCurrentDocId);
-  if (!doc) { alert('Paysheet not found. Please save it to the cloud first.'); return; }
+  if (!doc) { alert('Pay Sheet not found. Please save it to the cloud first.'); return; }
 
   // Every crew tab that has real data (a row with pay/area, or a named employee).
   const crewKeys = Object.keys(doc.crews || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
@@ -15501,7 +15501,7 @@ async function psApproveAllCrews() {
     const hasSplit = (crew.splits || []).some(s => (s.employee || '').trim());
     return hasRow || hasSplit;
   });
-  if (!crewsWithData.length) { alert('No crew tabs with data to approve on this paysheet.'); return; }
+  if (!crewsWithData.length) { alert('No crew tabs with data to approve on this pay sheet.'); return; }
 
   const jobName = doc.job || '';
   const weekEnd = doc.weekEnding || '';
@@ -15539,7 +15539,7 @@ async function psApproveAllCrews() {
   }
 }
 
-// ─── Admin: Un-approve a SINGLE crew's weekly paysheet ───
+// ─── Admin: Un-approve a SINGLE crew's weekly pay sheet ───
 // Clears the crew's approval and removes only that crew's payroll entries.
 async function psUnapprovePaysheet(crew) {
   if (!isAdmin()) { alert('Admin access required.'); return; }
@@ -15549,7 +15549,7 @@ async function psUnapprovePaysheet(crew) {
   if (!doc) return;
   const crewObj   = doc.crews && doc.crews[String(c)];
   const crewLabel = (crewObj && crewObj.header && (crewObj.header.crewName || '').trim()) || (`Crew ${c}`);
-  if (!(await uiConfirm(`Un-approve the "${crewLabel}" paysheet?\n\nThis removes this crew's payroll entries from the Accounting tab. Other crews are unaffected.`, { title: 'Un-approve Crew', okLabel: 'Un-approve', danger: true }))) return;
+  if (!(await uiConfirm(`Un-approve the "${crewLabel}" pay sheet?\n\nThis removes this crew's payroll entries from the Accounting tab. Other crews are unaffected.`, { title: 'Un-approve Crew', okLabel: 'Un-approve', danger: true }))) return;
 
   try {
     // Clear this crew's approval in cache first so the doc-level flag can be recomputed.
@@ -15570,15 +15570,15 @@ async function psUnapprovePaysheet(crew) {
     psRenderCrewTabs();
     acctPopulateWeekSelect();
     acctPopulateJobSelect();
-    alert(`"${crewLabel}" paysheet un-approved.`);
+    alert(`"${crewLabel}" pay sheet un-approved.`);
   } catch(e) {
     alert('Un-approve failed: ' + e.message);
   }
 }
 
-// ─── Admin: Un-approve the ENTIRE paysheet (all crews) ───
+// ─── Admin: Un-approve the ENTIRE pay sheet (all crews) ───
 // Mirror of psApproveAllCrews so the Un-approve button fully reverses approval:
-// clears every crew's approval AND removes ALL payroll entries this paysheet
+// clears every crew's approval AND removes ALL payroll entries this pay sheet
 // created (regular rows AND work orders, on every crew). This is what the main
 // "Un-approve" button uses so nothing — especially work-order PTD — is left behind.
 async function psUnapproveAllCrews() {
@@ -15588,7 +15588,7 @@ async function psUnapproveAllCrews() {
   if (!doc) return;
   const jobName = doc.job || '';
   const weekEnd = doc.weekEnding || '';
-  if (!(await uiConfirm(`Un-approve this paysheet for "${jobName}" — Week Ending ${_fmtWeekDate(weekEnd)}?\n\nThis removes ALL of its payroll entries from the Accounting and Payroll tabs — including any work orders. It can be re-approved anytime.`, { title: 'Un-approve Paysheet', okLabel: 'Un-approve', danger: true }))) return;
+  if (!(await uiConfirm(`Un-approve this pay sheet for "${jobName}" — Week Ending ${_fmtWeekDate(weekEnd)}?\n\nThis removes ALL of its payroll entries from the Accounting and Payroll tabs — including any work orders. It can be re-approved anytime.`, { title: 'Un-approve Pay Sheet', okLabel: 'Un-approve', danger: true }))) return;
   try {
     const update = { approvedAt: null, approvedBy: null };
     Object.keys(doc.crews || {}).forEach(k => {
@@ -15598,18 +15598,18 @@ async function psUnapproveAllCrews() {
     });
     await db.collection('paysheets').doc(_psCurrentDocId).update(update);
     doc.approvedAt = null; doc.approvedBy = null;
-    // Remove every payroll entry this paysheet created (all crews, incl. work orders).
+    // Remove every payroll entry this pay sheet created (all crews, incl. work orders).
     const removed = await _psRemoveDocPayroll(doc.id);
     psRenderCrewTabs();
     acctPopulateWeekSelect();
     acctPopulateJobSelect();
-    alert(`Paysheet un-approved.\n\nRemoved ${removed} payroll entr${removed !== 1 ? 'ies' : 'y'} (including any work orders).`);
+    alert(`Pay Sheet un-approved.\n\nRemoved ${removed} payroll entr${removed !== 1 ? 'ies' : 'y'} (including any work orders).`);
   } catch(e) {
     alert('Un-approve failed: ' + e.message);
   }
 }
 
-// Delete payroll entries belonging to one crew of a paysheet doc.
+// Delete payroll entries belonging to one crew of a pay sheet doc.
 // Matches by sourceCrew tag or the deterministic entry-ID prefix (legacy entries
 // have no sourceCrew but their ID is ps_<docId>_c<crew>_r<row>).
 async function psRemoveCrewPayroll(docId, crew) {
@@ -15626,7 +15626,7 @@ async function psRemoveCrewPayroll(docId, crew) {
   return toDelete.length;
 }
 
-// Delete ALL payroll entries a paysheet doc created (every crew). Used by the
+// Delete ALL payroll entries a pay sheet doc created (every crew). Used by the
 // Accounting-tab Unapprove button. Matches the synced sourceDocId tag, with a
 // legacy fallback on the deterministic ps_<docId>_ entry-ID prefix.
 async function _psRemoveDocPayroll(docId) {
@@ -15644,7 +15644,7 @@ async function _psRemoveDocPayroll(docId) {
   return toDelete.length;
 }
 
-// Silently re-approve a freshly recompiled weekly paysheet that was approved before
+// Silently re-approve a freshly recompiled weekly pay sheet that was approved before
 // the recompile — marks its data crews approved and re-syncs Payroll — so recompiling
 // preserves tracking in BOTH the Accounting tab and the Payroll tab (no re-approval
 // needed, no wiped amounts). Mirrors psApproveAllCrews without the UI/confirm.
@@ -15669,20 +15669,20 @@ async function _psReapproveDoc(doc, approvedBy) {
   try { return await psApproveSync(doc, crewsWithData); } catch(_) { return 0; }
 }
 
-// Un-approve every approved weekly paysheet for a job+week from the Accounting tab.
+// Un-approve every approved weekly pay sheet for a job+week from the Accounting tab.
 // Reverses approval: deletes the payroll entries it created, drops it from Accounting,
-// and returns the paysheet to a re-approvable state. All paysheet entries are kept.
+// and returns the pay sheet to a re-approvable state. All pay sheet entries are kept.
 async function acctUnapprovePaysheets(weekEnding, jobName) {
   if (!isAdmin()) { alert('Admin access required.'); return; }
   const docs = (_cache.paysheets || []).filter(p =>
     p.type === 'weekly' && p.weekEnding === weekEnding && p.job === jobName && _psIsApproved(p));
-  if (!docs.length) { alert('No approved paysheets found for this job and week.'); return; }
+  if (!docs.length) { alert('No approved pay sheets found for this job and week.'); return; }
   const many = docs.length !== 1;
   if (!await uiConfirm(
-    `Un-approve ${docs.length} paysheet${many ? 's' : ''} for "${jobName}" — Week Ending ${_fmtWeekDate(weekEnding)}?\n\n` +
+    `Un-approve ${docs.length} pay sheet${many ? 's' : ''} for "${jobName}" — Week Ending ${_fmtWeekDate(weekEnding)}?\n\n` +
     `• Removes ${many ? 'them' : 'it'} from the Accounting tab\n` +
     `• Deletes the payroll entries ${many ? 'they' : 'it'} created on the Payroll tab\n` +
-    `• Keeps all paysheet entries so ${many ? 'they' : 'it'} can be re-approved from the Paysheet tab`
+    `• Keeps all pay sheet entries so ${many ? 'they' : 'it'} can be re-approved from the Pay Sheet tab`
   )) return;
   try {
     let removed = 0;
@@ -15700,7 +15700,7 @@ async function acctUnapprovePaysheets(weekEnding, jobName) {
     acctPopulateWeekSelect();
     acctPopulateJobSelect();
     acctRenderRouter();
-    alert(`Un-approved ${docs.length} paysheet${many ? 's' : ''}. Removed ${removed} payroll entr${removed !== 1 ? 'ies' : 'y'}.\n\nThey can now be re-approved from the Paysheet tab.`);
+    alert(`Un-approved ${docs.length} pay sheet${many ? 's' : ''}. Removed ${removed} payroll entr${removed !== 1 ? 'ies' : 'y'}.\n\nThey can now be re-approved from the Pay Sheet tab.`);
   } catch(e) {
     alert('Un-approve failed: ' + e.message);
   }
@@ -15710,7 +15710,7 @@ async function acctUnapprovePaysheets(weekEnding, jobName) {
 // Matches the same logic as manual addPayrollEntry:
 // 1. Exact area + exact costCode + description (most precise)
 // 2. Exact area + exact costCode (sums all descriptions for that code)
-// 3. Exact area + group-code fallback (paysheet "102" → group "100" matches CSV "101","102","103"…)
+// 3. Exact area + group-code fallback (pay sheet "102" → group "100" matches CSV "101","102","103"…)
 function _prLookupBudget(jobName, area, costCode, description) {
   const files   = getSavedCSVFiles();
   const csvFile = files.find(f => f.name === jobName);
@@ -15737,8 +15737,8 @@ function _prLookupBudget(jobName, area, costCode, description) {
     .reduce((s, r) => s + (r.amount || 0), 0);
 }
 
-// ─── Sync approved weekly paysheet rows → Payroll entries ───
-// Creates one entry per paysheet row with area + labor code + W/E Earned.
+// ─── Sync approved weekly pay sheet rows → Payroll entries ───
+// Creates one entry per pay sheet row with area + labor code + W/E Earned.
 // Identical structure to a manual addPayrollEntry — budget is looked up
 // from the CSV so Remaining/Budget columns display correctly.
 // Uses deterministic IDs so re-syncing always upserts — never duplicates.
@@ -15755,9 +15755,9 @@ async function psApproveSync(doc, targetCrews) {
   const jobName    = doc.job        || '';
   const weekEnding = doc.weekEnding || '';
 
-  if (!docId)      throw new Error('psApproveSync: missing paysheet doc ID');
-  if (!jobName)    throw new Error('psApproveSync: paysheet has no job — select a job and save first');
-  if (!weekEnding) throw new Error('psApproveSync: paysheet has no Week Ending — fill in the header and save first');
+  if (!docId)      throw new Error('psApproveSync: missing pay sheet doc ID');
+  if (!jobName)    throw new Error('psApproveSync: pay sheet has no job — select a job and save first');
+  if (!weekEnding) throw new Error('psApproveSync: pay sheet has no Week Ending — fill in the header and save first');
 
   // Resolve which crews to (re)sync.
   let crewList;
@@ -15774,7 +15774,7 @@ async function psApproveSync(doc, targetCrews) {
   const now     = new Date();
   const timeStr = now.toTimeString().slice(0, 5);
 
-  // ── Build payroll entries — one per valid paysheet row ──
+  // ── Build payroll entries — one per valid pay sheet row ──
   const newEntries = [];
 
   crewList.forEach(c => {
@@ -15789,7 +15789,7 @@ async function psApproveSync(doc, targetCrews) {
       // ── Resolve labor code ────────────────────────────────────────────────
       let costCode = (row.costCode || '').trim();
       if (!costCode && isCOR) {
-        // Fallback for paysheet rows saved before the auto-populate fix:
+        // Fallback for pay sheet rows saved before the auto-populate fix:
         // try ID first, then area-key string match
         const corb0 = (row.corBudgetId
           ? (_cache.corbudgets || []).find(b => b.id === row.corBudgetId)
@@ -15890,7 +15890,7 @@ function psExportPDF() {
   _psSaveHeaderFields();
   const jobName  = document.getElementById('ps-job-select').value || '';
   const isDaily  = _psCurrentType === 'daily';
-  const typeLabel = isDaily ? 'Daily Paysheet' : 'Weekly Summary Paysheet';
+  const typeLabel = isDaily ? 'Daily Pay Sheet' : 'Weekly Summary Pay Sheet';
   const savedFiles = getSavedCSVFiles();
 
   function fmtMoney(n) {
@@ -16004,7 +16004,7 @@ function psExportPDF() {
       </div>`);
   }
 
-  if (!crewSections.length) { alert('No paysheet data to export.'); return; }
+  if (!crewSections.length) { alert('No pay sheet data to export.'); return; }
 
   const html = `<!DOCTYPE html><html><head>
     <meta charset="UTF-8">
@@ -16034,13 +16034,13 @@ function psExportPDF() {
   setTimeout(() => { win.focus(); win.print(); }, 600);
 }
 
-// ─── Shared paysheet PDF export engine ───────────────────────────────────────
-// Takes an array of paysheet docs and a filename label, renders each to a PDF
+// ─── Shared pay sheet PDF export engine ───────────────────────────────────────
+// Takes an array of pay sheet docs and a filename label, renders each to a PDF
 // page and bundles them all into a downloaded ZIP.
 // Uses jsPDF native drawing — no html2canvas, no per-page delays.
-// Persist the currently-open weekly paysheet's live edits before an export so the
+// Persist the currently-open weekly pay sheet's live edits before an export so the
 // PDF reflects exactly what's on screen — covers values typed but not yet flushed
-// by the 3s auto-save debounce. No-op when no weekly paysheet is open.
+// by the 3s auto-save debounce. No-op when no weekly pay sheet is open.
 async function _psFlushOpenPaysheet() {
   if (!_psCurrentDocId || _psCurrentType !== 'weekly') return;
   try {
@@ -16075,13 +16075,13 @@ async function _psRefreshSheets(sheets) {
 async function _psExportSheetsAsZip(sheets, zipLabel, asSinglePDF) {
   if (!asSinglePDF && typeof JSZip === 'undefined') { alert('ZIP library not loaded — please wait a moment and try again.'); return; }
   if (typeof window.jspdf === 'undefined') { alert('PDF library not loaded — please wait a moment and try again.'); return; }
-  if (!sheets.length) { alert('No paysheets found to export.'); return; }
+  if (!sheets.length) { alert('No pay sheets found to export.'); return; }
 
   // Make sure the export reflects the latest entries, not a stale cache:
-  // 1) flush any open paysheet's unsaved edits, 2) re-pull every sheet from Firestore.
+  // 1) flush any open pay sheet's unsaved edits, 2) re-pull every sheet from Firestore.
   await _psFlushOpenPaysheet();
   sheets = await _psRefreshSheets(sheets);
-  if (!sheets.length) { alert('No paysheets found to export.'); return; }
+  if (!sheets.length) { alert('No pay sheets found to export.'); return; }
 
   _diShowToast(asSinglePDF ? 'Generating PDF…' : 'Generating ZIP…');
   await new Promise(r => setTimeout(r, 30)); // let toast render
@@ -16152,11 +16152,11 @@ async function _psExportSheetsAsZip(sheets, zipLabel, asSinglePDF) {
     return y + rowH;
   }
 
-  // Render one paysheet document onto the given jsPDF instance.
+  // Render one pay sheet document onto the given jsPDF instance.
   function buildDocPDF(doc, pdf) {
     const jobName   = doc.job || '';
     const isDaily   = doc.type === 'daily';
-    const typeLabel = isDaily ? 'Daily Paysheet' : 'Weekly Summary Paysheet';
+    const typeLabel = isDaily ? 'Daily Pay Sheet' : 'Weekly Summary Pay Sheet';
     const docCrewKeys = Object.keys(doc.crews || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
     const docMaxCrew  = docCrewKeys.length ? Math.max(...docCrewKeys) : 1;
 
@@ -16350,12 +16350,12 @@ async function _psExportSheetsAsZip(sheets, zipLabel, asSinglePDF) {
         if (!first) pdf.addPage();
         buildDocPDF(doc, pdf);
         made++; first = false;
-      } catch (e) { console.warn('PDF export skipped paysheet:', doc.id, e); }
+      } catch (e) { console.warn('PDF export skipped pay sheet:', doc.id, e); }
     }
-    if (!made) { alert('No exportable paysheet data found.'); return; }
-    const safeLabel = (zipLabel || 'Paysheets').replace(/[^a-zA-Z0-9 _,]/g, '').trim().replace(/\s+/g, '_');
+    if (!made) { alert('No exportable pay sheet data found.'); return; }
+    const safeLabel = (zipLabel || 'Pay Sheets').replace(/[^a-zA-Z0-9 _,]/g, '').trim().replace(/\s+/g, '_');
     pdf.save(safeLabel + '.pdf');
-    _diShowToast(`Exported ${made} paysheet${made !== 1 ? 's' : ''} to PDF`);
+    _diShowToast(`Exported ${made} pay sheet${made !== 1 ? 's' : ''} to PDF`);
     return;
   }
 
@@ -16383,13 +16383,13 @@ async function _psExportSheetsAsZip(sheets, zipLabel, asSinglePDF) {
       zip.file(baseName+'.pdf', pdf.output('arraybuffer'));
       fileCount++;
     } catch(docErr) {
-      console.warn('Export skipped paysheet:', baseName, docErr);
+      console.warn('Export skipped pay sheet:', baseName, docErr);
       skipCount++;
     }
   }
 
-  if (!fileCount) { alert('No exportable paysheet data found.'); return; }
-  if (skipCount) console.warn(`Export: ${skipCount} paysheet(s) skipped due to errors.`);
+  if (!fileCount) { alert('No exportable pay sheet data found.'); return; }
+  if (skipCount) console.warn(`Export: ${skipCount} pay sheet(s) skipped due to errors.`);
 
   const safeLabel = zipLabel.replace(/[^a-zA-Z0-9 _,]/g,'').trim().replace(/\s+/g,'_');
   const content   = await zip.generateAsync({type:'blob',compression:'DEFLATE'});
@@ -16398,7 +16398,7 @@ async function _psExportSheetsAsZip(sheets, zipLabel, asSinglePDF) {
   a.href = url; a.download = safeLabel+'.zip';
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
-  _diShowToast(`Exported ${fileCount} paysheet${fileCount!==1?'s':''}`);
+  _diShowToast(`Exported ${fileCount} pay sheet${fileCount!==1?'s':''}`);
 }
 
 async function psExportFolderZip(weekEnding) {
@@ -16408,11 +16408,11 @@ async function psExportFolderZip(weekEnding) {
   }
   const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
   const sheets    = (_cache.paysheets || []).filter(p => p.weekEnding === weekEnding && (!activeJob || p.job === activeJob));
-  if (!sheets.length) { alert('No paysheets found for this folder.'); return; }
+  if (!sheets.length) { alert('No pay sheets found for this folder.'); return; }
   await _psExportSheetsAsZip(sheets, _fmtWeekDate(weekEnding));
 }
 
-// Export ALL compiled weekly paysheets for a week into ONE combined PDF.
+// Export ALL compiled weekly pay sheets for a week into ONE combined PDF.
 async function psExportCompiledWeekPDF(weekEnding) {
   if (!_canViewFolder(weekEnding)) { alert('This folder is locked. Request access from your manager to export it.'); return; }
   // Scope strictly to the ACTIVE JOB so the export never includes other jobs.
@@ -16421,15 +16421,15 @@ async function psExportCompiledWeekPDF(weekEnding) {
   let sheets = (_cache.paysheets || []).filter(p =>
     p.weekEnding === weekEnding && p.type === 'weekly' && p.job === activeJob);
   if (isForeman()) sheets = sheets.filter(p => _psForemanOwnsPaysheet(p)); // foremen export only their own
-  if (!sheets.length) { alert('No compiled paysheets to export for this week.'); return; }
+  if (!sheets.length) { alert('No compiled pay sheets to export for this week.'); return; }
   const jobSlug = activeJob ? '_' + activeJob.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_') : '';
   await _psExportSheetsAsZip(sheets, `Weekly_Paysheets${jobSlug}_${_fmtWeekDate(weekEnding)}`, true);
 }
 
-// Export a single foreman's compiled paysheet (all their crew tabs) to one PDF.
+// Export a single foreman's compiled pay sheet (all their crew tabs) to one PDF.
 async function psExportOnePaysheetPDF(docId) {
   const p = (_cache.paysheets || []).find(x => x.id === docId);
-  if (!p) { alert('Paysheet not found.'); return; }
+  if (!p) { alert('Pay Sheet not found.'); return; }
   const jobSlug = (p.job || 'NoJob').replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
   const who     = (p.foreman ? p.foreman.split('@')[0] : (p.crewName || 'foreman')).replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
   await _psExportSheetsAsZip([p], `Weekly_${jobSlug}_${_fmtWeekDate(p.weekEnding)}_${who}`, true);
@@ -16437,13 +16437,13 @@ async function psExportOnePaysheetPDF(docId) {
 
 // ─── Submission Log PDF export ─────────────────────────────────────────────
 function _diPaysheetForSub(sub) {
-  // Find the saved paysheet for a submission: exact submissionId match first, then job+date fallback
+  // Find the saved pay sheet for a submission: exact submissionId match first, then job+date fallback
   return (_cache.paysheets || []).find(p => p.submissionId === sub.id)
       || (_cache.paysheets || []).find(p => p.job === sub.job && p.date === sub.date);
 }
 
 async function diExportAllAsPDF() {
-  // Export paysheets for all currently-visible submission log rows
+  // Export pay sheets for all currently-visible submission log rows
   const jobName  = document.getElementById('ps-job-select').value;
   let docs = _diLogDocs;
   if (jobName) docs = docs.filter(r => r.job === jobName);
@@ -16454,14 +16454,14 @@ async function diExportAllAsPDF() {
   if (_diLogFilters.foreman.length)  docs = docs.filter(r => _diLogFilters.foreman.includes(r.submittedBy));
   if (_diLogFilters.empCount.length) { const countEmps = r => new Set((r.crews||[]).flatMap(c=>(c.entries||[]).map(e=>(e.employee||'').trim()).filter(Boolean))).size; docs = docs.filter(r => _diLogFilters.empCount.includes(String(countEmps(r)))); }
 
-  // Collect unique paysheets (dedup by paysheet id)
+  // Collect unique pay sheets (dedup by pay sheet id)
   const seen = new Set();
   const sheets = [];
   for (const sub of docs) {
     const ps = _diPaysheetForSub(sub);
     if (ps && !seen.has(ps.id)) { seen.add(ps.id); sheets.push(ps); }
   }
-  if (!sheets.length) { alert('No saved paysheets found for the visible submissions.\n\nUse → Paysheet on each row to create paysheets first.'); return; }
+  if (!sheets.length) { alert('No saved pay sheets found for the visible submissions.\n\nUse → Pay Sheet on each row to create pay sheets first.'); return; }
   const label = jobName ? jobName.replace(/\.[^.]+$/, '') : 'Submission_Log';
   await _psExportSheetsAsZip(sheets, label);
 }
@@ -16470,7 +16470,7 @@ async function diExportOnePDF(subId) {
   const sub = _diLogDocs.find(r => r.id === subId);
   if (!sub) { alert('Submission not found.'); return; }
   const ps = _diPaysheetForSub(sub);
-  if (!ps) { alert('No saved paysheet found for this submission.\n\nUse → Paysheet to create one first.'); return; }
+  if (!ps) { alert('No saved pay sheet found for this submission.\n\nUse → Pay Sheet to create one first.'); return; }
   const label = `Daily_${(sub.job||'NoJob').replace(/[^a-zA-Z0-9 _-]/g,'').trim().replace(/\s+/g,'_')}_${sub.date||''}`;
   await _psExportSheetsAsZip([ps], label);
 }
@@ -16685,7 +16685,7 @@ let _psAutoSaveTimer = null;
 let _psForemanAutoSaveTimer = null;
 
 function psScheduleAutoSave() {
-  // Only for non-foreman weekly paysheets outside of edit mode
+  // Only for non-foreman weekly pay sheets outside of edit mode
   if (_psCurrentType !== 'weekly' || isForeman() || _psEditMode) return;
   const jobName = document.getElementById('ps-job-select').value;
   if (!jobName) return;
@@ -16731,7 +16731,7 @@ function _psSetAutoSaveStatus(state) {
 }
 // ────────────────────────────────────────────────────────────────────────────
 
-// Format an amount with thousands separators for DISPLAY in the paysheet inputs.
+// Format an amount with thousands separators for DISPLAY in the pay sheet inputs.
 // Storage stays plain numeric (no commas) — oninput strips commas before saving —
 // so every calculation, save, PDF and accounting feature is unaffected.
 function _psAmtComma(v) {
@@ -16949,7 +16949,7 @@ function psSplitAmtChanged(i, val) {
 }
 
 async function clearPaysheet() {
-  if (!await uiConfirm(`Clear Crew ${_psActiveCrew} paysheet?`)) return;
+  if (!await uiConfirm(`Clear Crew ${_psActiveCrew} pay sheet?`)) return;
   _psState[_psActiveCrew] = { rows: _psEmptyRows(), splits: _psEmptySplits(), header: _psEmptyHeader() };
   _psCurrentType = 'weekly';
   psLoadHeaderFields();
@@ -16962,22 +16962,22 @@ function printPaysheet() {
   window.print();
 }
 
-// ─── Foreman restricted save for weekly summary paysheets ───
+// ─── Foreman restricted save for weekly summary pay sheets ───
 // Merges only the fields foremen are allowed to edit (weAmount, pctSplit, amount,
 // signatureData, foremanSig) into the existing compiled doc without overwriting
 // management-compiled fields (Area, Code, Notes, PTD, header metadata, savedBy, etc.).
 // No duplicate is created — uses the same deterministic docId.
 async function psSaveWeeklySummaryForeman(silent = false) {
   if (!isForeman()) { if (!silent) alert('This save path is for foreman roles only.'); return false; }
-  if (!_psCurrentDocId) { if (!silent) alert('Please load a weekly summary paysheet first before saving.'); return false; }
-  if (_psCurrentType !== 'weekly') { if (!silent) alert('This action only applies to weekly summary paysheets.'); return false; }
+  if (!_psCurrentDocId) { if (!silent) alert('Please load a weekly summary pay sheet first before saving.'); return false; }
+  if (_psCurrentType !== 'weekly') { if (!silent) alert('This action only applies to weekly summary pay sheets.'); return false; }
 
   // Fetch the authoritative existing doc (prefer cache to avoid an extra read)
   let existingDoc = (_cache.paysheets || []).find(p => p.id === _psCurrentDocId);
   if (!existingDoc) {
     try {
       const snap = await db.collection('paysheets').doc(_psCurrentDocId).get();
-      if (!snap.exists) { if (!silent) alert('Paysheet not found. It may have been deleted by management.'); return false; }
+      if (!snap.exists) { if (!silent) alert('Pay Sheet not found. It may have been deleted by management.'); return false; }
       existingDoc = snap.data();
     } catch(e) { if (!silent) alert('Save failed: ' + e.message); return false; }
   }
@@ -17049,7 +17049,7 @@ async function psSaveWeeklySummaryForeman(silent = false) {
     if (!_cache.paysheets) _cache.paysheets = [];
     const idx = _cache.paysheets.findIndex(p => p.id === _psCurrentDocId);
     if (idx !== -1) _cache.paysheets[idx] = updatedDoc; else _cache.paysheets.push(updatedDoc);
-    if (!silent) alert('Your entries have been saved to the summary paysheet.');
+    if (!silent) alert('Your entries have been saved to the summary pay sheet.');
     return true;
   } catch(e) {
     if (!silent) alert('Save failed: ' + e.message);
@@ -17057,7 +17057,7 @@ async function psSaveWeeklySummaryForeman(silent = false) {
   }
 }
 
-// ─── Save paysheet to Firestore ───
+// ─── Save pay sheet to Firestore ───
 // silent = true  → no alert
 // opts.type      = 'daily' | 'weekly' (default 'weekly')
 // opts.dailyDate = YYYY-MM-DD required when type='daily' (used as docId suffix)
@@ -17066,14 +17066,14 @@ async function savePaysheetToCloud(silent, opts = {}) {
   // This blocks direct calls (e.g., from the console) that would overwrite management fields.
   const _saveType = opts.type || 'weekly';
   if (isForeman() && _saveType === 'weekly') {
-    if (!silent) alert('Use the "Save My Entries" button to save your changes to the summary paysheet.');
+    if (!silent) alert('Use the "Save My Entries" button to save your changes to the summary pay sheet.');
     return;
   }
 
   _psSaveHeaderFields();
   const jobName = document.getElementById('ps-job-select').value;
   if (!jobName) { if (!silent) alert('Please select a job before saving.'); return; }
-  // Persist header to job meta so future paysheets for this job auto-fill correctly
+  // Persist header to job meta so future pay sheets for this job auto-fill correctly
   const _hSnap = _ps().header;
   if (_hSnap.project || _hSnap.foreman || _hSnap.crewName) {
     diSaveJobMeta(jobName, { project: _hSnap.project || '', foreman: _hSnap.foreman || '', crewName: _hSnap.crewName || '' });
@@ -17087,15 +17087,15 @@ async function savePaysheetToCloud(silent, opts = {}) {
     if (_psState[c].header.weekEnding) { weekEnd = _psState[c].header.weekEnding; break; }
   }
   if (!weekEnd && isDailyType) weekEnd = opts.dailyDate || '';
-  if (!weekEnd) { if (!silent) alert('Please enter a Week Ending date in the paysheet header before saving.'); return; }
+  if (!weekEnd) { if (!silent) alert('Please enter a Week Ending date in the pay sheet header before saving.'); return; }
 
   // Daily: unique doc per submission (via submissionId); Weekly: one doc per job per weekEnding
-  // opts.docId overrides derivation — used when editing an existing loaded paysheet.
+  // opts.docId overrides derivation — used when editing an existing loaded pay sheet.
   // Validate that the loaded doc's job+weekEnding still match the current UI before using it;
   // if the user switched job or week after loading, derive a fresh docId instead.
   const _optsMeta = opts.docId ? (_cache.paysheets||[]).find(p => p.id === opts.docId) : null;
   const _useOptsDocId = opts.docId && (!_optsMeta || (_optsMeta.job === jobName && _optsMeta.weekEnding === weekEnd));
-  // Per-foreman weekly paysheets are keyed job_week_<foremanKey>. When editing
+  // Per-foreman weekly pay sheets are keyed job_week_<foremanKey>. When editing
   // one and changing the Week Ending, derive the SAME foreman's id for the new
   // week so only that foreman moves. Legacy combined docs (no foremanKey) keep
   // the older job_week_weekly scheme.
@@ -17111,13 +17111,13 @@ async function savePaysheetToCloud(silent, opts = {}) {
         ? (jobName + '_' + weekEnd + '_' + _fmKey).replace(/[^\w-]/g, '_')
         : (jobName + '_' + weekEnd + _wkSuffix).replace(/[^\w-]/g, '_');
 
-  // MOVE semantics: editing a loaded paysheet and changing its week/job derives a
+  // MOVE semantics: editing a loaded pay sheet and changing its week/job derives a
   // NEW docId. Remember the original so we can delete it after the new one saves,
-  // so the paysheet MOVES to the new week instead of leaving a stale copy behind.
+  // so the pay sheet MOVES to the new week instead of leaving a stale copy behind.
   const _movedFromDocId = (!isDailyType && opts.docId && _optsMeta && opts.docId !== docId) ? opts.docId : null;
 
   // COEXIST, NEVER MERGE: moving onto a week where THIS foreman already has a
-  // paysheet must NOT overwrite it and must NOT be blocked. Give the moved sheet a
+  // pay sheet must NOT overwrite it and must NOT be blocked. Give the moved sheet a
   // unique id so BOTH (or all) stay as separate, independently listed per-foreman
   // entries. Different foremen never collide here (different foremanKey), so this
   // only ever affects the same foreman having more than one sheet in a week.
@@ -17131,7 +17131,7 @@ async function savePaysheetToCloud(silent, opts = {}) {
   }
 
   // Preserve approval fields — .set() is a full overwrite and would strip approvedAt/approvedBy,
-  // causing the paysheet to vanish from the Accounting tab. On a move, carry them
+  // causing the pay sheet to vanish from the Accounting tab. On a move, carry them
   // from the original doc (the new docId doesn't exist in cache yet).
   const _existingCached = (_cache.paysheets || []).find(p => p.id === docId) || (_movedFromDocId ? _optsMeta : null);
   const crews = {};
@@ -17176,7 +17176,7 @@ async function savePaysheetToCloud(silent, opts = {}) {
     if (idx !== -1) _cache.paysheets[idx] = doc; else _cache.paysheets.push(doc);
     _psCurrentType = type;
 
-    // MOVE: now that the new doc is saved, remove the original so the paysheet
+    // MOVE: now that the new doc is saved, remove the original so the pay sheet
     // is relocated (not duplicated). Also clear its synced payroll entries so no
     // orphans remain under the old doc id.
     if (_movedFromDocId) {
@@ -17191,11 +17191,11 @@ async function savePaysheetToCloud(silent, opts = {}) {
         try { applyPayrollFilters(); } catch(_) {}
       }
 
-      // Re-file the daily inputs that belong to this paysheet's week so they
-      // follow the paysheet to the new week bucket. ONLY the pay-week ASSIGNMENT
+      // Re-file the daily inputs that belong to this pay sheet's week so they
+      // follow the pay sheet to the new week bucket. ONLY the pay-week ASSIGNMENT
       // (weekEnding) changes — the original entry date/time (date, submittedAt,
       // submittedTime) is left exactly as entered, so the Submission Log timestamp
-      // is unchanged. Matched by the paysheet's own job + original week.
+      // is unchanged. Matched by the pay sheet's own job + original week.
       const _oldWeek = (_optsMeta && _optsMeta.weekEnding) || '';
       const _newWeek = weekEnd || '';
       const _psJob   = (_optsMeta && _optsMeta.job) || jobName;
@@ -17220,7 +17220,7 @@ async function savePaysheetToCloud(silent, opts = {}) {
           try {
             await _dib.commit();
             _diToMove.forEach(d => { d.weekEnding = _newWeek; }); // immediate cache update; live listener also reconciles
-          } catch(err) { console.warn('[paysheet move] daily-input re-file failed', err); }
+          } catch(err) { console.warn('[pay sheet move] daily-input re-file failed', err); }
         }
       }
 
@@ -17231,8 +17231,8 @@ async function savePaysheetToCloud(silent, opts = {}) {
       try { renderPSLoadList(); } catch(_) {}
     }
 
-    if (typeof diRenderLogRows === 'function') diRenderLogRows(); // refresh log so supplemental paysheets update
-    if (!silent) alert(`Paysheet saved — "${jobName}" · Week Ending ${_fmtWeekDate(weekEnd)}`);
+    if (typeof diRenderLogRows === 'function') diRenderLogRows(); // refresh log so supplemental pay sheets update
+    if (!silent) alert(`Pay Sheet saved — "${jobName}" · Week Ending ${_fmtWeekDate(weekEnd)}`);
     return doc;
   } catch(e) {
     if (!silent) alert('Save failed: ' + e.message);
@@ -17385,10 +17385,10 @@ function _psInitSigCanvas(canvas) {
   fresh.addEventListener('touchend',   _stop,  { passive: false });
 }
 
-// ─── Repair: pull a job's daily inputs from another week into a paysheet's week ───
-// For paysheets that were moved BEFORE inputs-follow-the-paysheet existed, the
+// ─── Repair: pull a job's daily inputs from another week into a pay sheet's week ───
+// For pay sheets that were moved BEFORE inputs-follow-the-paysheet existed, the
 // daily inputs were left under their original week. This re-files them to the
-// paysheet's week and records them as its source inputs so future date-changes
+// pay sheet's week and records them as its source inputs so future date-changes
 // carry them. Only the pay-week ASSIGNMENT changes — original entry date/time is
 // never modified.
 let _psPullCtx = null; // { paysheetId, targetWeek, job, items:[dailyInputDoc,...] }
@@ -17396,10 +17396,10 @@ let _psPullCtx = null; // { paysheetId, targetWeek, job, items:[dailyInputDoc,..
 function psPullInputsToWeek(paysheetId) {
   if (!isAdmin()) { alert('Admin access required.'); return; }
   const p = (_cache.paysheets || []).find(x => x.id === paysheetId);
-  if (!p) { alert('Paysheet not found.'); return; }
+  if (!p) { alert('Pay Sheet not found.'); return; }
   const targetWeek = p.weekEnding;
   const job        = p.job;
-  if (!targetWeek || !job) { alert('This paysheet is missing a job or week.'); return; }
+  if (!targetWeek || !job) { alert('This pay sheet is missing a job or week.'); return; }
 
   // Candidate daily inputs: this job's inputs filed under some OTHER week.
   const items = (_cache.dailyInputs || [])
@@ -17465,7 +17465,7 @@ async function psConfirmPullInputs() {
     await batch.commit();
     sel.forEach(d => { d.weekEnding = targetWeek; }); // immediate cache update; live listener also reconciles
 
-    // Record them as this paysheet's source inputs so future date-changes carry them.
+    // Record them as this pay sheet's source inputs so future date-changes carry them.
     const p = (_cache.paysheets || []).find(x => x.id === paysheetId);
     if (p) {
       const ids = [...new Set([...(p.sourceDailyInputIds || []), ...sel.map(d => d.id)])];
@@ -17483,18 +17483,18 @@ async function psConfirmPullInputs() {
   }
 }
 
-// ─── One-time migration: regroup existing weekly paysheets BY SUBMITTER ───
+// ─── One-time migration: regroup existing weekly pay sheets BY SUBMITTER ───
 // Converts older shapes (one combined doc for the week, or one doc per crew lead)
 // into one document PER FOREMAN (submitter), with a tab per crew lead they
 // submitted. Idempotent (skips weeks already in per-submitter form), atomic per
 // week (create + delete in one batch, so nothing is lost if interrupted),
-// supplemental paysheets are left untouched. Admin-triggered.
+// supplemental pay sheets are left untouched. Admin-triggered.
 let _psSplitRan = false;
 async function psRegroupPaysheetsBySubmitter() {
   if (!isAdmin() || _psSplitRan) return;
   const weekly = (_cache.paysheets || []).filter(p =>
     p.type === 'weekly' && p.job && p.weekEnding &&
-    !p.isSupplemental && !(p.id && p.id.includes('_add_'))   // leave supplemental paysheets alone
+    !p.isSupplemental && !(p.id && p.id.includes('_add_'))   // leave supplemental pay sheets alone
   );
   if (!weekly.length) { _psSplitRan = true; return; }
 
@@ -17514,10 +17514,10 @@ async function psRegroupPaysheetsBySubmitter() {
     const ix = k.indexOf('|||');
     const job = k.slice(0, ix), week = k.slice(ix + 3);
 
-    // NEVER touch per-input paysheets. A week may intentionally hold MULTIPLE docs
+    // NEVER touch per-input pay sheets. A week may intentionally hold MULTIPLE docs
     // for the same foreman — one per selected daily input (id contains "_di_"). This
     // legacy "one doc per foreman" regroup would merge those back together and delete
-    // the separate ones, which is exactly the bug where compiled paysheets "disappear"
+    // the separate ones, which is exactly the bug where compiled pay sheets "disappear"
     // on every refresh. If any per-input doc exists for this job+week, skip the week.
     if (docs.some(d => d.id && d.id.includes('_di_'))) continue;
 
@@ -17582,14 +17582,14 @@ async function psRegroupPaysheetsBySubmitter() {
   }
   _psSplitRan = true;
   if (changed) {
-    console.log('psRegroupPaysheetsBySubmitter: rebuilt', changed, 'per-submitter paysheets');
+    console.log('psRegroupPaysheetsBySubmitter: rebuilt', changed, 'per-submitter pay sheets');
     try { renderPSLoadList(); } catch(_) {}
     try { renderDiWeekCompile(); } catch(_) {}
     try { renderDiWeekSelect(); } catch(_) {}
   }
 }
 
-// ─── "Compile into Weekly Paysheet" (compile-all) ───
+// ─── "Compile into Weekly Pay Sheet" (compile-all) ───
 // Compiles only the NOT-yet-compiled inputs for the active job + selected week.
 // Foremen who are already fully compiled (and their edits/approvals) are left
 // untouched; any foreman with at least one NEW input is rebuilt from ALL their
@@ -17597,7 +17597,7 @@ async function psRegroupPaysheetsBySubmitter() {
 // compiled inputs. Reuses the existing compile engine (subset mode) — no new
 // compile logic, only the source set changes.
 async function psCompileAllUncompiled(weekEnding) {
-  if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can compile weekly paysheets.'); return; }
+  if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can compile weekly pay sheets.'); return; }
   const activeJob = _psActiveJob();
   if (!activeJob) { alert('Select a job first.'); return; }
 
@@ -17607,7 +17607,7 @@ async function psCompileAllUncompiled(weekEnding) {
     return;
   }
 
-  // Daily-input ids already folded into an existing weekly paysheet for this job+week.
+  // Daily-input ids already folded into an existing weekly pay sheet for this job+week.
   const compiledIds = new Set();
   (_cache.paysheets || []).forEach(p => {
     if (p.type === 'weekly' && p.job === activeJob && p.weekEnding === weekEnding && Array.isArray(p.sourceDailyInputIds)) {
@@ -17617,7 +17617,7 @@ async function psCompileAllUncompiled(weekEnding) {
 
   const uncompiled = weekInputs.filter(d => !compiledIds.has(d.id));
   if (!uncompiled.length) {
-    alert(`All daily inputs for Week Ending ${_fmtWeekDate(weekEnding)} are already in a paysheet.\n\nNothing new to compile.`);
+    alert(`All daily inputs for Week Ending ${_fmtWeekDate(weekEnding)} are already in a pay sheet.\n\nNothing new to compile.`);
     return;
   }
 
@@ -17638,14 +17638,14 @@ async function psCompileAllUncompiled(weekEnding) {
   try { renderDiWeekCompile(); } catch(_) {}
   try { diRenderLogRows(); } catch(_) {}
   alert(Array.isArray(res) && res.length
-    ? `Compiled ${newCount} new input${newCount !== 1 ? 's' : ''} for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\n${res.length} foreman paysheet${res.length !== 1 ? 's' : ''} updated:\n${res.map(s => '  • ' + s).join('\n')}`
+    ? `Compiled ${newCount} new input${newCount !== 1 ? 's' : ''} for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\n${res.length} foreman pay sheet${res.length !== 1 ? 's' : ''} updated:\n${res.map(s => '  • ' + s).join('\n')}`
     : 'No crew data found to compile.');
 }
 
-// ─── Compile Weekly Paysheet ───
-// Aggregates all daily inputs (and legacy daily paysheets) in a folder into one compiled paysheet per crew.
+// ─── Compile Weekly Pay Sheet ───
+// Aggregates all daily inputs (and legacy daily pay sheets) in a folder into one compiled pay sheet per crew.
 async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
-  if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can compile weekly paysheets.'); return; }
+  if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can compile weekly pay sheets.'); return; }
   const activeJob = opts.job || (document.getElementById('ps-job-select') || {}).value || '';
   if (!activeJob) { alert('Please select a job before compiling.'); return; }
 
@@ -17655,12 +17655,12 @@ async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
   let _selIds = (opts.selectedIds && opts.selectedIds.length) ? new Set(opts.selectedIds) : null;
   // Per-input splitting is OPT-IN via opts.perInput — used ONLY by "Compile selected".
   // Compiling a whole week (psCompileAllUncompiled) narrows the source set with
-  // selectedIds too, but must still MERGE per foreman (one paysheet per submitter),
+  // selectedIds too, but must still MERGE per foreman (one pay sheet per submitter),
   // exactly like before the per-input feature existed. So it does NOT set perInput.
   const perInput = !!opts.perInput;
   // Expand the selection to also include any inputs currently bundled together with
-  // a selected input inside an existing paysheet, so splitting a merged paysheet
-  // into per-input paysheets never drops a co-bundled input's data.
+  // a selected input inside an existing pay sheet, so splitting a merged pay sheet
+  // into per-input pay sheets never drops a co-bundled input's data.
   if (perInput) {
     const _seed = new Set(_selIds);
     (_cache.paysheets || []).forEach(p => {
@@ -17675,7 +17675,7 @@ async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
   let diInputs = (_cache.dailyInputs || []).filter(p =>
     p.weekEnding === weekEnding && p.job === activeJob
   );
-  // Backward compat: legacy type='daily' paysheets saved before this update
+  // Backward compat: legacy type='daily' pay sheets saved before this update
   let legacyDailySheets = (_cache.paysheets || []).filter(p =>
     p.weekEnding === weekEnding && p.type === 'daily' && p.job === activeJob
   );
@@ -17691,10 +17691,10 @@ async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
   }
 
   const srcLabel = diInputs.length
-    ? `${diInputs.length} daily input${diInputs.length !== 1 ? 's' : ''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy paysheet${legacyDailySheets.length !== 1 ? 's' : ''}` : ''}`
-    : `${legacyDailySheets.length} legacy daily paysheet${legacyDailySheets.length !== 1 ? 's' : ''}`;
+    ? `${diInputs.length} daily input${diInputs.length !== 1 ? 's' : ''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy pay sheet${legacyDailySheets.length !== 1 ? 's' : ''}` : ''}`
+    : `${legacyDailySheets.length} legacy daily pay sheet${legacyDailySheets.length !== 1 ? 's' : ''}`;
 
-  if (!opts.skipConfirm && !await uiConfirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly paysheets?\n\nOne SEPARATE paysheet per foreman/crew lead — each labeled with their name.\n(Any existing compiled paysheets for this week will be rebuilt.)`)) return;
+  if (!opts.skipConfirm && !await uiConfirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly pay sheets?\n\nOne SEPARATE pay sheet per foreman/crew lead — each labeled with their name.\n(Any existing compiled pay sheets for this week will be rebuilt.)`)) return;
 
   // Group by crew lead name so all of a foreman's entries across multiple daily inputs
   // land in one tab, regardless of how many submission docs there are.
@@ -17737,7 +17737,7 @@ async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
     });
   });
 
-  // ── Legacy format: type='daily' paysheets ──
+  // ── Legacy format: type='daily' pay sheets ──
   legacyDailySheets.forEach(p => {
     Object.entries(p.crews || {}).forEach(([, sc]) => {
       if (!sc) return;
@@ -17766,7 +17766,7 @@ async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
   // Remove existing weekly docs for this job+week so a recompile is clean — then
   // recreate one doc per foreman below. In SUBSET mode we delete only the docs for
   // the foremen we're about to rebuild (the submitters present in the selection),
-  // so OTHER foremen's compiled paysheets for this week are preserved.
+  // so OTHER foremen's compiled pay sheets for this week are preserved.
   let oldWeekly = (_cache.paysheets || []).filter(p =>
     p.job === activeJob && p.weekEnding === weekEnding && p.type === 'weekly'
   );
@@ -17804,10 +17804,10 @@ async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
   }
 
   // Group the crew-lead tabs by the FOREMAN who submitted them, so each foreman
-  // gets ONE paysheet containing a tab per crew lead they submitted (merged
+  // gets ONE pay sheet containing a tab per crew lead they submitted (merged
   // across all their daily inputs for the week).
-  // Normal mode: one paysheet per FOREMAN (submitter). Per-input mode ("Compile
-  // selected"): one SEPARATE paysheet per selected daily input.
+  // Normal mode: one pay sheet per FOREMAN (submitter). Per-input mode ("Compile
+  // selected"): one SEPARATE pay sheet per selected daily input.
   const byGroup = {}; // groupId -> { foreman, leadKeys: [] }
   for (const key of crewOrder) {
     const g = crewByName[key];
@@ -17854,7 +17854,7 @@ async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
       weekEnding,
       type:      'weekly',
       foremanKey: subKey,          // submitter-based stable id used by date-moves
-      foreman:   fm.foreman,       // submitter email — who this paysheet belongs to
+      foreman:   fm.foreman,       // submitter email — who this pay sheet belongs to
       crewName:  crewNames[0] || '',
       crewNames,
       crewCount: crewNames.length,
@@ -17893,13 +17893,13 @@ async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
 
   renderPSLoadList();
   try { renderDiWeekCompile(); } catch(_) {}
-  if (!opts.skipAlert) alert(`Weekly paysheets compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''}.\n\n${savedSummary.length} foreman paysheet${savedSummary.length !== 1 ? 's' : ''} (one per submitter):\n${savedSummary.map(s => '  • ' + s).join('\n')}`);
+  if (!opts.skipAlert) alert(`Weekly pay sheets compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''}.\n\n${savedSummary.length} foreman pay sheet${savedSummary.length !== 1 ? 's' : ''} (one per submitter):\n${savedSummary.map(s => '  • ' + s).join('\n')}`);
   return savedSummary;
 }
 
-/** Create a blank supplemental weekly paysheet for an already-compiled week and load it. */
+/** Create a blank supplemental weekly pay sheet for an already-compiled week and load it. */
 async function psAddSupplementalPaysheet(weekEnding) {
-  if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can add paysheets.'); return; }
+  if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can add pay sheets.'); return; }
   const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
   if (!activeJob) { alert('Please select a job first.'); return; }
 
@@ -17927,14 +17927,14 @@ async function psAddSupplementalPaysheet(weekEnding) {
     _cache.paysheets.push(doc);
     _psLoadOpenFolders.add(weekEnding);
     renderPSLoadList();
-    try { renderDiWeekCompile(); } catch(_) {}  // show the new paysheet in the compiled list
+    try { renderDiWeekCompile(); } catch(_) {}  // show the new pay sheet in the compiled list
     await loadPaysheetFromCloud(docId);
   } catch(e) {
-    alert('Failed to create paysheet: ' + e.message);
+    alert('Failed to create pay sheet: ' + e.message);
   }
 }
 
-// ─── Load paysheet modal ───
+// ─── Load pay sheet modal ───
 // Week-ending folders are stored in Firestore (psfolders collection) and cached in _cache.psFolders.
 // Track which week-ending folders are expanded
 let _psLoadOpenFolders = new Set();
@@ -18012,11 +18012,11 @@ async function psDeleteFolder(folderId) {
   const we     = folder ? folder.weekEnding : folderId; // fallback: legacy folders have id === weekEnding
   const folderName = folder && folder.label ? `"${folder.label}" (Week Ending: ${_fmtWeekDate(we)})` : `"Week Ending: ${_fmtWeekDate(we)}"`;
 
-  // Guard: refuse if any paysheets exist for this week ending (across all jobs)
+  // Guard: refuse if any pay sheets exist for this week ending (across all jobs)
   const sheetsInFolder = (_cache.paysheets || []).filter(p => p.weekEnding === we);
   if (sheetsInFolder.length > 0) {
     const jobs = [...new Set(sheetsInFolder.map(p => p.job).filter(Boolean))].join(', ');
-    alert(`Cannot delete — this folder still contains ${sheetsInFolder.length} paysheet${sheetsInFolder.length !== 1 ? 's' : ''} (${jobs || 'unknown job'}).\n\nDelete or move all paysheets first, then try again.`);
+    alert(`Cannot delete — this folder still contains ${sheetsInFolder.length} pay sheet${sheetsInFolder.length !== 1 ? 's' : ''} (${jobs || 'unknown job'}).\n\nDelete or move all pay sheets first, then try again.`);
     return;
   }
   const diInFolder = (_cache.dailyInputs || []).filter(d => d.weekEnding === we);
@@ -18043,7 +18043,7 @@ async function psDeleteFolder(folderId) {
 
 async function psLockFolder(we) {
   if (!canManagePSFolders()) { alert('Only Admin, VP of Operations, and Project Manager can lock folders.'); return; }
-  if (!await uiConfirm(`Lock folder "Week Ending: ${_fmtWeekDate(we)}"?\n\nForeman-class users will be blocked from viewing this folder and its paysheets until unlocked or granted temporary access.`)) return;
+  if (!await uiConfirm(`Lock folder "Week Ending: ${_fmtWeekDate(we)}"?\n\nForeman-class users will be blocked from viewing this folder and its pay sheets until unlocked or granted temporary access.`)) return;
   const now = new Date().toISOString();
   try {
     await db.collection('psfolders').doc(we).set({
@@ -18186,17 +18186,17 @@ function renderPSLoadList() {
   const q         = (document.getElementById('ps-load-search').value || '').toLowerCase().trim();
   const activeJob = (document.getElementById('ps-job-select') || {}).value || '';
 
-  // Base paysheet list for the current user.
-  // Foremen only see their OWN paysheets — their own daily paysheets, plus only
-  // the weekly paysheets they submitted (not other foremen's).
-  // Paysheets inside locked folders that the user cannot access are hidden.
+  // Base pay sheet list for the current user.
+  // Foremen only see their OWN pay sheets — their own daily pay sheets, plus only
+  // the weekly pay sheets they submitted (not other foremen's).
+  // Pay Sheets inside locked folders that the user cannot access are hidden.
   const all = (_cache.paysheets || [])
     .filter(p => !activeJob || (p.job || '') === activeJob)
     .filter(p => !isForeman() || !_currentUser || (p.savedBy || '') === _currentUser.email || (p.type === 'weekly' && _psForemanOwnsPaysheet(p)))
     .filter(p => _canViewFolder(p.weekEnding || ''))
     .slice().sort((a,b) => (b.savedAt||'').localeCompare(a.savedAt||''));
 
-  // Search mode — flat filtered list (locked-folder paysheets already excluded above)
+  // Search mode — flat filtered list (locked-folder pay sheets already excluded above)
   if (q) {
     const filt = all.filter(p =>
       (p.job||'').toLowerCase().includes(q) ||
@@ -18211,7 +18211,7 @@ function renderPSLoadList() {
     return;
   }
 
-  // Collect all week endings for content (paysheets + daily inputs)
+  // Collect all week endings for content (pay sheets + daily inputs)
   const allPsWE = isForeman()
     ? all.map(p => p.weekEnding).filter(Boolean)
     : (_cache.paysheets||[]).map(p => p.weekEnding).filter(Boolean);
@@ -18249,7 +18249,7 @@ function renderPSLoadList() {
     const pendingReqs    = canManagePSFolders() ? _getPendingRequestsForFolder(we) : [];
     const activeGrants   = canManagePSFolders() ? _getActiveGrantsForFolder(we) : [];
 
-    // Only count/show paysheets the user can see
+    // Only count/show pay sheets the user can see
     const sheets   = all.filter(p => p.weekEnding === we);
     // Unfiltered count across ALL jobs — used for Delete Folder eligibility
     const allSheetsInFolder = (_cache.paysheets || []).filter(p => p.weekEnding === we);
@@ -18281,7 +18281,7 @@ function renderPSLoadList() {
 
     // Export ZIP button — only when contents are visible and non-empty
     const exportBtn = (canView && sheets.length)
-      ? `<button class="btn-sm" onclick="event.stopPropagation();psExportFolderZip('${we}')" style="white-space:nowrap;font-size:.75rem;padding:4px 10px;" title="Export all paysheets as PDF bundle"><span class="ico ico-download" aria-hidden="true"></span> Export ZIP</button>`
+      ? `<button class="btn-sm" onclick="event.stopPropagation();psExportFolderZip('${we}')" style="white-space:nowrap;font-size:.75rem;padding:4px 10px;" title="Export all pay sheets as PDF bundle"><span class="ico ico-download" aria-hidden="true"></span> Export ZIP</button>`
       : '';
 
     // ── Folder header subtitle ──────────────────────────────────────────
@@ -18296,7 +18296,7 @@ function renderPSLoadList() {
       } else {
         const parts = [];
         if (diCount) parts.push(diCount + ' daily input' + (diCount !== 1 ? 's' : ''));
-        if (cnt)     parts.push(cnt + ' paysheet' + (cnt !== 1 ? 's' : ''));
+        if (cnt)     parts.push(cnt + ' pay sheet' + (cnt !== 1 ? 's' : ''));
         subtitle = parts.join(' · ');
       }
     }
@@ -18359,20 +18359,20 @@ function renderPSLoadList() {
       const hasOtherJobSheets = allSheetsInFolder.length > 0;
       const diInputsHere = (_cache.dailyInputs||[]).filter(d => d.weekEnding === we && (!activeJob || d.job === activeJob));
       if (diInputsHere.length) {
-        // Folder has daily inputs but no paysheets yet
+        // Folder has daily inputs but no pay sheets yet
         const weekly = sheets.filter(p => p.type !== 'daily');
         folderBody = `
           <div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Inputs (${diInputsHere.length})</div>
           ${diInputsHere.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(d => _diLoadRow(d)).join('')}
           <div style="padding:8px 14px 10px 36px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap;">
             ${canCompilePaysheet() && activeJob ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileAllUncompiled('${we}')">
-              <span class="ico ico-clipboard" aria-hidden="true"></span> Compile into Weekly Paysheet
+              <span class="ico ico-clipboard" aria-hidden="true"></span> Compile into Weekly Pay Sheet
             </button>
             <span style="font-size:.75rem;color:var(--muted);">Compiles all daily inputs into one summary per crew</span>` : ''}
           </div>`;
       } else {
         folderBody = `<div style="padding:10px 36px;font-size:.82rem;color:var(--muted);display:flex;align-items:center;justify-content:space-between;gap:8px;">
-          <span>${hasOtherJobSheets ? 'No paysheets for the selected job — switch jobs to view.' : 'Empty — save a paysheet here.'}</span>
+          <span>${hasOtherJobSheets ? 'No pay sheets for the selected job — switch jobs to view.' : 'Empty — save a pay sheet here.'}</span>
           ${canManagePSFolders() ? `<button class="btn-sm btn-danger" style="font-size:.75rem;white-space:nowrap;" onclick="psDeleteFolder('${folder.id}')">Delete Folder</button>` : ''}
         </div>`;
       }
@@ -18384,15 +18384,15 @@ function renderPSLoadList() {
       folderBody = `
         ${diInputsHere.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Inputs (${diInputsHere.length})</div>
           ${diInputsHere.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(d => _diLoadRow(d)).join('')}` : ''}
-        ${daily.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Legacy Daily Paysheets (${daily.length})</div>
+        ${daily.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Legacy Daily Pay Sheets (${daily.length})</div>
           ${daily.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(p => _psLoadRow(p, we)).join('')}` : ''}
         ${weekly.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--green);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">★ Weekly Summary</div>
           ${weekly.map(p => _psLoadRow(p, we)).join('')}` : ''}
         <div style="padding:8px 14px 10px 36px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap;">
           ${canCompilePaysheet() && activeJob ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileAllUncompiled('${we}')">
-            <span class="ico ico-clipboard" aria-hidden="true"></span> Compile into Weekly Paysheet
+            <span class="ico ico-clipboard" aria-hidden="true"></span> Compile into Weekly Pay Sheet
           </button>
-          ${hasDone ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:#1a56db;color:#fff;border:none;" onclick="psAddSupplementalPaysheet('${we}')"><span class="ico ico-plus" aria-hidden="true"></span> Add Paysheet</button>` : ''}
+          ${hasDone ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:#1a56db;color:#fff;border:none;" onclick="psAddSupplementalPaysheet('${we}')"><span class="ico ico-plus" aria-hidden="true"></span> Add Pay Sheet</button>` : ''}
           ${hasDone ? '<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>' : '<span style="font-size:.75rem;color:var(--muted);">Compiles all daily inputs into one summary per crew</span>'}` : ''}
         </div>`;
     }
@@ -18535,9 +18535,9 @@ function psToggleFolder(folderId, elId) {
 async function psMovePaysheetTo(docId, newWeekEnding, selectEl) {
   if (!newWeekEnding) return;
   selectEl.value = ''; // reset dropdown
-  if (!await uiConfirm(`Move this paysheet to "Week Ending: ${_fmtWeekDate(newWeekEnding)}"?`)) return;
+  if (!await uiConfirm(`Move this pay sheet to "Week Ending: ${_fmtWeekDate(newWeekEnding)}"?`)) return;
   const ps = (_cache.paysheets||[]).find(p => p.id === docId);
-  if (!ps) { alert('Paysheet not found.'); return; }
+  if (!ps) { alert('Pay Sheet not found.'); return; }
 
   try {
     // Use .update() — keeps the same doc ID, just changes weekEnding.
@@ -18562,7 +18562,7 @@ async function psMovePaysheetTo(docId, newWeekEnding, selectEl) {
         if (!_cache.psFoldersList) _cache.psFoldersList = [];
         _cache.psFoldersList.push({ id: newWeekEnding, ...autoData });
         _cache.psFoldersList.sort((a,b) => b.weekEnding.localeCompare(a.weekEnding));
-      } catch(e) { /* non-fatal — folder will appear from paysheet weekEnding */ }
+      } catch(e) { /* non-fatal — folder will appear from pay sheet weekEnding */ }
     }
     _psLoadOpenFolders.add(newWeekEnding);
     renderPSLoadList();
@@ -18631,7 +18631,7 @@ async function psSaveToFolder(weekEnding) {
       if (!_cache.psFoldersList) _cache.psFoldersList = [];
       _cache.psFoldersList.push({ id: weekEnding, ...autoData });
       _cache.psFoldersList.sort((a,b) => b.weekEnding.localeCompare(a.weekEnding));
-    } catch(e) { /* non-fatal — paysheet still saves; folder visible from weekEnding field */ }
+    } catch(e) { /* non-fatal — pay sheet still saves; folder visible from weekEnding field */ }
   }
   // Carry over type/date/submissionId from pending save context
   const opts = (_psSavePendingData && _psSavePendingData.type)
@@ -18639,7 +18639,7 @@ async function psSaveToFolder(weekEnding) {
     : { type: 'weekly' };
   _psSavePendingData = null;
   await savePaysheetToCloud(false, opts);
-  // Scroll to paysheet preview after save
+  // Scroll to pay sheet preview after save
   const psEl = document.getElementById('paysheet-print-area');
   if (psEl) psEl.scrollIntoView({ behavior: 'smooth' });
 }
@@ -18661,20 +18661,20 @@ function psCancelSaveDest() {
 
 async function deleteSavedPaysheet(docId, e) {
   e.stopPropagation();
-  if (!await uiConfirm('Delete this saved paysheet? This cannot be undone.')) return;
+  if (!await uiConfirm('Delete this saved pay sheet? This cannot be undone.')) return;
   try {
-    // Find the paysheet doc to check if it's a daily type
+    // Find the pay sheet doc to check if it's a daily type
     const ps = (_cache.paysheets || []).find(p => p.id === docId);
     const isDaily = ps ? (ps.type === 'daily' || !!ps.date) : docId.startsWith('daily_');
 
-    // Delete paysheet — and remove any payroll entries a prior approval synced from
-    // it, so deleting an approved paysheet never leaves orphaned amounts in Payroll
+    // Delete pay sheet — and remove any payroll entries a prior approval synced from
+    // it, so deleting an approved pay sheet never leaves orphaned amounts in Payroll
     // (which would otherwise show in Payroll but not Accounting).
     try { await _psRemoveDocPayroll(docId); } catch(_) {}
     await db.collection('paysheets').doc(docId).delete();
     if (_cache.paysheets) _cache.paysheets = _cache.paysheets.filter(p => p.id !== docId);
 
-    // If daily paysheet, also delete the matching daily input submission(s)
+    // If daily pay sheet, also delete the matching daily input submission(s)
     if (isDaily && ps && ps.job && ps.date) {
       const snap = await db.collection('dailyinput')
         .where('job', '==', ps.job)
@@ -18684,16 +18684,16 @@ async function deleteSavedPaysheet(docId, e) {
       await Promise.all(deletes);
     }
 
-    // WEEKLY paysheet: return its daily inputs to the Submission Log as UNCOMPILED
+    // WEEKLY pay sheet: return its daily inputs to the Submission Log as UNCOMPILED
     // inputs filed under their PROPER week-ending — recomputed from each input's
     // ORIGINAL submission timestamp via the Pay Week Schedule (the same calc used at
     // submit). Only the week ASSIGNMENT (weekEnding) is rewritten; date / submittedAt
-    // / submittedTime are never touched. The "in a paysheet" marker clears on its own
-    // because it keys off this (now-deleted) paysheet's sourceDailyInputIds.
+    // / submittedTime are never touched. The "in a pay sheet" marker clears on its own
+    // because it keys off this (now-deleted) pay sheet's sourceDailyInputIds.
     if (!isDaily && ps) {
-      // Which inputs were in this paysheet? Prefer its exact source list; for a rare
+      // Which inputs were in this pay sheet? Prefer its exact source list; for a rare
       // legacy doc without it, fall back to job + week — but exclude inputs still
-      // claimed by another paysheet so a coexisting sheet is never disturbed.
+      // claimed by another pay sheet so a coexisting sheet is never disturbed.
       let targetInputs;
       if (Array.isArray(ps.sourceDailyInputIds) && ps.sourceDailyInputIds.length) {
         const idset = new Set(ps.sourceDailyInputIds);
@@ -18718,7 +18718,7 @@ async function deleteSavedPaysheet(docId, e) {
       });
       if (refiles.length) {
         try { await Promise.all(refiles); }
-        catch (err) { console.warn('[delete paysheet] re-file of inputs failed', err); }
+        catch (err) { console.warn('[delete pay sheet] re-file of inputs failed', err); }
       }
     }
 
@@ -18734,13 +18734,13 @@ async function loadPaysheetFromCloud(docId) {
   if (!doc) {
     try {
       const snap = await db.collection('paysheets').doc(docId).get();
-      if (!snap.exists) { alert('Paysheet not found.'); return; }
+      if (!snap.exists) { alert('Pay Sheet not found.'); return; }
       doc = snap.data();
     } catch(e) { alert('Load failed: ' + e.message); return; }
   }
-  // Enforce folder lock — foremen without an active grant cannot load paysheets from locked folders
+  // Enforce folder lock — foremen without an active grant cannot load pay sheets from locked folders
   if (!_canViewFolder(doc.weekEnding || '')) {
-    alert('This paysheet is in a locked folder. Request access from your manager to view it.');
+    alert('This pay sheet is in a locked folder. Request access from your manager to view it.');
     return;
   }
 
@@ -18749,7 +18749,7 @@ async function loadPaysheetFromCloud(docId) {
   const _loadCrewKeys = Object.keys(doc.crews || {}).map(k => parseInt(k)).filter(n => !isNaN(n) && n >= 1);
   const _loadMaxCrew  = _loadCrewKeys.length ? Math.max(..._loadCrewKeys) : 1;
   // Always set _psCrewCount to the doc's actual crew count so stale tabs
-  // from a previously-loaded larger paysheet don't bleed through.
+  // from a previously-loaded larger pay sheet don't bleed through.
   _psCrewCount = _loadMaxCrew;
   // Clear any state for crews beyond the loaded doc so they don't show as tabs.
   for (let c = _loadMaxCrew + 1; c <= 20; c++) {
@@ -18771,13 +18771,13 @@ async function loadPaysheetFromCloud(docId) {
         return true;
       }).map(s => {
         const split = Object.assign(_psEmptySplit(), s);
-        // Retroactively fill empNum for paysheets saved before the empNum feature existed
+        // Retroactively fill empNum for pay sheets saved before the empNum feature existed
         split.empNum = _resolveEmpNum(split.empNum, split.employee);
         return split;
       });
       while (_psState[c].splits.length < PS_SPLIT_ROWS) _psState[c].splits.push(_psEmptySplit());
       // Sync _diCrewLeadNames from the saved header so crew tab labels always
-      // reflect the paysheet's crew name rather than stale daily-input names.
+      // reflect the pay sheet's crew name rather than stale daily-input names.
       if (_psState[c].header.crewName) {
         _diCrewLeadNames[c] = _psState[c].header.crewName;
       }
@@ -18815,7 +18815,7 @@ async function loadPaysheetFromCloud(docId) {
   psRenderCrewTable();
   psRenderCrewTabs();
 
-  // A paysheet was loaded — make sure the project workspace is visible (not the
+  // A pay sheet was loaded — make sure the project workspace is visible (not the
   // folders overview) so the builder shows, wherever the load was triggered from.
   _psNav = 'detail';
   psApplyNavVisibility();
@@ -18829,7 +18829,7 @@ function _buildCrewSheetData(crewNum, jobName) {
   const h     = state.header;
   const data  = [];
 
-  data.push(['D9 EDGE — Paysheet']);
+  data.push(['D9 EDGE — Pay Sheet']);
   data.push([]);
   data.push(['Job:',               jobName]);
   data.push(['Project Name:',      h.project    || '']);
@@ -18904,7 +18904,7 @@ function exportPaysheetExcel() {
   }
 
   if (!sheetsAdded) {
-    alert('No paysheet data to export. Fill in at least one crew first.');
+    alert('No pay sheet data to export. Fill in at least one crew first.');
     return;
   }
 
@@ -19205,7 +19205,7 @@ function diAutoFillPaysheetHeader(jobName) {
   const defProject = meta.project  || jobName;
   const defForeman = meta.foreman  || (_currentUser ? _currentUser.email : '');
   const defCrew    = meta.crewName || '';
-  // Only fill empty fields — saved paysheet values take priority
+  // Only fill empty fields — saved pay sheet values take priority
   for (let c = 1; c <= _psCrewCount; c++) {
     const h = _psState[c].header;
     if (!h.project)             h.project  = defProject;
@@ -19376,8 +19376,8 @@ document.addEventListener('mousedown', e => {
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  ACCOUNTING TAB
-//  Reads from approved weekly paysheets in _cache.paysheets.
-//  Each weekly paysheet stores employee pay in crews[n].splits[].
+//  Reads from approved weekly pay sheets in _cache.paysheets.
+//  Each weekly pay sheet stores employee pay in crews[n].splits[].
 //  Employees are grouped and amounts summed across all crews/jobs for the week.
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -19385,7 +19385,7 @@ document.addEventListener('mousedown', e => {
 function acctInit() {
   acctPopulateWeekSelect();
   acctPopulateJobSelect();
-  // Show admin tip if the user is an admin and there are no approved paysheets yet
+  // Show admin tip if the user is an admin and there are no approved pay sheets yet
   const adminNotice = document.getElementById('acct-admin-notice');
   if (adminNotice) adminNotice.style.display = isAdmin() ? 'block' : 'none';
   const cleanupBtn = document.getElementById('acct-cleanup-btn');
@@ -19403,7 +19403,7 @@ function acctInit() {
   acctSetSubTab(_acctSubTab);   // routes via acctRenderRouter → folders
 }
 
-/** Build the week-ending dropdown from all approved weekly paysheets. */
+/** Build the week-ending dropdown from all approved weekly pay sheets. */
 function acctPopulateWeekSelect() {
   const sel = document.getElementById('acct-week-select');
   if (!sel) return;
@@ -19421,7 +19421,7 @@ function acctPopulateWeekSelect() {
   // Default to "All Weeks" (folders span every week) — do NOT auto-select the latest.
 }
 
-/** Build the job dropdown from approved weekly paysheets for the currently selected week. */
+/** Build the job dropdown from approved weekly pay sheets for the currently selected week. */
 function acctPopulateJobSelect() {
   const sel     = document.getElementById('acct-job-select');
   const weekSel = document.getElementById('acct-week-select');
@@ -19512,7 +19512,7 @@ function acctGetData(weekEnding, jobFilter) {
         // The Price Paid ledger is built from crew.rows[].weAmount. Migrated/legacy
         // crews sometimes carry those row amounts but incomplete employee splits,
         // which silently dropped that money from the Accounting total. Attribute any
-        // shortfall so Accounting matches the paysheet. Special/COR/Burn rows are
+        // shortfall so Accounting matches the pay sheet. Special/COR/Burn rows are
         // EXCLUDED — that money is tracked in the Work Order system, never payroll.
         const rowsTotal = (crew.rows || []).reduce((sum, r) =>
           sum + (isSpecialArea((r.area || '').trim()) ? 0 : (parseFloat(r.weAmount) || 0)), 0);
@@ -19552,7 +19552,7 @@ function acctGetData(weekEnding, jobFilter) {
   return result;
 }
 
-/** Build the HTML card for one job's accounting paysheet (used by both render and PDF). */
+/** Build the HTML card for one job's accounting pay sheet (used by both render and PDF). */
 function _acctBuildJobCard(jobData, weekEnding) {
   const { jobName, rows, totalAmount, employeeCount, approvedDocs } = jobData;
   const approvedBy = [...new Set(approvedDocs.map(d => d.approvedBy || '').filter(Boolean))].join(', ') || '—';
@@ -19576,10 +19576,10 @@ function _acctBuildJobCard(jobData, weekEnding) {
       <!-- Letterhead -->
       <div style="text-align:center;margin-bottom:24px;border-bottom:3px solid #1a56db;padding-bottom:16px;">
         <div style="font-size:1.5rem;font-weight:900;color:#1a56db;letter-spacing:.04em;">NGC CONSTRUCTION INC</div>
-        <div style="font-size:.95rem;font-weight:700;color:#333;margin-top:4px;text-transform:uppercase;letter-spacing:.08em;">Accounting Weekly Paysheet</div>
+        <div style="font-size:.95rem;font-weight:700;color:#333;margin-top:4px;text-transform:uppercase;letter-spacing:.08em;">Accounting Weekly Pay Sheet</div>
       </div>
 
-      ${isAdmin() ? `<div style="text-align:right;margin-bottom:14px;"><button class="btn" style="margin-top:0;padding:6px 14px;font-size:.8rem;background:#ef4444;color:#fff;border:none;" onclick="acctUnapprovePaysheets('${ea(weekEnding)}','${ea(jobName)}')" title="Un-approve: removes the payroll entries this paysheet created and returns it to re-approvable. All entries are kept.">↩ Unapprove</button></div>` : ''}
+      ${isAdmin() ? `<div style="text-align:right;margin-bottom:14px;"><button class="btn" style="margin-top:0;padding:6px 14px;font-size:.8rem;background:#ef4444;color:#fff;border:none;" onclick="acctUnapprovePaysheets('${ea(weekEnding)}','${ea(jobName)}')" title="Un-approve: removes the payroll entries this pay sheet created and returns it to re-approvable. All entries are kept.">↩ Unapprove</button></div>` : ''}
       <!-- Meta -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-bottom:22px;font-size:.85rem;">
         <div><span style="font-weight:700;color:#555;">Week Ending:</span>&nbsp;&nbsp;<strong style="color:#1a56db;">${_fmtWeekDate(weekEnding)}</strong></div>
@@ -19622,7 +19622,7 @@ function acctRender() {
   if (!printArea) return;
 
   if (!weekEnding) {
-    printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">Select a week ending above to view the accounting paysheet.</div>`;
+    printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">Select a week ending above to view the accounting pay sheet.</div>`;
     return;
   }
 
@@ -19633,7 +19633,7 @@ function acctRender() {
     if (hasApprovedAny && jobFilter) {
       printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">No employees found for <strong>${eh(jobFilter)}</strong> — Week Ending ${_fmtWeekDate(weekEnding)}.<br>Try selecting "All Jobs".</div>`;
     } else {
-      printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">No approved weekly paysheets found for Week Ending ${_fmtWeekDate(weekEnding)}.<br>${isAdmin() ? 'Load a Weekly Summary in the Paysheet tab and click <strong>✓ Approve for Accounting</strong>.' : 'Ask an admin to approve the weekly paysheet.'}</div>`;
+      printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">No approved weekly pay sheets found for Week Ending ${_fmtWeekDate(weekEnding)}.<br>${isAdmin() ? 'Load a Weekly Summary in the Pay Sheet tab and click <strong>✓ Approve for Accounting</strong>.' : 'Ask an admin to approve the weekly pay sheet.'}</div>`;
     }
     return;
   }
@@ -19677,7 +19677,7 @@ function acctRenderFolders() {
   const folders = _acctJobFolders(_acctWeekFilter);
   const scopeLabel = _acctWeekFilter ? `Week Ending ${_fmtWeekDate(_acctWeekFilter)}` : 'All Weeks';
   if (!folders.length) {
-    printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">No approved weekly paysheets ${_acctWeekFilter ? 'for ' + _fmtWeekDate(_acctWeekFilter) : 'yet'}.<br>${isAdmin() ? 'Load a Weekly Summary in the Paysheet tab and click <strong>✓ Approve for Accounting</strong>.' : 'Ask an admin to approve the weekly paysheet.'}</div>`;
+    printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">No approved weekly pay sheets ${_acctWeekFilter ? 'for ' + _fmtWeekDate(_acctWeekFilter) : 'yet'}.<br>${isAdmin() ? 'Load a Weekly Summary in the Pay Sheet tab and click <strong>✓ Approve for Accounting</strong>.' : 'Ask an admin to approve the weekly pay sheet.'}</div>`;
     return;
   }
   const grand = folders.reduce((s, f) => s + f.total, 0);
@@ -19689,7 +19689,7 @@ function acctRenderFolders() {
       <div style="font-size:.9rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${eh(f.jobName)}</div>
       <div style="font-size:1.6rem;font-weight:800;color:#3b82f6;line-height:1;margin-top:8px;">${fm(f.total)}</div>
       <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-top:3px;">Approved Payroll</div>
-      <div style="margin-top:11px;border-top:1px solid var(--border);padding-top:8px;font-size:.78rem;color:var(--muted);">${f.weeks} paysheet${f.weeks !== 1 ? 's' : ''} &middot; ${f.employees} employee${f.employees !== 1 ? 's' : ''}</div>
+      <div style="margin-top:11px;border-top:1px solid var(--border);padding-top:8px;font-size:.78rem;color:var(--muted);">${f.weeks} pay sheet${f.weeks !== 1 ? 's' : ''} &middot; ${f.employees} employee${f.employees !== 1 ? 's' : ''}</div>
     </div>`).join('');
   printArea.innerHTML = `
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
@@ -19699,7 +19699,7 @@ function acctRenderFolders() {
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;">${cards}</div>`;
 }
 
-// LEVEL 2 — dated list of this project's approved weekly paysheets (Change-Order-style table).
+// LEVEL 2 — dated list of this project's approved weekly pay sheets (Change-Order-style table).
 function acctRenderList() {
   const printArea = document.getElementById('acct-print-area');
   if (!printArea) return;
@@ -19722,7 +19722,7 @@ function acctRenderList() {
         <td style="padding:9px 10px;text-align:right;font-weight:700;color:#3b82f6;">${fm(r.total)}</td>
         <td style="padding:9px 10px;text-align:center;"><button class="btn-sm" onclick="acctOpenSheet('${ea(r.week)}')">View</button></td>
       </tr>`).join('')
-    : `<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--muted);">No approved paysheets for this project${_acctWeekFilter ? ' in ' + _fmtWeekDate(_acctWeekFilter) : ''}.</td></tr>`;
+    : `<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--muted);">No approved pay sheets for this project${_acctWeekFilter ? ' in ' + _fmtWeekDate(_acctWeekFilter) : ''}.</td></tr>`;
   const total = rows.reduce((s, r) => s + r.total, 0);
   printArea.innerHTML = `
     <div style="font-weight:700;font-size:1rem;color:var(--text);margin-bottom:12px;">${eh(_acctFolderJob)}</div>
@@ -19735,7 +19735,7 @@ function acctRenderList() {
         <th style="${th}text-align:center;">Action</th>
       </tr></thead>
       <tbody>${body}</tbody>
-      ${rows.length ? `<tfoot><tr style="border-top:2px solid var(--border);"><td colspan="3" style="padding:9px 10px;font-weight:700;">Total — ${rows.length} paysheet${rows.length !== 1 ? 's' : ''}</td><td style="padding:9px 10px;text-align:right;font-weight:800;color:#3b82f6;">${fm(total)}</td><td></td></tr></tfoot>` : ''}
+      ${rows.length ? `<tfoot><tr style="border-top:2px solid var(--border);"><td colspan="3" style="padding:9px 10px;font-weight:700;">Total — ${rows.length} pay sheet${rows.length !== 1 ? 's' : ''}</td><td style="padding:9px 10px;text-align:right;font-weight:800;color:#3b82f6;">${fm(total)}</td><td></td></tr></tfoot>` : ''}
     </table></div>`;
 }
 
@@ -19777,8 +19777,8 @@ function acctOnWeekChange() {
 }
 
 /**
- * Re-fetch ALL paysheets from Firestore, merge into cache, then rebuild the
- * Accounting tab from scratch.  Used by the ⟳ Refresh button so that paysheets
+ * Re-fetch ALL pay sheets from Firestore, merge into cache, then rebuild the
+ * Accounting tab from scratch.  Used by the ⟳ Refresh button so that pay sheets
  * approved on another device become visible without a full page reload.
  */
 async function acctRefreshFromFirestore() {
@@ -19796,10 +19796,10 @@ async function acctRefreshFromFirestore() {
 }
 
 /**
- * Delete all paysheets and daily inputs whose job no longer exists in the
+ * Delete all pay sheets and daily inputs whose job no longer exists in the
  * uploaded budgets (_cache.jobs).  Admin-only.  Called by the <span class="ico ico-trash" aria-hidden="true"></span> Clean Up button.
  */
-// Bring ONE week's already-approved paysheets fully up to date in Accounting:
+// Bring ONE week's already-approved pay sheets fully up to date in Accounting:
 // approve + sync every crew tab that has data on each approved sheet for that week.
 // Fixes sheets approved while only the active tab transferred. Idempotent —
 // psApproveSync upserts by deterministic ID and acctGetData reads live, so nothing
@@ -19809,12 +19809,12 @@ async function psBackfillAccountingWeek(weekEnding) {
   const wk = weekEnding || (document.getElementById('acct-week-select') || {}).value || '';
   if (!wk) { alert('Select a week-ending in the Accounting tab first, then click "Sync this week".'); return; }
 
-  // Only paysheets for THIS week that are ALREADY approved (≥1 crew or doc-level).
+  // Only pay sheets for THIS week that are ALREADY approved (≥1 crew or doc-level).
   const sheets = (_cache.paysheets || []).filter(p =>
     p.type === 'weekly' && p.weekEnding === wk && _psIsApproved(p));
-  if (!sheets.length) { alert(`No approved paysheets found for Week Ending ${_fmtWeekDate(wk)}.`); return; }
+  if (!sheets.length) { alert(`No approved pay sheets found for Week Ending ${_fmtWeekDate(wk)}.`); return; }
 
-  if (!await uiConfirm(`Bring Week Ending ${_fmtWeekDate(wk)} up to date in Accounting?\n\nApproves + syncs every crew tab with data on the ${sheets.length} already-approved paysheet${sheets.length !== 1 ? 's' : ''} for this week. Idempotent — no double-counting. Other weeks are untouched.`)) return;
+  if (!await uiConfirm(`Bring Week Ending ${_fmtWeekDate(wk)} up to date in Accounting?\n\nApproves + syncs every crew tab with data on the ${sheets.length} already-approved pay sheet${sheets.length !== 1 ? 's' : ''} for this week. Idempotent — no double-counting. Other weeks are untouched.`)) return;
 
   const approvedBy = _currentUser ? _currentUser.email : 'unknown';
   let totalEntries = 0, sheetsFixed = 0;
@@ -19851,7 +19851,7 @@ async function psBackfillAccountingWeek(weekEnding) {
     acctPopulateWeekSelect();
     acctPopulateJobSelect();
     acctRenderRouter();
-    alert(`Week Ending ${_fmtWeekDate(wk)} synced to Accounting.\n\n${sheetsFixed} paysheet${sheetsFixed !== 1 ? 's' : ''} updated · ${totalEntries} payroll entr${totalEntries === 1 ? 'y' : 'ies'} created/updated.\n\n(Re-running is safe — entries are upserted, never duplicated.)`);
+    alert(`Week Ending ${_fmtWeekDate(wk)} synced to Accounting.\n\n${sheetsFixed} pay sheet${sheetsFixed !== 1 ? 's' : ''} updated · ${totalEntries} payroll entr${totalEntries === 1 ? 'y' : 'ies'} created/updated.\n\n(Re-running is safe — entries are upserted, never duplicated.)`);
   } catch (e) {
     alert('Sync failed: ' + e.message);
   }
@@ -19863,11 +19863,11 @@ async function acctCleanupOrphanedPaysheets() {
   const orphanedPS = (_cache.paysheets   || []).filter(p => p.job && !knownJobs.has(p.job));
   const orphanedDI = (_cache.dailyInputs || []).filter(d => d.job && !knownJobs.has(d.job));
   const total = orphanedPS.length + orphanedDI.length;
-  if (!total) { alert('Nothing to clean up — all paysheets match an existing job.'); return; }
+  if (!total) { alert('Nothing to clean up — all pay sheets match an existing job.'); return; }
 
   const jobList = [...new Set([...orphanedPS, ...orphanedDI].map(r => r.job))].join('\n  • ');
   if (!await uiConfirm(
-    `Delete ${orphanedPS.length} paysheet${orphanedPS.length !== 1 ? 's' : ''} and ` +
+    `Delete ${orphanedPS.length} pay sheet${orphanedPS.length !== 1 ? 's' : ''} and ` +
     `${orphanedDI.length} daily input${orphanedDI.length !== 1 ? 's' : ''} for deleted jobs?\n\n  • ${jobList}\n\nThis cannot be undone.`
   )) return;
 
@@ -19892,7 +19892,7 @@ async function acctCleanupOrphanedPaysheets() {
   }
 }
 
-/** Export per-job accounting paysheets as a downloaded PDF file. */
+/** Export per-job accounting pay sheets as a downloaded PDF file. */
 function acctExportPDF() {
   if (typeof window.jspdf === 'undefined') { alert('PDF library not loaded — please wait a moment and try again.'); return; }
   const weekEnding = (document.getElementById('acct-week-select') || {}).value || '';
@@ -19929,7 +19929,7 @@ function acctExportPDF() {
     pdf.text('NGC CONSTRUCTION INC', PW/2, y+15, {align:'center'});
     y += 22;
     pdf.setFontSize(9); pdf.setTextColor(...C_BLK);
-    pdf.text('ACCOUNTING WEEKLY PAYSHEET', PW/2, y+8, {align:'center'});
+    pdf.text('ACCOUNTING WEEKLY PAY SHEET', PW/2, y+8, {align:'center'});
     y += 14;
     pdf.setLineWidth(2.5); pdf.setDrawColor(...C_BLUE); pdf.line(M, y, PW-M, y);
     y += 16;
@@ -20005,7 +20005,7 @@ function acctExportPDF() {
   pdf.save(`Accounting_Paysheet${safeJob}_${safeWeek}.pdf`);
 }
 
-/** Export accounting paysheet(s) to Excel. One sheet per job. */
+/** Export accounting pay sheet(s) to Excel. One sheet per job. */
 function acctExportExcel() {
   if (typeof XLSX === 'undefined') { alert('Excel library not loaded — please wait a moment and try again.'); return; }
   const weekEnding = (document.getElementById('acct-week-select') || {}).value || '';
@@ -20020,7 +20020,7 @@ function acctExportExcel() {
     const approvedBy = [...new Set(approvedDocs.map(d => d.approvedBy || '').filter(Boolean))].join(', ') || '—';
 
     const sheetData = [
-      ['NGC CONSTRUCTION INC — Accounting Weekly Paysheet'],
+      ['NGC CONSTRUCTION INC — Accounting Weekly Pay Sheet'],
       [],
       ['Week Ending:', _fmtWeekDate(weekEnding)],
       ['Job:', jobName],
@@ -20050,7 +20050,7 @@ function acctExportExcel() {
     }
 
     // Sheet name: trim job name to 31 chars (Excel limit)
-    const sheetName = jobName.replace(/[:\\/?*[\]]/g, '').slice(0, 31) || 'Paysheet';
+    const sheetName = jobName.replace(/[:\\/?*[\]]/g, '').slice(0, 31) || 'Pay Sheet';
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
   }
 
@@ -20310,11 +20310,11 @@ function renderCODashboard() {
   const paidBody   = paidRows.map(renderDashRow).join('');
 
   const thStyle = 'padding:8px 10px;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);background:var(--surface2);';
-  // Admin tip: prompt to re-approve paysheets so PTD syncs (only shown when there are COR budgets)
+  // Admin tip: prompt to re-approve pay sheets so PTD syncs (only shown when there are COR budgets)
   const reApproveTip = (isAdmin() && corbs.length > 0)
     ? `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);border-radius:8px;font-size:.8rem;color:var(--accent);">
-        <strong>Admin tip:</strong> PTD values include both Daily Input entries and approved Weekly Summary Paysheets.
-        If a ${_dashIsBurn ? 'Work Order' : 'COR'} row shows $0 PTD after you&rsquo;ve entered amounts on a paysheet, open that paysheet and click
+        <strong>Admin tip:</strong> PTD values include both Daily Input entries and approved Weekly Summary Pay Sheets.
+        If a ${_dashIsBurn ? 'Work Order' : 'COR'} row shows $0 PTD after you&rsquo;ve entered amounts on a pay sheet, open that pay sheet and click
         <strong>✓ Approve for Accounting</strong> (or re-approve if already approved) to sync the W/E&nbsp;Earned amounts.
        </div>`
     : '';
@@ -20519,8 +20519,8 @@ function _coRenderCorCards(container, jobName, cos, corbs) {
 
   const reApproveTip = (isAdmin() && corbs.length > 0)
     ? `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);border-radius:8px;font-size:.8rem;color:var(--accent);">
-        <strong>Admin tip:</strong> PTD values include both Daily Input entries and approved Weekly Summary Paysheets.
-        If a COR shows $0 PTD after you&rsquo;ve entered amounts on a paysheet, open that paysheet and click
+        <strong>Admin tip:</strong> PTD values include both Daily Input entries and approved Weekly Summary Pay Sheets.
+        If a COR shows $0 PTD after you&rsquo;ve entered amounts on a pay sheet, open that pay sheet and click
         <strong>✓ Approve for Accounting</strong> (or re-approve if already approved) to sync the W/E&nbsp;Earned amounts.
        </div>` : '';
 
@@ -21757,7 +21757,7 @@ async function coConfirmBudget() {
 }
 
 // ── COR dual-amount helpers ──────────────────────────────────────────────────
-// foremanTrackingAmount: drives field workflow (DI, paysheet, PTD, remaining)
+// foremanTrackingAmount: drives field workflow (DI, pay sheet, PTD, remaining)
 // internalCorAmount: management-only reference; legacy records fall back to amount
 function corbForemanAmount(corb) {
   if (!corb) return 0;
@@ -21802,7 +21802,7 @@ function computeCorPaid(corb) {
     });
   }
 
-  // ── Approved weekly paysheet W/E Earned (synced by psApproveSync) ────────
+  // ── Approved weekly pay sheet W/E Earned (synced by psApproveSync) ────────
   // Match exclusively by corBudgetId — never by laborCode alone.
   // This is the main PTD data source and must be isolated per-COR.
   (_cache.payroll || []).forEach(e => {
@@ -22183,9 +22183,9 @@ function computeCorPaid(corb) {
   }
 
   /**
-   * The crew's own roster — the named split employees on a paysheet crew. Used as
+   * The crew's own roster — the named split employees on a pay sheet crew. Used as
    * the fallback set of "who worked this Area" when the Daily Inputs don't record
-   * a per-Area breakdown, so every earned dollar still reconciles to the paysheet.
+   * a per-Area breakdown, so every earned dollar still reconciles to the pay sheet.
    */
   function _acctCrewSplitEmployees(crew) {
     const uniq = new Map();
@@ -22236,10 +22236,10 @@ function computeCorPaid(corb) {
         }).filter(Boolean);
 
         // Each employee's APPROVED weekly amount comes from the crew SPLITS — the
-        // amount the paysheet actually pays that employee (tied to the employee,
+        // amount the pay sheet actually pays that employee (tied to the employee,
         // NOT re-divided equally). We then decompose that amount across the crew's
         // Areas proportional to each Area's W/E Earned, purely for the audit trail;
-        // the employee's total always equals their paysheet amount.
+        // the employee's total always equals their pay sheet amount.
         const splitEmps = [];
         (crew.splits || []).forEach(s => {
           const name = (s.employee || '').trim();
@@ -22320,9 +22320,9 @@ function computeCorPaid(corb) {
    */
   function acctBuildTimeSheet(emp) {
     // Hours are derived from what the employee actually EARNED (their approved
-    // paysheet amount) — NOT floored to a weekly minimum. Regular pay is capped at
+    // pay sheet amount) — NOT floored to a weekly minimum. Regular pay is capped at
     // 40 hrs / $1,000; anything earned above that becomes overtime at $37.50/hr.
-    // Total Payroll always equals the earned amount (matches the Weekly Paysheet).
+    // Total Payroll always equals the earned amount (matches the Weekly Pay Sheet).
     const E = emp.totalCents;
     // Salaried (every dollar is on labor code 907) earning a full week ($1,000+): 40 regular
     // hours at pay ÷ 40, no OT. A part-time supervisor (< $1,000) falls through to the
@@ -22367,7 +22367,7 @@ function computeCorPaid(corb) {
   function acctReconcile(job, weekEnding) {
     const { docs, allocations, unallocated } = acctBuildAllocations(job, weekEnding);
     // Authoritative total = sum of the approved crew SPLIT amounts (what the
-    // Accounting Weekly Paysheet pays). Allocated total must equal this exactly.
+    // Accounting Weekly Pay Sheet pays). Allocated total must equal this exactly.
     let paysheetCents = 0;
     docs.forEach(doc => {
       const anyCrewFlag = Object.values(doc.crews || {}).some(cr => cr && cr.approvedAt);
@@ -22406,7 +22406,7 @@ function computeCorPaid(corb) {
     return `
     <div style="background:#fff;color:#000;border-radius:8px;padding:32px;max-width:920px;margin:0 auto 32px;font-family:Arial,sans-serif;font-size:13px;border:1px solid var(--border);">
       <div style="text-align:center;margin-bottom:20px;border-bottom:3px solid #1a56db;padding-bottom:14px;">
-        <div style="font-size:1.5rem;font-weight:900;color:#1a56db;letter-spacing:.04em;">D9 EDGE</div>
+        <div style="font-size:1.5rem;font-weight:900;color:#1a56db;letter-spacing:.04em;">NGC CONSTRUCTION INC</div>
         <div style="font-size:.9rem;font-weight:700;color:#333;margin-top:4px;text-transform:uppercase;letter-spacing:.08em;">${eh(subtitle)}</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;margin-bottom:20px;font-size:.85rem;">${meta}</div>
@@ -22416,10 +22416,10 @@ function computeCorPaid(corb) {
 
   function _acctReconBanner(recon) {
     if (recon.balanced && !recon.unallocatedCount) {
-      return `<div style="background:#ecfdf5;border:1px solid #86efac;color:#065f46;padding:8px 14px;border-radius:6px;margin-bottom:14px;font-size:.8rem;">✓ Reconciled — each employee's total matches their approved Weekly Paysheet amount (${_acctMoney(recon.paysheetCents)} total).</div>`;
+      return `<div style="background:#ecfdf5;border:1px solid #86efac;color:#065f46;padding:8px 14px;border-radius:6px;margin-bottom:14px;font-size:.8rem;">✓ Reconciled — each employee's total matches their approved Weekly Pay Sheet amount (${_acctMoney(recon.paysheetCents)} total).</div>`;
     }
     let msg = '';
-    if (!recon.balanced) msg += `<div style="margin-bottom:4px;"><span class="ico ico-warn" aria-hidden="true"></span> Allocated ${_acctMoney(recon.allocatedCents)} vs Weekly Paysheet ${_acctMoney(recon.paysheetCents)}.</div>`;
+    if (!recon.balanced) msg += `<div style="margin-bottom:4px;"><span class="ico ico-warn" aria-hidden="true"></span> Allocated ${_acctMoney(recon.allocatedCents)} vs Weekly Pay Sheet ${_acctMoney(recon.paysheetCents)}.</div>`;
     if (recon.unallocatedCount) msg += `<div><strong>Detailed Area Allocation Unavailable</strong> for ${recon.unallocatedCount} Area row(s) totaling ${_acctMoney(recon.unallocatedCents)} — earned money with no named employee on the crew split, so it is not tied to any employee.</div>`;
     return `<div style="background:#fff8e1;border:1px solid #f0c000;color:#7a5c00;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:.8rem;">${msg}</div>`;
   }
@@ -22435,7 +22435,7 @@ function computeCorPaid(corb) {
     await acctEnsureDailyInputs();
 
     const jobs = jobFilter ? [jobFilter] : _acctJobsForWeek(week);
-    if (!jobs.length) { printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">No approved weekly paysheets for Week Ending ${_fmtWeekDate(week)}.</div>`; return; }
+    if (!jobs.length) { printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">No approved weekly pay sheets for Week Ending ${_fmtWeekDate(week)}.</div>`; return; }
     printArea.innerHTML = jobs.map(job => _acctBuildEarningsCard(job, week)).join('');
   }
 
@@ -22513,7 +22513,7 @@ function computeCorPaid(corb) {
     await acctEnsureDailyInputs();
 
     const jobs = jobFilter ? [jobFilter] : _acctJobsForWeek(week);
-    if (!jobs.length) { printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">No approved weekly paysheets for Week Ending ${_fmtWeekDate(week)}.</div>`; return; }
+    if (!jobs.length) { printArea.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">No approved weekly pay sheets for Week Ending ${_fmtWeekDate(week)}.</div>`; return; }
     printArea.innerHTML = jobs.map(job => _acctBuildTimesheetsCard(job, week)).join('');
   }
 
@@ -22783,12 +22783,12 @@ function computeCorPaid(corb) {
         .map(h => XC(h, {bold:true, align:'center', fill:'FFF2F2F2', wrap:true})));
       let R = grid.length;
       if (!data.employees.length) {
-        grid.push([ XC('No approved weekly paysheets for this week.', {border:false}) ]);
+        grid.push([ XC('No approved weekly pay sheets for this week.', {border:false}) ]);
         merges.push(_acctMrg(R,0,R,cTot));
       }
       data.employees.forEach(emp => {
         // Daily $ mirror the Weekly Time Sheet's hour split (reg even across weekdays,
-        // OT $75/day from Thursday), so the paysheet lines up with the time card.
+        // OT $75/day from Thursday), so the pay sheet lines up with the time card.
         const daily   = _acctEarnDaily(emp, hasSat).map(c => c == null ? null : c / 100);
         const nameRow = [ XC(emp.name, {bold:true}), XC(emp.empNum || '', {align:'center'}) ];
         daily.forEach(d => nameRow.push(d == null ? XC('') : XC(d, {align:'right', z:_MONEYZ})));
@@ -22947,7 +22947,7 @@ function computeCorPaid(corb) {
       };
       header();
       const ensure=(need)=>{ if(y+need>PH-M){ pdf.addPage(); y=M; header(); } };
-      if(!data.employees.length){ cell(xName,y,wName+wEmp+wDay*DAYS.length+wTot,rh,'No approved weekly paysheets for this week.',{}); y+=rh; }
+      if(!data.employees.length){ cell(xName,y,wName+wEmp+wDay*DAYS.length+wTot,rh,'No approved weekly pay sheets for this week.',{}); y+=rh; }
       data.employees.forEach(emp=>{
         ensure(rh*(5+emp.allocations.length)+18);
         const daily=_acctEarnDaily(emp,hasSat);   // cents, matches time card (incl. SAT when present)
