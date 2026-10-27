@@ -19394,7 +19394,12 @@ function acctInit() {
   if (backfillBtn) backfillBtn.style.display = isAdmin() ? '' : 'none';
   // Always land on the project folders overview.
   _acctNav = 'folders'; _acctFolderJob = '';
-  _acctWeekFilter = (document.getElementById('acct-week-select') || {}).value || '';
+  // Restore the week select to the saved filter. (Reading it instead picked up the
+  // week of the sheet last viewed in detail, trapping the folders view on that one
+  // week with no Back button.)
+  const _wsel = document.getElementById('acct-week-select');
+  if (_wsel) _wsel.value = _acctWeekFilter;
+  if (_wsel && _wsel.value !== _acctWeekFilter) { _acctWeekFilter = ''; _wsel.value = ''; }
   acctSetSubTab(_acctSubTab);   // routes via acctRenderRouter → folders
 }
 
