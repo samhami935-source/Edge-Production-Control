@@ -22756,6 +22756,17 @@ function computeCorPaid(corb) {
   }
   const _acctMrg = (r1, c1, r2, c2) => ({ s:{ r:r1, c:c1 }, e:{ r:r2, c:c2 } });
   const _MONEYZ = '"$"#,##0.00';
+  // Unique, Excel-safe worksheet names (≤31 chars, no :\/?*[]); repeats get " (2)", " (3)"…
+  function _acctSheetNamer() {
+    const used = new Set();
+    return base => {
+      const b = String(base || 'Sheet').replace(/[:\\/?*[\]]/g, '').trim().slice(0, 31) || 'Sheet';
+      let n = b, i = 2;
+      while (used.has(n.toLowerCase())) { const suf = ' (' + (i++) + ')'; n = b.slice(0, 31 - suf.length) + suf; }
+      used.add(n.toLowerCase());
+      return n;
+    };
+  }
 
   function acctExportEarningsExcel() {
     if (typeof XLSX === 'undefined') { alert('Excel library not loaded — please try again in a moment.'); return; }
@@ -22767,11 +22778,15 @@ function computeCorPaid(corb) {
     const XL = _acctXL();
     const XC = _acctXCell, weDisp = _acctWeekEndDisp(week);
     const wb = XL.utils.book_new();
+    const sheetName = _acctSheetNamer();
     jobs.forEach(job => {
       const data = acctEmployeeEarnings(job, week);
-      const grid = [], merges = [];
       const hasSat = _acctEarnHasSat(data.employees), DAYS = _acctEarnDays(hasSat);
       const ND = DAYS.length, cTot = 2 + ND;   // last column index (WEEKLY TOTAL)
+      // One worksheet per employee — employees are never lumped together on a sheet.
+      const groups = data.employees.length ? data.employees.map(e => [e]) : [[]];
+      groups.forEach(group => {
+      const grid = [], merges = [];
       // ── Title block (NGC Weekly Time Card — earnings grid) ──
       grid.push([ null, null, XC('NGC CONSTRUCTION INC  DBA DRYWALL', {bold:true, size:12, align:'center', border:false}) ]);
       merges.push(_acctMrg(0,2,0,cTot));
@@ -22782,11 +22797,11 @@ function computeCorPaid(corb) {
       grid.push(['EMPLOYEE NAME','EMP. #', ...DAYS, 'WEEKLY TOTAL']
         .map(h => XC(h, {bold:true, align:'center', fill:'FFF2F2F2', wrap:true})));
       let R = grid.length;
-      if (!data.employees.length) {
+      if (!group.length) {
         grid.push([ XC('No approved weekly pay sheets for this week.', {border:false}) ]);
         merges.push(_acctMrg(R,0,R,cTot));
       }
-      data.employees.forEach(emp => {
+      group.forEach(emp => {
         // Daily $ mirror the Weekly Time Sheet's hour split (reg even across weekdays,
         // OT $75/day from Thursday), so the pay sheet lines up with the time card.
         const daily   = _acctEarnDaily(emp, hasSat).map(c => c == null ? null : c / 100);
@@ -22827,7 +22842,8 @@ function computeCorPaid(corb) {
       merges.push(_acctMrg(R,4,R,cTot));
       const cols = [{wch:28},{wch:10}].concat(DAYS.map(() => ({wch:11}))).concat([{wch:15}]);
       const ws = _acctXSheet(grid, cols, merges);
-      XL.utils.book_append_sheet(wb, ws, (job.replace(/[:\\/?*[\]]/g,'').slice(0,28)||'Job'));
+      XL.utils.book_append_sheet(wb, ws, sheetName(group.length ? group[0].name : job));
+      });
     });
     const safeWeek = week.replace(/[^a-zA-Z0-9_-]/g,'_');
     const safeJob  = jobFilter ? '_'+jobFilter.replace(/[^a-zA-Z0-9 _-]/g,'').trim().replace(/\s+/g,'_') : '';
@@ -22844,11 +22860,14 @@ function computeCorPaid(corb) {
     const XL = _acctXL();
     const XC = _acctXCell, weDisp = _acctWeekEndDisp(week);
     const wb = XL.utils.book_new();
+    const sheetName = _acctSheetNamer();
+    let made = 0;
     jobs.forEach(job => {
       const data   = acctEmployeeEarnings(job, week);
       const sheets = data.employees.map(acctBuildTimeSheet);
-      const grid = [], merges = [];
+      // One worksheet per employee — each time card on its own tab with its footer.
       sheets.forEach(ts => {
+        const grid = [], merges = [];
         const R0 = grid.length;
         const days = _acctDailyTimeCard(ts);
         // Title row
@@ -22884,8 +22903,7 @@ function computeCorPaid(corb) {
           grid.push(rr);
         });
         merges.push(_acctMrg(R0+5,11,R0+4+days.length,11), _acctMrg(R0+5,12,R0+4+days.length,12));
-        grid.push([]); // spacer between employees
-      });
+        grid.push([]); // spacer before footer
       // Footer legal text + authorization
       [ 'IT IS MANDATORY TO TAKE A 10 MIN BREAK PERIOD AFTER 2 HOURS OF WORK IN THE MORNING, 30 MIN PERIOD FOR LUNCH AFTER 4 HOURS OF WORK',
         '10 MIN BREAK AFTERNOON, AFTER 2 HOURS OF WORK',
@@ -22896,8 +22914,11 @@ function computeCorPaid(corb) {
       R = grid.length; grid.push([ null, null, null, null, XC('SUPERINTENDENT AUTHORIZATION:', {bold:true, border:false}) ]); merges.push(_acctMrg(R,4,R,9));
       const cols = [{wch:11},{wch:8},{wch:10},{wch:9},{wch:9},{wch:10},{wch:8},{wch:8},{wch:7},{wch:7},{wch:2},{wch:18},{wch:12}];
       const ws = _acctXSheet(grid, cols, merges);
-      XL.utils.book_append_sheet(wb, ws, (job.replace(/[:\\/?*[\]]/g,'').slice(0,28)||'Job'));
+      XL.utils.book_append_sheet(wb, ws, sheetName(ts.name || job));
+      made++;
+      });
     });
+    if (!made) { alert('No time sheets to export for the selected week.'); return; }
     const safeWeek = week.replace(/[^a-zA-Z0-9_-]/g,'_');
     const safeJob  = jobFilter ? '_'+jobFilter.replace(/[^a-zA-Z0-9 _-]/g,'').trim().replace(/\s+/g,'_') : '';
     _acctXL().writeFile(wb, `Accounting_TimeSheets${safeJob}_${safeWeek}.xlsx`);
@@ -22905,6 +22926,20 @@ function computeCorPaid(corb) {
 
   // ─────────────────────────── Exports (PDF) ───────────────────────────
   function _acctPdfAmt(cents){ return '$'+(cents/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  // Two signature lines (Employee | Superintendent), each with a Date line, drawn
+  // side by side starting at y. Returns the y just below the block (~44pt tall).
+  function _acctPdfSigBlock(pdf, M, y) {
+    const lineY = y + 30, sigW = 230, dateW = 90, gap = 14, colW = sigW + gap + dateW, colGap = 46;
+    [['EMPLOYEE SIGNATURE', M], ['SUPERINTENDENT SIGNATURE', M + colW + colGap]].forEach(([label, x]) => {
+      pdf.setDrawColor(0); pdf.setLineWidth(0.7);
+      pdf.line(x, lineY, x + sigW, lineY);
+      pdf.line(x + sigW + gap, lineY, x + colW, lineY);
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8); pdf.setTextColor(0, 0, 0);
+      pdf.text(label, x, lineY + 11);
+      pdf.text('DATE', x + sigW + gap, lineY + 11);
+    });
+    return lineY + 14;
+  }
 
   function acctExportEarningsPDF() {
     if (typeof window.jspdf === 'undefined') { alert('PDF library not loaded — please try again in a moment.'); return; }
@@ -22930,6 +22965,10 @@ function computeCorPaid(corb) {
       const data=acctEmployeeEarnings(job,week);
       hasSat=_acctEarnHasSat(data.employees); DAYS=_acctEarnDays(hasSat);
       wDay=Math.floor(420/DAYS.length); xTot=xDay+wDay*DAYS.length;   // same overall table width
+      // One employee per page (a long breakdown may continue onto more pages, but
+      // employees are never lumped together on the same page).
+      const groups = data.employees.length ? data.employees.map(e=>[e]) : [[]];
+      groups.forEach(group=>{
       if(!first) pdf.addPage(); first=false;
       let y=M;
       pdf.setFont('helvetica','bold'); pdf.setTextColor(...BLK); pdf.setFontSize(12);
@@ -22947,9 +22986,8 @@ function computeCorPaid(corb) {
       };
       header();
       const ensure=(need)=>{ if(y+need>PH-M){ pdf.addPage(); y=M; header(); } };
-      if(!data.employees.length){ cell(xName,y,wName+wEmp+wDay*DAYS.length+wTot,rh,'No approved weekly pay sheets for this week.',{}); y+=rh; }
-      data.employees.forEach(emp=>{
-        ensure(rh*(5+emp.allocations.length)+18);
+      if(!group.length){ cell(xName,y,wName+wEmp+wDay*DAYS.length+wTot,rh,'No approved weekly pay sheets for this week.',{}); y+=rh; }
+      group.forEach(emp=>{
         const daily=_acctEarnDaily(emp,hasSat);   // cents, matches time card (incl. SAT when present)
         cell(xName,y,wName,rh,emp.name,{bold:true});
         cell(xEmp,y,wEmp,rh,emp.empNum||'',{align:'center'});
@@ -22993,9 +23031,9 @@ function computeCorPaid(corb) {
         cell(bShare,y,wShare,rh,_acctPdfAmt(emp.totalCents),{bold:true,align:'right'});
         y+=rh+8;
       });
-      ensure(30);
-      pdf.setFont('helvetica','bold'); pdf.setFontSize(10); pdf.setTextColor(...BLK);
-      pdf.text('SUPERINTENDENT AUTHORIZATION:', M, y+14);
+      if(y+50>PH-M){ pdf.addPage(); y=M; }   // keep the signature block whole
+      y=_acctPdfSigBlock(pdf, M, y);
+      });
     });
     const safeWeek = week.replace(/[^a-zA-Z0-9_-]/g,'_');
     const safeJob  = jobFilter ? '_'+jobFilter.replace(/[^a-zA-Z0-9 _-]/g,'').trim().replace(/\s+/g,'_') : '';
@@ -23024,8 +23062,8 @@ function computeCorPaid(corb) {
     jobs.forEach(job=>{
       const data=acctEmployeeEarnings(job,week);
       data.employees.map(acctBuildTimeSheet).forEach(ts=>{
-        const need=16+14+rh*9+12;
-        if(count>0 && y+need>PH-M){ pdf.addPage(); y=M; }
+        // One employee per page — each time card gets its own page + footer.
+        if(count>0){ pdf.addPage(); y=M; }
         count++;
         const days=_acctDailyTimeCard(ts);
         // Title + name
@@ -23074,19 +23112,19 @@ function computeCorPaid(corb) {
         cell(sumLX,yDays0,wSL,rh*days.length,'WAGES',{bold:true,align:'center',size:12});
         cell(sumVX,yDays0,wSV,rh*days.length,_acctPdfAmt(ts.grossCents),{bold:true,align:'center'});
         y+=12;
+        // Footer legal text + authorization on every employee's page
+        pdf.setFont('helvetica','normal'); pdf.setFontSize(7); pdf.setTextColor(...BLK);
+        [ 'IT IS MANDATORY TO TAKE A 10 MIN BREAK PERIOD AFTER 2 HOURS OF WORK IN THE MORNING, 30 MIN PERIOD FOR LUNCH AFTER 4 HOURS OF WORK',
+          '10 MIN BREAK AFTERNOON, AFTER 2 HOURS OF WORK',
+          'BY SIGNING AVOBE, I CERTIFIED THAT THE HOURS ARE ACCURATE I TOOK MY DAILY TWO 10 MIN BREAKS, AND MY 30 MIN LUNCH.',
+          'AL FIRMAR CERFICO QUE LAS HORAS MENCIONADAS SON EXACTAS, TOME MIS 2 TIEMPOS DE DESCANSO Y MI TIEMPO PARA LONCHAR CADA DIA.'
+        ].forEach(t=>{ pdf.text(t, M, y+8); y+=12; });
+        pdf.setFont('helvetica','bold'); pdf.setFontSize(9);
+        pdf.text('NGC CONSTRUCTIONINC DBA DRYWALL', PW/2, y+10, {align:'center'}); y+=20;
+        y=_acctPdfSigBlock(pdf, M, y);
       });
     });
     if (!count) { alert('No time sheets to export for the selected week.'); return; }
-    if(y>PH-M-72){ pdf.addPage(); y=M; }
-    pdf.setFont('helvetica','normal'); pdf.setFontSize(7); pdf.setTextColor(...BLK);
-    [ 'IT IS MANDATORY TO TAKE A 10 MIN BREAK PERIOD AFTER 2 HOURS OF WORK IN THE MORNING, 30 MIN PERIOD FOR LUNCH AFTER 4 HOURS OF WORK',
-      '10 MIN BREAK AFTERNOON, AFTER 2 HOURS OF WORK',
-      'BY SIGNING AVOBE, I CERTIFIED THAT THE HOURS ARE ACCURATE I TOOK MY DAILY TWO 10 MIN BREAKS, AND MY 30 MIN LUNCH.',
-      'AL FIRMAR CERFICO QUE LAS HORAS MENCIONADAS SON EXACTAS, TOME MIS 2 TIEMPOS DE DESCANSO Y MI TIEMPO PARA LONCHAR CADA DIA.'
-    ].forEach(t=>{ pdf.text(t, M, y+8); y+=12; });
-    pdf.setFont('helvetica','bold'); pdf.setFontSize(9);
-    pdf.text('NGC CONSTRUCTIONINC DBA DRYWALL', PW/2, y+10, {align:'center'}); y+=20;
-    pdf.text('SUPERINTENDENT AUTHORIZATION:', M, y+8);
     const safeWeek = week.replace(/[^a-zA-Z0-9_-]/g,'_');
     const safeJob  = jobFilter ? '_'+jobFilter.replace(/[^a-zA-Z0-9 _-]/g,'').trim().replace(/\s+/g,'_') : '';
     pdf.save(`Accounting_TimeSheets${safeJob}_${safeWeek}.pdf`);
