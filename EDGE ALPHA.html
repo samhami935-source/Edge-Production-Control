@@ -22653,21 +22653,40 @@ function computeCorPaid(corb) {
     return h12 + ':' + String(mm).padStart(2, '0') + ap;
   }
 
-  // Per-day punch-card breakdown for one employee's Weekly Time Sheet.
-  //  • Regular hours: spread evenly across the 5 weekdays, standard 7:00a–3:30p stamp.
-  //  • Overtime: 2 hrs/day starting Thursday (FRI, MON, TUE, WED); a day's clock-out =
-  //    3:30p + that day's OT (2 hrs → 5:30p).
-  //  • Saturday: only appears when weekly OT exceeds the 10 hrs the weekdays hold
-  //    (2/day × 5); the overflow lands on a Saturday row (treated as OT).
+  // ── Daily distribution rules (shared by the Time Sheet + Earnings exports) ──
+  //  • Regular pay fills DAY BY DAY in order (THU, FRI, MON, TUE, WED), 8 hrs per day,
+  //    until the employee's regular pay runs out — not spread evenly across the week.
+  //  • Every worked day gets at least 4 hrs: if the last day would be under 4 hrs, it is
+  //    topped up to 4 by borrowing from the day before (only when there is enough pay;
+  //    a week under 4 hrs total is shown as earned).
+  //  • Overtime stays WEEKLY (after 40 hrs / $1,000): it fills up to 3 hrs/day starting
+  //    THU; anything beyond 15 hrs spills to a SAT row.
+  // Everything is split in CENTS so daily amounts/hours sum exactly to the weekly pay.
+  const ACCT_DAY_REG_HRS = 8, ACCT_DAY_MIN_HRS = 4, ACCT_DAY_OT_MAX_HRS = 3;
+  function _acctDailyAlloc(ts) {
+    const N = ACCT_DAYS.length;
+    const rate   = ts.regRate || ACCT_REG_RATE;
+    const otRate = ts.otRate  || ACCT_OT_RATE;
+    const reg = new Array(N).fill(0), ot = new Array(N).fill(0);
+    const full = Math.round(ACCT_DAY_REG_HRS * rate * 100), minC = Math.round(ACCT_DAY_MIN_HRS * rate * 100);
+    let rem = Math.max(0, Math.round(ts.regPayCents || 0));
+    for (let i = 0; i < N && rem > 0; i++) { const g = (i === N - 1) ? rem : Math.min(full, rem); reg[i] = g; rem -= g; }
+    let last = -1; reg.forEach((c, i) => { if (c > 0) last = i; });
+    if (last > 0 && reg[last] < minC) { const b = minC - reg[last]; reg[last - 1] -= b; reg[last] = minC; }
+    const otFull = Math.round(ACCT_DAY_OT_MAX_HRS * otRate * 100);
+    let otRem = Math.max(0, Math.round(ts.otPayCents || 0));
+    for (let i = 0; i < N && otRem > 0; i++) { const g = Math.min(otFull, otRem); ot[i] = g; otRem -= g; }
+    return { reg, ot, satCents: otRem, rate, otRate };
+  }
+
+  // Per-day punch-card breakdown for one employee's Weekly Time Sheet (hours from
+  // _acctDailyAlloc above; SAT row only when weekly OT overflows the weekdays).
   // Fixed schedule: IN 7:00a · 1st break 9:00–9:10 · lunch 10:00–10:30 · 2nd break
   // 2:00–2:10p. The two 10-min breaks are paid; the 30-min lunch is unpaid.
   function _acctDailyTimeCard(ts) {
-    const regPerDay = _acctSpreadPayHours(ts.regPayCents, ts.regRate || ACCT_REG_RATE); // 5 even values
-    let otRem = Math.max(0, ts.otHours || 0);
-    const rows = ACCT_DAYS.map((d, i) => {
-      const give = Math.min(2, otRem); otRem -= give;
-      return { label: d, regH: regPerDay[i] || 0, otH: give, dtH: 0 };
-    });
+    const al = _acctDailyAlloc(ts);
+    const rows = ACCT_DAYS.map((d, i) => ({ label: d, regH: (al.reg[i] / 100) / al.rate, otH: (al.ot[i] / 100) / al.otRate, dtH: 0 }));
+    const otRem = (al.satCents / 100) / al.otRate;
     if (otRem > 1e-9) {
       const hasLunch = otRem > 5;
       const sat = { label: 'SAT', regH: 0, otH: otRem, dtH: 0, isSat: true, hasLunch, _out: 7 + otRem + (hasLunch ? 0.5 : 0) };
@@ -22682,11 +22701,14 @@ function computeCorPaid(corb) {
       if (!(worked > 1e-6)) { r.in = r.brk1 = r.lunchOut = r.lunchIn = r.brk2 = r.out = ''; return; }
       const hasLunch = r.isSat ? r.hasLunch : worked > 5;
       const o = r.isSat ? r._out : 7 + worked + (hasLunch ? 0.5 : 0);
+      // Posted rules: 10-min break after 2 hrs of work (9:00), 30-min lunch after 4 hrs
+      // (11:00–11:30), afternoon 10-min break 2 hrs after lunch (1:30). Paid breaks count
+      // as work time, so the clock simply runs on; overtime just extends OUT.
       r.in       = '7:00am';
       r.brk1     = (9.1667 < o) ? '9:00-9:10am' : '';
-      r.lunchOut = (hasLunch && 10   < o) ? '10:00am' : '';
-      r.lunchIn  = (hasLunch && 10.5 < o) ? '10:30am' : '';
-      r.brk2     = (14.1667 < o) ? '2:00-2:10pm' : '';
+      r.lunchOut = (hasLunch && 11   < o) ? '11:00am' : '';
+      r.lunchIn  = (hasLunch && 11.5 < o) ? '11:30am' : '';
+      r.brk2     = (13.6667 < o) ? '1:30-1:40pm' : '';
       r.out = _acctClock(o);
     });
     return rows;
@@ -22701,9 +22723,9 @@ function computeCorPaid(corb) {
     return out;
   }
   // Daily PAY (in cents) for the 5 weekdays, matching the Weekly Time Sheet's hour
-  // distribution exactly: regular pay split evenly across the weekdays; overtime filled
-  // $75 (= 2 hrs × $37.50) per day starting Thursday. Any overflow OT (the Saturday
-  // portion, when weekly OT > 10 hrs) is returned separately. Weekday cents sum to the
+  // distribution exactly (see _acctDailyAlloc: regular pay fills day by day, 8 hrs/day,
+  // 4-hr minimum; weekly OT up to 3 hrs/day from Thursday). Any overflow OT (the Saturday
+  // portion, when weekly OT > 15 hrs) is returned separately. Weekday cents sum to the
   // weekly total when there is no Saturday.
   // Earnings day columns follow the Weekly Time Sheet: a SAT column (between FRI and MON)
   // appears only when someone on the job that week has Saturday overtime. Daily cents then
@@ -22714,15 +22736,13 @@ function computeCorPaid(corb) {
   function _acctEarnDays(hasSat) { return hasSat ? ['THU','FRI','SAT','MON','TUE','WED'] : ACCT_DAYS.slice(); }
   function _acctEarnDaily(emp, hasSat) {   // cents per displayed day (null = blank SAT)
     const d = _acctDailyPayCents(acctBuildTimeSheet(emp));
-    const out = d.weekday.slice();
+    const out = d.weekday.map(c => c > 0 ? c : null);   // days not worked print blank
     if (hasSat) out.splice(2, 0, d.satCents > 0 ? d.satCents : null);
     return out;
   }
   function _acctDailyPayCents(ts) {
-    const reg = _acctSplitCentsInt(ts.regPayCents, ACCT_DAYS.length);
-    let otRem = Math.round(ts.otPayCents || 0);
-    const ot = ACCT_DAYS.map(() => { const g = Math.min(7500, otRem); otRem -= g; return g; });
-    return { weekday: reg.map((r, i) => r + ot[i]), satCents: otRem };
+    const al = _acctDailyAlloc(ts);   // same day-by-day split as the time card
+    return { weekday: al.reg.map((r, i) => r + al.ot[i]), satCents: al.satCents };
   }
 
   // ── Excel (xlsx-js-style) cell + grid helpers ──
