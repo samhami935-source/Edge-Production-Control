@@ -23836,7 +23836,7 @@ function computeCorPaid(corb) {
 
       // Fill the days in order from the groups. A group that runs into the next day
       // stays in the same block row; new groups take the first free block.
-      const blocks = [];
+      const blocks = [], dayOrder = _NGCP_DAYS.map(() => []);
       let gi = 0, left = groups.length ? groups[0].cents : 0, prevB = -1, prevG = -1;
       daily.forEach((dc, d) => {
         let rem = dc, first = true;
@@ -23846,12 +23846,15 @@ function computeCorPaid(corb) {
           let b = (first && gi === prevG && prevB >= 0) ? prevB : -1;
           if (b < 0 || used.has(b)) { b = 0; while (used.has(b)) b++; }
           used.add(b); first = false;
-          (blocks[b] = blocks[b] || [])[d] = { g: groups[gi], cents: take };
+          const cellObj = { g: groups[gi], cents: take, hours: 0 };
+          (blocks[b] = blocks[b] || [])[d] = cellObj;
+          dayOrder[d].push(cellObj);
           prevB = b; prevG = gi;
           rem -= take; left -= take;
           if (left <= 0) { gi++; left = gi < groups.length ? groups[gi].cents : 0; }
         }
       });
+      _ngcpAssignHours(emp, dayOrder);
       const filled = blocks.reduce((s, bl) => s + (bl || []).reduce((t, x) => t + (x ? x.cents : 0), 0), 0);
       return { name: emp.name, empNum: emp.empNum || '', totalCents: emp.totalCents, daily, groups,
                blocks: blocks.map(bl => _NGCP_DAYS.map((_, d) => (bl && bl[d]) || null)), balanced: filled === emp.totalCents };
@@ -23859,6 +23862,44 @@ function computeCorPaid(corb) {
     const jcCents = _ngcJobCostData(job, week).reduce((s, g) => s + g.cents, 0);
     return { employees, totalCents: employees.reduce((s, e) => s + e.totalCents, 0), jobCostCents: jcCents };
   }
+  // HOURS for each BUDGET cell, lined up with the Weekly Time Sheet: within a day the
+  // cells (in fill order) use that day's regular pay first at the regular rate, then its
+  // overtime pay at the OT rate (SAT is all OT). Each day's cell hours are rounded so
+  // they add up exactly to the time sheet's DAILY REG H + OTH for that day.
+  function _ngcpAssignHours(emp, dayOrder) {
+    const ts = acctBuildTimeSheet(emp), al = _acctDailyAlloc(ts);
+    const reg6 = [al.reg[0], al.reg[1], 0,           al.reg[2], al.reg[3], al.reg[4]];
+    const ot6  = [al.ot[0],  al.ot[1],  al.satCents, al.ot[2],  al.ot[3],  al.ot[4]];
+    dayOrder.forEach((cells, d) => {
+      if (!cells.length) return;
+      let regLeft = reg6[d];
+      const rawReg = [], rawOt = [];
+      cells.forEach(x => {
+        const r = Math.min(x.cents, regLeft); regLeft -= r;
+        rawReg.push((r / 100) / al.rate);
+        rawOt.push(((x.cents - r) / 100) / al.otRate);
+      });
+      // Round REG and OT separately (largest remainder) so each day's cells add up
+      // exactly to the time sheet's DAILY REG H and DAILY OTH (2 decimals each).
+      const fit = (raw, targetHrs) => {
+        const target = Math.round(targetHrs * 100);
+        const base = raw.map(h => Math.floor(h * 100 + 1e-9));
+        let rem = target - base.reduce((s, v) => s + v, 0);
+        const order = raw.map((h, i) => [h * 100 - base[i], i]).sort((a, b) => b[0] - a[0]);
+        for (let k = 0; rem > 0 && k < order.length; k++, rem--) base[order[k][1]] += 1;
+        for (let k = order.length - 1; rem < 0 && k >= 0; k--, rem++) if (base[order[k][1]] > 0) base[order[k][1]] -= 1;
+        return base;
+      };
+      const regH = fit(rawReg, (reg6[d] / 100) / al.rate), otH = fit(rawOt, (ot6[d] / 100) / al.otRate);
+      cells.forEach((x, i) => { x.regHours = regH[i] / 100; x.otHours = otH[i] / 100; x.hours = (regH[i] + otH[i]) / 100; });
+    });
+  }
+  // "8.00" · "8.00 + 3.00 OT" · "3.67 OT"
+  const _ngcpHrsText = (reg, ot) => ot > 0 ? (reg > 0 ? `${reg.toFixed(2)} + ${ot.toFixed(2)} OT` : `${ot.toFixed(2)} OT`) : reg.toFixed(2);
+  const _ngcpCellHrs = x => x ? _ngcpHrsText(x.regHours || 0, x.otHours || 0) : '';
+  const _ngcpBlockHrs = bl => _ngcpHrsText(
+    bl.reduce((s, x) => s + (x ? Math.round((x.regHours || 0) * 100) : 0), 0) / 100,
+    bl.reduce((s, x) => s + (x ? Math.round((x.otHours  || 0) * 100) : 0), 0) / 100);
   const _ngcpJobCell  = x => x ? (x.g.jobNo === _NGC_COWO ? 'CO/WO' : (x.g.jobNo || '—')) : '';
   const _ngcpCodeCell = x => x ? (x.g.ngc || (x.g.app ? x.g.app + '*' : '—')) : '';
   const _ngcpBlockTotal = bl => bl.reduce((s, x) => s + (x ? x.cents : 0), 0);
@@ -23890,7 +23931,8 @@ function computeCorPaid(corb) {
         rows.push(`<tr><td style="${lab}">JOB #</td><td style="${bd}"></td>${bl.map(x => `<td style="${cen}font-weight:700;">${eh(_ngcpJobCell(x))}</td>`).join('')}<td style="${tot}"></td></tr>`);
         rows.push(`<tr><td style="${lab}">LOT #</td><td style="${bd}"></td>${bl.map(x => `<td style="${cen}font-size:.66rem;">${eh(x ? x.g.lot : '')}</td>`).join('')}<td style="${tot}"></td></tr>`);
         rows.push(`<tr><td style="${lab}">CODE #</td><td style="${bd}"></td>${bl.map(x => `<td style="${cen}">${eh(_ngcpCodeCell(x))}</td>`).join('')}<td style="${tot}"></td></tr>`);
-        rows.push(`<tr><td style="${lab}border-bottom:2px solid #000;">BUDGET</td><td style="${bd}border-bottom:2px solid #000;"></td>${bl.map(x => `<td style="${num}border-bottom:2px solid #000;">${x ? $(x.cents) : ''}</td>`).join('')}<td style="${tot}border-bottom:2px solid #000;">${$(_ngcpBlockTotal(bl))}</td></tr>`);
+        rows.push(`<tr><td style="${lab}">BUDGET</td><td style="${bd}"></td>${bl.map(x => `<td style="${num}">${x ? $(x.cents) : ''}</td>`).join('')}<td style="${tot}">${$(_ngcpBlockTotal(bl))}</td></tr>`);
+        rows.push(`<tr><td style="${lab}border-bottom:2px solid #000;">HOURS</td><td style="${bd}border-bottom:2px solid #000;"></td>${bl.map(x => `<td style="${num}border-bottom:2px solid #000;">${_ngcpCellHrs(x)}</td>`).join('')}<td style="${tot}border-bottom:2px solid #000;">${_ngcpBlockHrs(bl)}</td></tr>`);
         return rows.join('');
       }).join('');
       return `
@@ -23971,7 +24013,7 @@ function computeCorPaid(corb) {
       y = row(y, e.name.toUpperCase(), e.empNum, e.daily.map(c => c ? _acctPdfAmt(c) : ''), _acctPdfAmt(e.totalCents), { align: 'right' });
       e.blocks.forEach((bl, bi) => {
         const ewo = bi === 0 || bl.some(x => x && x.g.ewo);
-        const need = rh * ((bi ? 1 : 1) + (ewo ? 1 : 0) + 3) + 24;
+        const need = rh * ((bi ? 1 : 1) + (ewo ? 1 : 0) + 4) + 24;
         if (y + need > PH - M - 50) { pdf.addPage(); y = M; title(true); }
         const yTop = y;
         if (bi === 0) {
@@ -23987,6 +24029,7 @@ function computeCorPaid(corb) {
         y = row(y, 'LOT #', '', bl.map(x => x ? x.g.lot : ''), '', { size: 6, wrap: true, h: 20 });
         y = row(y, 'CODE #', '', bl.map(_ngcpCodeCell), '');
         y = row(y, 'BUDGET', '', bl.map(x => x ? _acctPdfAmt(x.cents) : ''), _acctPdfAmt(_ngcpBlockTotal(bl)), { align: 'right' });
+        y = row(y, 'HOURS', '', bl.map(_ngcpCellHrs), _ngcpBlockHrs(bl), { align: 'right', size: 7 });
         pdf.setLineWidth(1.4); pdf.line(M, yTop, xTot + wTot, yTop); pdf.line(M, y, xTot + wTot, y);
       });
       if (y + 50 > PH - M) { pdf.addPage(); y = M; }
@@ -24018,6 +24061,7 @@ function computeCorPaid(corb) {
         grid.push([L('LOT #'), XC(''), ...bl.map(x => XC(x ? x.g.lot : '', { align: 'center', wrap: true, size: 8 })), XC('')]);
         grid.push([L('CODE #'), XC(''), ...bl.map(x => XC(_ngcpCodeCell(x), { align: 'center' })), XC('')]);
         grid.push([L('BUDGET'), XC(''), ...bl.map(x => x ? XC(x.cents / 100, { z: _MONEYZ }) : XC('')), XC(_ngcpBlockTotal(bl) / 100, { bold: true, z: _MONEYZ })]);
+        grid.push([L('HOURS'), XC(''), ...bl.map(x => XC(_ngcpCellHrs(x), { align: 'right' })), XC(_ngcpBlockHrs(bl), { bold: true, align: 'right' })]);
       });
       grid.push([]);
       const R = grid.length;
