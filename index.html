@@ -1242,6 +1242,44 @@
 
   <!-- Labor Codes content -->
   <div id="lc-content" style="display:none">
+    <div id="lc-subtabs" style="display:flex;gap:8px;margin:0 0 18px;flex-wrap:wrap;">
+      <button type="button" class="acct-subtab-btn active" data-sub="main" onclick="lcSetSubTab('main')">Labor Codes</button>
+      <button type="button" class="acct-subtab-btn"        data-sub="ngc"  onclick="lcSetSubTab('ngc')">NGC Labor Codes</button>
+    </div>
+    <!-- NGC Labor Codes: separate list (config/ngclaborcodes); never touches the main codes -->
+    <div id="lc-ngc-wrap" style="display:none;">
+      <div class="filters" style="margin-bottom:16px;">
+        <input type="text" id="ngc-lc-search" class="fi" placeholder="Search NGC codes or descriptions…" oninput="renderNgcLCTable()" style="flex:1;min-width:180px;" />
+        <button class="btn" onclick="exportNgcLCCSV()">Export</button>
+      </div>
+      <div id="ngc-lc-admin-form" style="display:none">
+        <div class="lc-add-form">
+          <div class="field" style="margin:0;flex:0 0 130px;">
+            <label>Code</label>
+            <input type="text" id="ngc-lc-new-code" class="fi" placeholder="e.g. 910" />
+          </div>
+          <div class="field" style="margin:0;flex:1;min-width:200px;">
+            <label>Description</label>
+            <input type="text" id="ngc-lc-new-desc" class="fi" placeholder="e.g. Equipment Rental" onkeydown="if(event.key==='Enter')addNgcLaborCode()" />
+          </div>
+          <div class="field" style="margin:0;">
+            <label>&nbsp;</label>
+            <button class="pr-add-btn" onclick="addNgcLaborCode()">+ Add Code</button>
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap" style="overflow-x:auto;">
+        <table>
+          <thead><tr>
+            <th style="width:100px;">Code</th>
+            <th>Description</th>
+            <th style="width:80px;cursor:default;" id="ngc-lc-action-col"></th>
+          </tr></thead>
+          <tbody id="ngc-lc-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="lc-main-wrap">
     <div class="filters" style="margin-bottom:16px;">
       <input type="text" id="lc-search" class="fi" placeholder="Search codes or descriptions…" oninput="renderLCTable()" style="flex:1;min-width:180px;" />
       <button id="export-lc-btn" class="btn" onclick="exportLCCSV()">Export</button>
@@ -1272,6 +1310,7 @@
         <tbody id="lc-tbody"></tbody>
       </table>
     </div>
+    </div><!-- /lc-main-wrap -->
   </div>
 
   <!-- Employee Names content -->
@@ -1919,6 +1958,7 @@
     <button type="button" class="acct-subtab-btn active" data-sub="paysheet"   onclick="acctSetSubTab('paysheet')">Weekly Pay Sheet</button>
     <button type="button" class="acct-subtab-btn"        data-sub="earnings"   onclick="acctSetSubTab('earnings')">Employee Earnings Detail</button>
     <button type="button" class="acct-subtab-btn"        data-sub="timesheets" onclick="acctSetSubTab('timesheets')">Weekly Time Sheets</button>
+    <button type="button" class="acct-subtab-btn"        data-sub="jobcost"    onclick="acctSetSubTab('jobcost')">NGC Job Cost Summary</button>
   </div>
 
   <!-- Admin notice about approvals -->
@@ -4270,6 +4310,128 @@ function switchToLaborCodes() {
   const canEditLC = isAdmin() || isPM();
   document.getElementById('lc-admin-form').style.display = canEditLC ? 'block' : 'none';
   document.getElementById('lc-action-col').textContent   = (isAdmin() || isPM()) ? 'Action' : '';
+  document.getElementById('ngc-lc-admin-form').style.display = canEditLC ? 'block' : 'none';
+  document.getElementById('ngc-lc-action-col').textContent   = canEditLC ? 'Action' : '';
+  lcSetSubTab(_lcSubTab);
+}
+
+// ── NGC Labor Codes sub-tab ─────────────────────────────────────────────────
+// A second, independent code list stored at config/ngclaborcodes. It is NOT used
+// by budgets, pay sheets, daily inputs or payroll — those keep using the main list.
+let _lcSubTab = 'main';
+let _ngcLC = null;            // [{code, description}] once loaded
+let _ngcLCEditing = null;     // code of the row in edit mode
+let _ngcLCUnsub = null;
+
+function lcSetSubTab(t) {
+  _lcSubTab = t === 'ngc' ? 'ngc' : 'main';
+  document.querySelectorAll('#lc-subtabs .acct-subtab-btn')
+    .forEach(b => b.classList.toggle('active', b.dataset.sub === _lcSubTab));
+  document.getElementById('lc-main-wrap').style.display = _lcSubTab === 'main' ? '' : 'none';
+  document.getElementById('lc-ngc-wrap').style.display  = _lcSubTab === 'ngc'  ? '' : 'none';
+  if (_lcSubTab === 'ngc') { _ngcLCSubscribe(); renderNgcLCTable(); }
+}
+
+function _ngcLCSubscribe() {
+  if (_ngcLCUnsub) return;
+  _ngcLCUnsub = db.collection('config').doc('ngclaborcodes').onSnapshot(snap => {
+    const d = snap.exists ? snap.data() : null;
+    _ngcLC = (d && Array.isArray(d.codes)) ? d.codes : [];
+    if (activeTab === 'lc' && _lcSubTab === 'ngc') renderNgcLCTable();
+    if (typeof _ngcJcRerender === 'function') _ngcJcRerender();   // Accounting → NGC Job Cost Summary
+  }, e => console.error('ngclaborcodes read:', e));
+}
+
+function _ngcSort(list) {
+  return [...list].sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true, sensitivity: 'base' }));
+}
+
+async function _ngcSave(list) {
+  _ngcLC = _ngcSort(list);
+  renderNgcLCTable();
+  try { await db.collection('config').doc('ngclaborcodes').set({ codes: _ngcLC }); }
+  catch (e) { alert('Save failed: ' + e.message); }
+}
+
+function renderNgcLCTable() {
+  const tb = document.getElementById('ngc-lc-tbody');
+  if (!tb) return;
+  if (_ngcLC === null) { tb.innerHTML = `<tr><td colspan="3" style="padding:18px;text-align:center;color:var(--muted);">Loading…</td></tr>`; return; }
+  const q = (document.getElementById('ngc-lc-search').value || '').toLowerCase();
+  const canEdit = isAdmin() || isPM();
+  const rows = _ngcLC.filter(lc => !q || String(lc.code).toLowerCase().includes(q) || String(lc.description || '').toLowerCase().includes(q));
+  if (!rows.length) {
+    tb.innerHTML = `<tr><td colspan="3" style="padding:18px;text-align:center;color:var(--muted);">${_ngcLC.length ? 'No matching codes.' : 'No NGC labor codes yet.' + (canEdit ? ' Add one above.' : '')}</td></tr>`;
+    return;
+  }
+  const pencilSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>`;
+  const inp = 'padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:.85rem;';
+  tb.innerHTML = rows.map(lc => {
+    if (_ngcLCEditing === lc.code) {
+      return `<tr>
+        <td><input type="text" id="ngc-lc-edit-code" value="${eh(lc.code)}" style="width:80px;${inp}font-family:monospace;" /></td>
+        <td><input type="text" id="ngc-lc-edit-desc" value="${eh(lc.description || '')}" style="width:100%;${inp}" onkeydown="if(event.key==='Enter')saveNgcLaborCodeEdit('${ea(lc.code)}')" /></td>
+        <td style="text-align:center;white-space:nowrap;">
+          <button class="btn-sm" onclick="saveNgcLaborCodeEdit('${ea(lc.code)}')" style="margin-right:4px;">Save</button>
+          <button class="btn-sm btn-danger" onclick="cancelNgcLaborCodeEdit()">Cancel</button>
+        </td>
+      </tr>`;
+    }
+    return `<tr>
+      <td><span class="lc-badge">${eh(lc.code)}</span></td>
+      <td>${eh(lc.description || '')}</td>
+      <td style="text-align:center;white-space:nowrap;">
+        ${canEdit ? `<button class="btn-sm" onclick="editNgcLaborCode('${ea(lc.code)}')" style="margin-right:4px;padding:3px 7px;" title="Edit">${pencilSVG}</button>` : ''}
+        ${isAdmin() ? `<button class="btn-sm btn-danger" onclick="deleteNgcLaborCode('${ea(lc.code)}')">✕</button>` : ''}
+        ${!canEdit ? '—' : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function addNgcLaborCode() {
+  if (!(isAdmin() || isPM())) return;
+  if (_ngcLC === null) { alert('NGC codes are still loading — try again in a moment.'); return; }
+  const codeEl = document.getElementById('ngc-lc-new-code'), descEl = document.getElementById('ngc-lc-new-desc');
+  const code = codeEl.value.trim(), desc = descEl.value.trim();
+  if (!code) { alert('Please enter a code.'); return; }
+  if (!desc) { alert('Please enter a description.'); return; }
+  if (_ngcLC.some(lc => String(lc.code).toLowerCase() === code.toLowerCase())) { alert(`NGC code ${code} already exists.`); return; }
+  codeEl.value = ''; descEl.value = '';
+  _ngcSave([..._ngcLC, { code, description: desc }]);
+  codeEl.focus();
+}
+
+function editNgcLaborCode(code) {
+  _ngcLCEditing = code;
+  renderNgcLCTable();
+  const el = document.getElementById('ngc-lc-edit-desc'); if (el) el.focus();
+}
+function cancelNgcLaborCodeEdit() { _ngcLCEditing = null; renderNgcLCTable(); }
+
+function saveNgcLaborCodeEdit(oldCode) {
+  const code = (document.getElementById('ngc-lc-edit-code').value || '').trim();
+  const desc = (document.getElementById('ngc-lc-edit-desc').value || '').trim();
+  if (!code) { alert('Code cannot be empty.'); return; }
+  if (!desc) { alert('Description cannot be empty.'); return; }
+  if (code.toLowerCase() !== String(oldCode).toLowerCase() &&
+      _ngcLC.some(lc => String(lc.code).toLowerCase() === code.toLowerCase())) { alert(`NGC code ${code} already exists.`); return; }
+  _ngcLCEditing = null;
+  _ngcSave(_ngcLC.map(lc => lc.code === oldCode ? { code, description: desc } : lc));
+}
+
+async function deleteNgcLaborCode(code) {
+  if (!isAdmin()) return;
+  const lc = (_ngcLC || []).find(x => x.code === code);
+  if (!await uiConfirm(`Delete NGC code ${code} — ${(lc && lc.description) || '(no description)'}?`)) return;
+  _ngcLCEditing = null;
+  _ngcSave(_ngcLC.filter(x => x.code !== code));
+}
+
+function exportNgcLCCSV() {
+  const lines = [['Code', 'Description'].join(',')];
+  (_ngcLC || []).forEach(lc => lines.push([`"${String(lc.code).replace(/"/g, '""')}"`, `"${String(lc.description || '').replace(/"/g, '""')}"`].join(',')));
+  dlCSV(lines.join('\n'), 'ngc-labor-codes.csv');
 }
 
 // ── Employee Names ─────────────────────────────────────────────────────────
@@ -15748,6 +15910,66 @@ function _prLookupBudget(jobName, area, costCode, description) {
 //   every approved crew (legacy docs with doc-level approvedAt but no per-crew
 //   flags → all crews). Only the target crews' payroll entries are touched;
 //   other crews' entries are left intact.
+// Re-sync Payroll for an APPROVED weekly pay sheet (its approved crews only).
+// Idempotent — psApproveSync replaces that doc/crew's entries, never duplicates.
+async function _psResyncIfApproved(doc) {
+  if (!doc || !doc.id || doc.type !== 'weekly' || !_psIsApproved(doc)) return 0;
+  try {
+    const n = await psApproveSync(doc);
+    try { applyPayrollFilters(); } catch (_) {}
+    return n;
+  } catch (e) { console.error('Payroll auto re-sync failed:', e); return 0; }
+}
+
+// Accounting ↔ Payroll check for one job + week. Accounting pays the crew SPLITS;
+// Payroll tracks the W/E Earned area rows (synced on approval). Returns both totals
+// plus the crews whose splits and W/E rows disagree (the only gap a re-sync can't close).
+function _acctPayrollCheck(weekEnding, jobName) {
+  const docs = (_cache.paysheets || []).filter(p => p.type === 'weekly' && p.weekEnding === weekEnding && p.job === jobName && _psIsApproved(p));
+  const ids = new Set(docs.map(d => d.id));
+  const payrollCents = (_cache.payroll || []).filter(e => ids.has(e.sourceDocId))
+    .reduce((s, e) => s + Math.round((parseFloat(e.price) || 0) * 100), 0);
+  let expectedCents = 0;
+  const gaps = [];
+  docs.forEach(doc => {
+    const any = Object.values(doc.crews || {}).some(c => c && c.approvedAt);
+    Object.keys(doc.crews || {}).forEach(ck => {
+      const cr = doc.crews[ck];
+      if (!cr || (any ? !cr.approvedAt : !doc.approvedAt)) return;
+      const noCode = (cr.rows || []).reduce((s, r) => {   // W/E $ on rows Payroll can't post (no area / labor code)
+        const a = Math.round((parseFloat(r.weAmount) || 0) * 100), area = (r.area || '').trim();
+        return s + (a > 0 && !(area && ((r.costCode || '').trim() || isSpecialArea(area))) ? a : 0);
+      }, 0);
+      const rows = (cr.rows || []).reduce((s, r) => {
+        // Same rows psApproveSync copies: amount > 0, has an area, and a labor code
+        // (Change Order / Work Order rows get theirs from the COR budget).
+        const a = Math.round((parseFloat(r.weAmount) || 0) * 100), area = (r.area || '').trim();
+        const synced = a > 0 && area && ((r.costCode || '').trim() || isSpecialArea(area));
+        return s + (synced ? a : 0);
+      }, 0);
+      const splits = (cr.splits || []).filter(s => (s.employee || '').trim())
+        .reduce((s, x) => s + Math.round((parseFloat(String(x.amount).replace(/[^0-9.\-]/g, '')) || 0) * 100), 0);
+      expectedCents += rows;
+      if (rows !== splits) gaps.push({ crew: (cr.header && cr.header.crewName) || ('Crew ' + ck), rowsCents: rows, splitsCents: splits, noCodeCents: noCode });
+    });
+  });
+  return { docs, payrollCents, expectedCents, gaps };
+}
+
+// Admin: re-copy the current W/E amounts of this job+week's APPROVED pay sheets into
+// Payroll (approved crews only — nothing new gets approved). Safe to repeat.
+async function acctResyncPayroll(weekEnding, jobName) {
+  if (!isAdmin()) { alert('Admin access required.'); return; }
+  const { docs } = _acctPayrollCheck(weekEnding, jobName);
+  if (!docs.length) { alert('No approved pay sheets for this job and week.'); return; }
+  let n = 0;
+  try { for (const d of docs) n += await psApproveSync(d); }
+  catch (e) { alert('Re-sync failed: ' + e.message); return; }
+  try { applyPayrollFilters(); } catch (_) {}
+  acctRenderRouter();
+  alert(`Payroll re-synced for Week Ending ${_fmtWeekDate(weekEnding)} — ${n} payroll entr${n === 1 ? 'y' : 'ies'} updated.`);
+}
+
 async function psApproveSync(doc, targetCrews) {
   if (!doc) throw new Error('psApproveSync: no doc provided');
 
@@ -17049,6 +17271,8 @@ async function psSaveWeeklySummaryForeman(silent = false) {
     if (!_cache.paysheets) _cache.paysheets = [];
     const idx = _cache.paysheets.findIndex(p => p.id === _psCurrentDocId);
     if (idx !== -1) _cache.paysheets[idx] = updatedDoc; else _cache.paysheets.push(updatedDoc);
+    // Approved sheet edited by the foreman → keep its Payroll entries current.
+    await _psResyncIfApproved(Object.assign({}, updatedDoc, { id: updatedDoc.id || _psCurrentDocId }));
     if (!silent) alert('Your entries have been saved to the summary pay sheet.');
     return true;
   } catch(e) {
@@ -17230,6 +17454,10 @@ async function savePaysheetToCloud(silent, opts = {}) {
       try { renderDiWeekCompile(); } catch(_) {}
       try { renderPSLoadList(); } catch(_) {}
     }
+
+    // Keep Payroll in step with an APPROVED weekly pay sheet: edits after approval and
+    // week moves (which clear the old doc's entries above) are re-synced right away.
+    if (!isDailyType) await _psResyncIfApproved(doc);
 
     if (typeof diRenderLogRows === 'function') diRenderLogRows(); // refresh log so supplemental pay sheets update
     if (!silent) alert(`Pay Sheet saved — "${jobName}" · Week Ending ${_fmtWeekDate(weekEnd)}`);
@@ -19552,6 +19780,26 @@ function acctGetData(weekEnding, jobFilter) {
   return result;
 }
 
+// Admin-only Accounting ↔ Payroll control line on the Weekly Pay Sheet card.
+function _acctPayrollCheckHTML(weekEnding, jobName, totalAmount) {
+  const chk = _acctPayrollCheck(weekEnding, jobName);
+  const acctCents = Math.round((totalAmount || 0) * 100);
+  const $ = c => fm(c / 100);
+  if (chk.payrollCents === acctCents) {
+    return `<div style="background:#ecfdf5;border:1px solid #86efac;color:#065f46;padding:8px 14px;border-radius:6px;margin-bottom:14px;font-size:.8rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span>✓ Payroll tab matches this pay sheet: ${$(chk.payrollCents)}.</span>
+      <button class="btn btn-outline" style="margin:0 0 0 auto;padding:3px 10px;font-size:.74rem;color:#065f46;border-color:#86efac;" onclick="acctResyncPayroll('${ea(weekEnding)}','${ea(jobName)}')" title="Re-copy this week's current W/E amounts into Payroll (safe to repeat)">⟳ Re-sync Payroll</button></div>`;
+  }
+  const stale = chk.payrollCents !== chk.expectedCents;
+  const gaps = chk.gaps.map(g => `<li>${eh(g.crew)}: crew splits ${$(g.splitsCents)} vs W/E Earned rows ${$(g.rowsCents)}${g.noCodeCents ? ` — <b>${$(g.noCodeCents)} is on a row with no Labor Code</b> (pick its labor code on the Pay Sheet)` : ''}</li>`).join('');
+  return `<div style="background:#fff8e1;border:1px solid #f0c000;color:#7a5c00;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:.8rem;">
+    <div><b>Payroll tab: ${$(chk.payrollCents)}</b> vs this pay sheet ${$(acctCents)} (difference ${$(acctCents - chk.payrollCents)}).</div>
+    ${stale ? `<div style="margin-top:6px;">Payroll is out of date for this week (it should have ${$(chk.expectedCents)} from the current W/E Earned amounts).
+      <button class="btn" style="margin:0 0 0 6px;padding:4px 12px;font-size:.78rem;background:#0e7490;color:#fff;border:none;" onclick="acctResyncPayroll('${ea(weekEnding)}','${ea(jobName)}')">⟳ Re-sync Payroll</button></div>` : ''}
+    ${gaps ? `<div style="margin-top:6px;">Payroll tracks the <b>W/E Earned</b> area rows; this pay sheet pays the <b>crew splits</b>. These crews don't match — make the splits equal the W/E Earned on the Pay Sheet:<ul style="margin:4px 0 0 18px;">${gaps}</ul></div>` : ''}
+  </div>`;
+}
+
 /** Build the HTML card for one job's accounting pay sheet (used by both render and PDF). */
 function _acctBuildJobCard(jobData, weekEnding) {
   const { jobName, rows, totalAmount, employeeCount, approvedDocs } = jobData;
@@ -19580,6 +19828,7 @@ function _acctBuildJobCard(jobData, weekEnding) {
       </div>
 
       ${isAdmin() ? `<div style="text-align:right;margin-bottom:14px;"><button class="btn" style="margin-top:0;padding:6px 14px;font-size:.8rem;background:#ef4444;color:#fff;border:none;" onclick="acctUnapprovePaysheets('${ea(weekEnding)}','${ea(jobName)}')" title="Un-approve: removes the payroll entries this pay sheet created and returns it to re-approvable. All entries are kept.">↩ Unapprove</button></div>` : ''}
+      ${isAdmin() ? _acctPayrollCheckHTML(weekEnding, jobName, totalAmount) : ''}
       <!-- Meta -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-bottom:22px;font-size:.85rem;">
         <div><span style="font-weight:700;color:#555;">Week Ending:</span>&nbsp;&nbsp;<strong style="color:#1a56db;">${_fmtWeekDate(weekEnding)}</strong></div>
@@ -22069,16 +22318,19 @@ function computeCorPaid(corb) {
     if (subtabs)  subtabs.style.display  = '';
     if (_acctSubTab === 'earnings')   return acctRenderEarnings();
     if (_acctSubTab === 'timesheets') return acctRenderTimesheets();
+    if (_acctSubTab === 'jobcost')    return acctRenderJobCost();
     return acctRender();
   }
   function acctExportActivePDF() {
     if (_acctSubTab === 'earnings')   return acctExportEarningsPDF();
     if (_acctSubTab === 'timesheets') return acctExportTimesheetsPDF();
+    if (_acctSubTab === 'jobcost')    return acctExportJobCostPDF();
     return acctExportPDF();
   }
   function acctExportActiveExcel() {
     if (_acctSubTab === 'earnings')   return acctExportEarningsExcel();
     if (_acctSubTab === 'timesheets') return acctExportTimesheetsExcel();
+    if (_acctSubTab === 'jobcost')    return acctExportJobCostExcel();
     return acctExportExcel();
   }
 
@@ -23148,6 +23400,393 @@ function computeCorPaid(corb) {
     const safeWeek = week.replace(/[^a-zA-Z0-9_-]/g,'_');
     const safeJob  = jobFilter ? '_'+jobFilter.replace(/[^a-zA-Z0-9 _-]/g,'').trim().replace(/\s+/g,'_') : '';
     pdf.save(`Accounting_TimeSheets${safeJob}_${safeWeek}.pdf`);
+  }
+
+  // ═══════════════════════ NGC JOB COST SUMMARY ═══════════════════════
+  // Per project + week ending, groups the approved weekly pay sheet money by NGC JOB #
+  // (each Area belongs to a job #) and by NGC LABOR CODE (each app labor code is linked
+  // to an NGC code). Amounts = the same per-Area employee allocations the Employee
+  // Earnings Detail uses, so totals tie to the approved pay sheets. Read-only on pay
+  // data; the only writes are the two setup docs:
+  //   config/ngccodemap    { map:  { appCode: ngcCode } }                (global)
+  //   config/ngcjobnumbers { jobs: { projectName: { areaKey: jobNo } } }  (manual overrides)
+  let _ngcCodeMap = null, _ngcJobNos = null, _ngcJcSubs = false, _ngcJcSetupOpen = false;
+
+  function _ngcJcEnsureSubs() {
+    if (_ngcJcSubs) return;
+    _ngcJcSubs = true;
+    if (typeof _ngcLCSubscribe === 'function') _ngcLCSubscribe();
+    db.collection('config').doc('ngccodemap').onSnapshot(s => {
+      _ngcCodeMap = (s.exists && s.data().map) || {}; _ngcJcRerender();
+    }, e => { console.error('ngccodemap read:', e); _ngcCodeMap = _ngcCodeMap || {}; _ngcJcRerender(); });
+    db.collection('config').doc('ngcjobnumbers').onSnapshot(s => {
+      _ngcJobNos = (s.exists && s.data().jobs) || {}; _ngcJcRerender();
+    }, e => { console.error('ngcjobnumbers read:', e); _ngcJobNos = _ngcJobNos || {}; _ngcJcRerender(); });
+  }
+  function _ngcJcRerender() {
+    if (activeTab !== 'accounting' || _acctNav !== 'detail' || _acctSubTab !== 'jobcost') return;
+    const ae = document.activeElement;
+    if (ae && ae.closest && ae.closest('#ngc-jc-setup') && ae.tagName === 'INPUT') return;   // don't clobber typing
+    acctRenderJobCost();
+  }
+  function _ngcCanEdit() { return isAdmin() || isAccounting(); }
+
+  // Area matching key: case/space/punctuation-insensitive; "Lv. 7" ≡ "Lvl. 7".
+  function _ngcAreaKey(a) {
+    return String(a || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/^level/, 'lvl').replace(/^lv(?!l)/, 'lvl');
+  }
+
+  // Legado at The Met — job numbers per Area (from "Legado Job Numbers Per Area 11.2.26").
+  //  5533 Building 1 · 5534 Building 2 · 5535 Building 3 (Levels 3–7, as listed)
+  //  5555 = P2, P1, Lvl 1, Lvl 2, Roof (every area not on Levels 3–7)
+  const _NGC_LEGADO_SEED = (() => {
+    const m = {};
+    const put = (jobNo, lvl, names) => names.forEach(n => { m[_ngcAreaKey(`Lvl. ${lvl}\\${n}`)] = jobNo; });
+    const range = (a, b, step) => { const r = []; for (let i = a; i <= b; i += (step || 1)) r.push(i); return r; };
+    const units = nums => nums.map(n => 'Unit ' + n);
+    for (let L = 3; L <= 7; L++) {
+      const b = L * 100;
+      put('5533', L, units([b + 21, ...range(b + 23, b + 37)]));
+      put('5533', L, ['Corridor', '3-Hr. Fire Wall', 'Exterior', 'Stair 1', 'Stair 3', 'Stair 4', 'Stair 5', 'Stair 6',
+                      'Elevator 2/ Trash Room', 'Elevator 3', 'Elevator 4', 'Trash Room 1', 'Trash room 3']);
+      put('5533', L, L === 3 ? ['Community Center', 'Stair 1 / Elev. 1'] : ['Stair 2 / Elev. 1']);
+      put('5534', L, units([...range(b + 40, b + 45), b + 47]));
+      const b3 = L === 3 ? [...range(300, 306), ...range(308, 322, 2), 349, ...range(350, 355)]
+               : L === 4 ? [...range(400, 410), ...range(412, 422, 2), 449, ...range(450, 455)]
+               : L === 7 ? [...range(700, 712), 714, 716, 749, ...range(750, 755)]
+               :           [...range(b, b + 12), ...range(b + 14, b + 22, 2), b + 49, ...range(b + 50, b + 55)];
+      put('5535', L, units(b3));
+    }
+    return m;
+  })();
+
+  function _ngcDefaultJobNo(job, area) {
+    if (!/legado/i.test(job || '')) return '';
+    const k = _ngcAreaKey(area);
+    if (!k) return '';
+    if (_NGC_LEGADO_SEED[k]) return _NGC_LEGADO_SEED[k];
+    if (typeof isSpecialArea === 'function' && isSpecialArea(area)) return '';   // CO / Work Order rows: set manually
+    if (/^lvl[3-7]/.test(k)) return '';                                           // Levels 3–7 not on the list
+    return '5555';                                                                // P2, P1, Lvl 1, Lvl 2, Roof
+  }
+  function _ngcResolveJobNo(job, area) {
+    const ov = ((_ngcJobNos || {})[job] || {})[_ngcAreaKey(area)];
+    if (ov != null && String(ov).trim()) return String(ov).trim();
+    return _ngcDefaultJobNo(job, area);
+  }
+  // Default Labor Code → NGC Code links (by payroll group). A link saved under
+  // "Job # & Code Links" overrides these. Used ONLY by the NGC Job Cost Summary.
+  //  100s Framing → 3900 · 200s Prelim → 4100 · 220 Fire Taping → 4200.1
+  //  300s Production → 4100.1 · 400s Taping → 4200 · 901 Scrap → 4300
+  const _NGC_DEFAULT_GROUP_LINKS = { '100': '3900', '200': '4100', '220': '4200.1', '300': '4100.1', '400': '4200' };
+  function _ngcDefaultCode(app) {
+    const a = String(app || '').trim();
+    if (!a) return '';
+    if (/^901(\D|$)/.test(a)) return '4300';
+    const g = (typeof getCodeGroup === 'function') ? getCodeGroup(a) : a;
+    return _NGC_DEFAULT_GROUP_LINKS[g] || '';
+  }
+  function _ngcResolveCode(app) {
+    const a = String(app || '').trim();
+    if (!a) return '';
+    const saved = String((_ngcCodeMap || {})[a] || '').trim();
+    if (saved === '-') return '';          // explicitly set to "not linked"
+    return saved || _ngcDefaultCode(a);
+  }
+  function _ngcAppCodeDesc(code) {
+    const lc = (typeof getLaborCodes === 'function' ? getLaborCodes() : []).find(x => String(x.code) === String(code));
+    return lc ? lc.description : '';
+  }
+  function _ngcCodeDesc(ngc) {
+    const lc = (_ngcLC || []).find(x => String(x.code) === String(ngc));
+    return lc ? (lc.description || '') : '';
+  }
+  function _ngcNumSort(a, b) { return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }); }
+
+  // Build the summary for one project + week: [{ jobNo, cents, codes:[...], areas:[...] }]
+  function _ngcJobCostData(job, week) {
+    const { allocations, unallocated } = acctBuildAllocations(job, week);
+    const lines = allocations.map(a => ({ area: a.area, areaDisplay: a.areaDisplay, laborCode: a.laborCode, cents: a.employeeShareCents }))
+      .concat(unallocated.map(u => ({ area: u.area, areaDisplay: u.areaDisplay, laborCode: u.laborCode, cents: u.areaEarnedCents })));
+    const groups = new Map();
+    lines.forEach(l => {
+      if (!l.cents) return;
+      // Change Order / Work Order rows with no Job # typed in → one combined summary.
+      const jobNo = _ngcResolveJobNo(job, l.area) || (_ngcIsCoWo(l.area) || _ngcIsCoWo(l.areaDisplay) ? _NGC_COWO : '');
+      if (!groups.has(jobNo)) groups.set(jobNo, { jobNo, cents: 0, codes: new Map(), areas: new Map() });
+      const g = groups.get(jobNo);
+      const app = String(l.laborCode || '').trim();
+      const ngc = _ngcResolveCode(app);
+      const ck  = ngc ? 'n:' + ngc : 'u:' + app;
+      if (!g.codes.has(ck)) g.codes.set(ck, { ngc, ngcDesc: ngc ? _ngcCodeDesc(ngc) : '', appCodes: new Set(), cents: 0 });
+      const c = g.codes.get(ck); c.cents += l.cents; if (app) c.appCodes.add(app);
+      const ak = _ngcAreaKey(l.area) + '|' + ngc;
+      if (!g.areas.has(ak)) g.areas.set(ak, { area: l.areaDisplay || l.area || '—', app, ngc, cents: 0 });
+      g.areas.get(ak).cents += l.cents;
+      g.cents += l.cents;
+    });
+    return [...groups.values()]
+      .sort((a, b) => _ngcJobRank(a.jobNo) - _ngcJobRank(b.jobNo) || _ngcNumSort(a.jobNo, b.jobNo))
+      .map(g => ({
+        jobNo: g.jobNo, cents: g.cents,
+        codes: [...g.codes.values()].sort((a, b) => (!a.ngc) - (!b.ngc) || _ngcNumSort(a.ngc || [...a.appCodes][0] || '', b.ngc || [...b.appCodes][0] || ''))
+          .map(c => ({ ...c, appCodes: [...c.appCodes].sort(_ngcNumSort) })),
+        areas: [...g.areas.values()].sort((a, b) => _ngcNumSort(a.area, b.area) || _ngcNumSort(a.app, b.app)),
+      }));
+  }
+  const _NGC_COWO = '__COWO__';   // combined Change Orders & Work Orders summary
+  const _ngcIsCoWo = area => /^\s*\[(COR|BURN|Burn#|Work Order)/i.test(String(area || '')) ||
+    (typeof isSpecialArea === 'function' && isSpecialArea(String(area || '').trim()));
+  const _ngcJobRank = jn => !jn ? 2 : jn === _NGC_COWO ? 1 : 0;   // job #s, then CO/WO, then unassigned
+  const _ngcJobDisp = jn => jn === _NGC_COWO ? 'Change Orders & Work Orders' : (jn || 'Not assigned');
+  const _ngcJobLabel = jn => jn === _NGC_COWO ? 'Change Orders & Work Orders' : jn ? 'Job # ' + jn : 'No Job # assigned';
+  const _ngcCodeLabel = c => c.ngc ? c.ngc : 'Not linked';
+  const _ngcCodeDescLabel = c => c.ngc ? (c.ngcDesc || '') : (c.appCodes.map(a => `${a} ${_ngcAppCodeDesc(a)}`.trim()).join(', ') || 'No labor code');
+
+  async function acctRenderJobCost() {
+    const week = (document.getElementById('acct-week-select') || {}).value || '';
+    const job  = (document.getElementById('acct-job-select')  || {}).value || '';
+    const pa   = document.getElementById('acct-print-area');
+    if (!pa) return;
+    if (!week || !job) { pa.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">Open a project's week to view its NGC Job Cost Summary.</div>`; return; }
+    _ngcJcEnsureSubs();
+    if (_ngcCodeMap === null || _ngcJobNos === null) { pa.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">Loading…</div>`; return; }
+    await acctEnsureDailyInputs();
+    const groups = _ngcJobCostData(job, week);
+    const total  = groups.reduce((s, g) => s + g.cents, 0);
+    const psData = acctGetData(week, job)[0];
+    const psCents = psData ? Math.round(psData.totalAmount * 100) : 0;
+    const unlinked = new Set(), noJob = groups.find(g => !g.jobNo);
+    groups.forEach(g => g.codes.forEach(c => { if (!c.ngc) c.appCodes.forEach(a => unlinked.add(a)); }));
+
+    const th = 'padding:8px 12px;text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700;color:#555;border-bottom:2px solid #000;';
+    const td = 'padding:7px 12px;border-bottom:1px solid #ddd;font-size:.85rem;';
+    const cards = groups.map(g => `
+      <div style="background:#fff;color:#000;border-radius:8px;padding:28px;max-width:920px;margin:0 auto 28px;font-family:Arial,sans-serif;font-size:13px;border:1px solid var(--border);">
+        <div style="text-align:center;margin-bottom:18px;border-bottom:3px solid #1a56db;padding-bottom:12px;">
+          <div style="font-size:1.4rem;font-weight:900;color:#1a56db;letter-spacing:.04em;">NGC CONSTRUCTION INC</div>
+          <div style="font-size:.9rem;font-weight:700;color:#333;margin-top:4px;text-transform:uppercase;letter-spacing:.08em;">Job Cost Summary</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;margin-bottom:16px;font-size:.85rem;">
+          <div><b style="color:#555;">Job #:</b>&nbsp;&nbsp;<strong style="color:${g.jobNo ? '#1a56db' : '#c2410c'};font-size:1rem;">${eh(_ngcJobDisp(g.jobNo))}</strong></div>
+          <div><b style="color:#555;">Week Ending:</b>&nbsp;&nbsp;${_fmtWeekDate(week)}</div>
+          <div><b style="color:#555;">Project:</b>&nbsp;&nbsp;${eh(job)}</div>
+          <div><b style="color:#555;">Generated:</b>&nbsp;&nbsp;${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+          <thead><tr style="background:#f0f4ff;"><th style="${th}width:110px;">NGC Code</th><th style="${th}">Description</th><th style="${th}text-align:right;width:130px;">Amount</th></tr></thead>
+          <tbody>${g.codes.map(c => `<tr${c.ngc ? '' : ' style="background:#fff7ed;"'}>
+            <td style="${td}font-weight:700;${c.ngc ? '' : 'color:#c2410c;'}">${eh(_ngcCodeLabel(c))}</td>
+            <td style="${td}">${eh(_ngcCodeDescLabel(c))}</td>
+            <td style="${td}text-align:right;font-weight:700;">${_acctMoney(c.cents)}</td></tr>`).join('')}</tbody>
+          <tfoot><tr style="background:#f0f4ff;"><td colspan="2" style="${td}font-weight:800;text-align:right;">TOTAL — ${eh(_ngcJobLabel(g.jobNo))}</td><td style="${td}text-align:right;font-weight:900;color:#1a56db;font-size:1rem;">${_acctMoney(g.cents)}</td></tr></tfoot>
+        </table>
+        <details>
+          <summary style="cursor:pointer;font-weight:700;font-size:.8rem;color:#555;margin-bottom:6px;">Area detail (${g.areas.length})</summary>
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr><th style="${th}">Area</th><th style="${th}width:110px;">NGC Code</th><th style="${th}text-align:right;width:120px;">Amount</th></tr></thead>
+            <tbody>${g.areas.map(a => `<tr><td style="${td}">${eh(a.area)}</td><td style="${td}font-family:monospace;">${eh(a.ngc || 'Not linked')}</td><td style="${td}text-align:right;">${_acctMoney(a.cents)}</td></tr>`).join('')}</tbody>
+          </table>
+        </details>
+      </div>`).join('');
+
+    const warn = [];
+    if (unlinked.size) warn.push(`${unlinked.size} labor code${unlinked.size !== 1 ? 's are' : ' is'} not linked to an NGC code (${[...unlinked].sort(_ngcNumSort).join(', ')}).`);
+    if (noJob) warn.push(`${_acctMoney(noJob.cents)} is on areas with no Job # assigned.`);
+    if (total !== psCents) warn.push(`Job cost total ${_acctMoney(total)} vs Weekly Pay Sheet ${_acctMoney(psCents)}.`);
+    const banner = warn.length
+      ? `<div style="background:#fff8e1;border:1px solid #f0c000;color:#7a5c00;padding:10px 14px;border-radius:6px;margin:0 auto 14px;max-width:920px;font-size:.8rem;">${warn.map(w => `<div><span class="ico ico-warn" aria-hidden="true"></span> ${eh(w)}</div>`).join('')}${_ngcCanEdit() ? '<div style="margin-top:4px;">Fix these under <b>Job # &amp; Code Links</b>.</div>' : ''}</div>`
+      : `<div style="background:#ecfdf5;border:1px solid #86efac;color:#065f46;padding:8px 14px;border-radius:6px;margin:0 auto 14px;max-width:920px;font-size:.8rem;">✓ Every area has a Job #, every labor code is linked, and the total ${_acctMoney(total)} matches the Weekly Pay Sheet.</div>`;
+    const strip = `<div style="max-width:920px;margin:0 auto 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+        ${groups.map(g => `<span style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:.82rem;"><b>${eh(_ngcJobLabel(g.jobNo))}</b> &nbsp;${_acctMoney(g.cents)}</span>`).join('')}
+        <span style="margin-left:auto;font-size:.85rem;color:var(--muted);">Total <b style="color:var(--text);">${_acctMoney(total)}</b></span>
+        ${_ngcCanEdit() ? `<button class="btn btn-outline" style="margin-top:0;padding:6px 14px;font-size:.8rem;" onclick="ngcJcToggleSetup()">⚙ Job # &amp; Code Links</button>` : ''}
+      </div>`;
+    pa.innerHTML = strip + (_ngcJcSetupOpen && _ngcCanEdit() ? _ngcJcSetupHTML(job) : '') + banner +
+      (groups.length ? cards : `<div style="padding:48px;text-align:center;color:var(--muted);">No approved pay sheet amounts for this week.</div>`);
+  }
+
+  function ngcJcToggleSetup() { _ngcJcSetupOpen = !_ngcJcSetupOpen; acctRenderJobCost(); }
+
+  // Setup: every Area + labor code this project has on its approved weekly pay sheets.
+  function _ngcJcSetupHTML(job) {
+    const areas = new Map(), codes = new Set();
+    (_cache.paysheets || []).forEach(p => {
+      if (p.type !== 'weekly' || !p.approvedAt || p.job !== job) return;
+      Object.values(p.crews || {}).forEach(cr => (cr && cr.rows || []).forEach(r => {
+        if (!_acctCents(r.weAmount)) return;
+        const a = (r.area || '').trim(); if (a) { const k = _ngcAreaKey(a); if (!areas.has(k)) areas.set(k, a); }
+        const c = String(r.costCode || '').trim(); if (c) codes.add(c);
+      }));
+    });
+    const ngcOpts = (_ngcLC || []).slice().sort((a, b) => _ngcNumSort(a.code, b.code));
+    const inp = 'padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:.82rem;';
+    const th  = 'padding:6px 10px;text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border-bottom:1px solid var(--border);';
+    const td  = 'padding:5px 10px;border-bottom:1px solid var(--border);font-size:.82rem;';
+    const codeRows = [...codes].sort(_ngcNumSort).map(c => {
+      const cur = _ngcResolveCode(c), def = _ngcDefaultCode(c);
+      return `<tr><td style="${td}font-family:monospace;font-weight:700;">${eh(c)}</td><td style="${td}">${eh(_ngcAppCodeDesc(c))}</td>
+        <td style="${td}"><select style="${inp}min-width:220px;" onchange="ngcSetCodeLink('${ea(c)}', this.value, '${ea(def)}')">
+          <option value="">— not linked —</option>
+          ${ngcOpts.map(o => `<option value="${eh(o.code)}"${String(o.code) === cur ? ' selected' : ''}>${eh(o.code)} — ${eh(o.description || '')}</option>`).join('')}
+          ${cur && !ngcOpts.some(o => String(o.code) === cur) ? `<option value="${eh(cur)}" selected>${eh(cur)} (removed)</option>` : ''}
+        </select></td></tr>`;
+    }).join('');
+    const areaRows = [...areas.entries()].sort((a, b) => _ngcNumSort(a[1], b[1])).map(([k, a]) => {
+      const def = _ngcDefaultJobNo(job, a), cur = _ngcResolveJobNo(job, a);
+      return `<tr><td style="${td}">${eh(areaDisplayLabel(a))}</td>
+        <td style="${td}"><input style="${inp}width:110px;" value="${eh(cur)}" placeholder="${eh(def || 'Job #')}"
+          onchange="ngcSetAreaJobNo('${ea(job)}','${k}','${ea(def)}',this.value)" /></td>
+        <td style="${td}color:var(--muted);font-size:.75rem;">${cur ? (cur === def ? 'from job list' : 'manual') : _ngcIsCoWo(a) ? 'Change Orders &amp; Work Orders' : '<span style="color:#f59e0b;">not assigned</span>'}</td></tr>`;
+    }).join('');
+    return `<div id="ngc-jc-setup" style="max-width:920px;margin:0 auto 16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:18px;">
+        <div>
+          <div style="font-weight:800;margin-bottom:4px;">Labor Code → NGC Code</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-bottom:8px;">Applies to every project. ${ngcOpts.length ? '' : 'Add NGC codes under Labor Codes → NGC Labor Codes first.'}</div>
+          <div style="max-height:420px;overflow:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${th}">Code</th><th style="${th}">Description</th><th style="${th}">NGC Code</th></tr></thead><tbody>${codeRows || `<tr><td colspan="3" style="${td}color:var(--muted);">No labor codes on approved pay sheets yet.</td></tr>`}</tbody></table></div>
+        </div>
+        <div>
+          <div style="font-weight:800;margin-bottom:4px;">Area → Job # <span style="font-weight:400;color:var(--muted);font-size:.8rem;">(${eh(job)})</span></div>
+          <div style="font-size:.75rem;color:var(--muted);margin-bottom:8px;">Type a Job # to override; clear it to go back to the job list default.</div>
+          <div style="max-height:420px;overflow:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${th}">Area</th><th style="${th}">Job #</th><th style="${th}"></th></tr></thead><tbody>${areaRows || `<tr><td colspan="3" style="${td}color:var(--muted);">No areas on approved pay sheets yet.</td></tr>`}</tbody></table></div>
+        </div>
+      </div></div>`;
+  }
+
+  async function ngcSetCodeLink(appCode, ngcCode, def) {
+    if (!_ngcCanEdit()) return;
+    const map = Object.assign({}, _ngcCodeMap || {});
+    // Picking the default clears the override; picking "not linked" on a code that has a
+    // default stores '-' so it stays unlinked.
+    if (ngcCode && ngcCode === def) delete map[appCode];
+    else if (ngcCode) map[appCode] = ngcCode;
+    else if (def) map[appCode] = '-';
+    else delete map[appCode];
+    _ngcCodeMap = map;
+    try { await db.collection('config').doc('ngccodemap').set({ map }); } catch (e) { alert('Save failed: ' + e.message); }
+    acctRenderJobCost();
+  }
+  async function ngcSetAreaJobNo(job, areaKey, def, val) {
+    if (!_ngcCanEdit()) return;
+    const v = String(val || '').trim();
+    const jobs = JSON.parse(JSON.stringify(_ngcJobNos || {}));
+    jobs[job] = jobs[job] || {};
+    if (!v || v === def) delete jobs[job][areaKey]; else jobs[job][areaKey] = v;
+    _ngcJobNos = jobs;
+    try { await db.collection('config').doc('ngcjobnumbers').set({ jobs }); } catch (e) { alert('Save failed: ' + e.message); }
+    setTimeout(acctRenderJobCost, 0);
+  }
+
+  // ── Exports: one Job # per PDF page / Excel tab ──
+  function _ngcJcExportPrep() {
+    const week = (document.getElementById('acct-week-select') || {}).value || '';
+    const job  = (document.getElementById('acct-job-select')  || {}).value || '';
+    if (!week || !job) { alert('Open a project\'s week first.'); return null; }
+    if (_ngcCodeMap === null || _ngcJobNos === null) { alert('Still loading — try again in a moment.'); return null; }
+    const groups = _ngcJobCostData(job, week);
+    if (!groups.length) { alert('No approved pay sheet amounts for this week.'); return null; }
+    const safe = s => s.replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
+    return { week, job, groups, base: `NGC_JobCostSummary_${safe(job)}_${week.replace(/[^a-zA-Z0-9_-]/g, '_')}` };
+  }
+
+  function acctExportJobCostPDF() {
+    if (typeof window.jspdf === 'undefined') { alert('PDF library not loaded — please try again in a moment.'); return; }
+    const P = _ngcJcExportPrep(); if (!P) return;
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const PW = 612, PH = 792, M = 40, rh = 18;
+    const cell = (x, y, w, h, txt, o) => { o = o || {};
+      if (o.fill) { pdf.setFillColor(240, 244, 255); pdf.rect(x, y, w, h, 'F'); }
+      pdf.setDrawColor(0); pdf.setLineWidth(0.5); pdf.rect(x, y, w, h, 'S');
+      if (txt != null && txt !== '') { pdf.setFont('helvetica', o.bold ? 'bold' : 'normal'); pdf.setFontSize(o.size || 8.5); pdf.setTextColor(0, 0, 0);
+        const a = o.align || 'left', tx = a === 'right' ? x + w - 5 : a === 'center' ? x + w / 2 : x + 5;
+        pdf.text(String(txt), tx, y + h / 2 + 3, { align: a, maxWidth: w - 8 }); } };
+    const W = PW - 2 * M, cCode = 80, cAmt = 100, cDesc = W - cCode - cAmt;
+    const aArea = W - 90 - 100;
+    P.groups.forEach((g, gi) => {
+      if (gi) pdf.addPage();
+      let y = M;
+      const head = (cont) => {
+        pdf.setFont('helvetica', 'bold'); pdf.setTextColor(26, 86, 219); pdf.setFontSize(16);
+        pdf.text('NGC CONSTRUCTION INC', PW / 2, y + 12, { align: 'center' });
+        pdf.setTextColor(0, 0, 0); pdf.setFontSize(11);
+        pdf.text('JOB COST SUMMARY' + (cont ? ' (cont.)' : ''), PW / 2, y + 30, { align: 'center' });
+        y += 44;
+        pdf.setFontSize(9.5);
+        pdf.setFont('helvetica', 'bold'); pdf.text('JOB #:', M, y); pdf.setFont('helvetica', 'normal'); pdf.text(_ngcJobDisp(g.jobNo).toUpperCase(), M + 40, y);
+        pdf.setFont('helvetica', 'bold'); pdf.text('WEEK ENDING:', PW - M - 160, y); pdf.setFont('helvetica', 'normal'); pdf.text(_acctWeekEndDisp(P.week), PW - M - 82, y);
+        y += 14;
+        pdf.setFont('helvetica', 'bold'); pdf.text('PROJECT:', M, y); pdf.setFont('helvetica', 'normal'); pdf.text(String(P.job), M + 52, y, { maxWidth: W - 52 });
+        y += 14;
+      };
+      head(false);
+      const ensure = need => { if (y + need > PH - M) { pdf.addPage(); y = M; head(true); return true; } return false; };
+      cell(M, y, cCode, rh, 'NGC CODE', { bold: true, fill: true, align: 'center' });
+      cell(M + cCode, y, cDesc, rh, 'DESCRIPTION', { bold: true, fill: true, align: 'center' });
+      cell(M + cCode + cDesc, y, cAmt, rh, 'AMOUNT', { bold: true, fill: true, align: 'center' });
+      y += rh;
+      g.codes.forEach(c => {
+        ensure(rh);
+        cell(M, y, cCode, rh, _ngcCodeLabel(c), { bold: true, align: 'center' });
+        cell(M + cCode, y, cDesc, rh, _ngcCodeDescLabel(c));
+        cell(M + cCode + cDesc, y, cAmt, rh, _acctPdfAmt(c.cents), { bold: true, align: 'right' });
+        y += rh;
+      });
+      ensure(rh);
+      cell(M, y, W - cAmt, rh, 'TOTAL — ' + _ngcJobLabel(g.jobNo).toUpperCase(), { bold: true, align: 'right', fill: true });
+      cell(M + W - cAmt, y, cAmt, rh, _acctPdfAmt(g.cents), { bold: true, align: 'right', fill: true });
+      y += rh + 18;
+      // Area detail
+      ensure(rh * 3);
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9.5); pdf.text('AREA DETAIL', M, y); y += 6;
+      const areaHead = () => {
+        cell(M, y, aArea, rh, 'AREA', { bold: true, fill: true, align: 'center' });
+        cell(M + aArea, y, 90, rh, 'NGC CODE', { bold: true, fill: true, align: 'center' });
+        cell(M + aArea + 90, y, 100, rh, 'AMOUNT', { bold: true, fill: true, align: 'center' });
+        y += rh;
+      };
+      areaHead();
+      g.areas.forEach(a => {
+        if (ensure(rh)) areaHead();
+        cell(M, y, aArea, rh, a.area);
+        cell(M + aArea, y, 90, rh, a.ngc || 'Not linked', { align: 'center' });
+        cell(M + aArea + 90, y, 100, rh, _acctPdfAmt(a.cents), { align: 'right' });
+        y += rh;
+      });
+    });
+    pdf.save(P.base + '.pdf');
+  }
+
+  function acctExportJobCostExcel() {
+    if (typeof XLSX === 'undefined') { alert('Excel library not loaded — please try again in a moment.'); return; }
+    const P = _ngcJcExportPrep(); if (!P) return;
+    const XL = _acctXL(), XC = _acctXCell, wb = XL.utils.book_new(), sheetName = _acctSheetNamer();
+    const H = { bold: true, align: 'center', fill: 'FFF0F4FF' };
+    P.groups.forEach(g => {
+      const grid = [], merges = [];
+      grid.push([XC('NGC CONSTRUCTION INC', { bold: true, size: 14, align: 'center', border: false })]); merges.push(_acctMrg(0, 0, 0, 2));
+      grid.push([XC('JOB COST SUMMARY', { bold: true, size: 12, align: 'center', border: false })]);    merges.push(_acctMrg(1, 0, 1, 2));
+      grid.push([]);
+      grid.push([XC('JOB #', { bold: true }), XC(_ngcJobDisp(g.jobNo).toUpperCase())]);           merges.push(_acctMrg(3, 1, 3, 2));
+      grid.push([XC('WEEK ENDING', { bold: true }), XC(_acctWeekEndDisp(P.week))]);               merges.push(_acctMrg(4, 1, 4, 2));
+      grid.push([XC('PROJECT', { bold: true }), XC(P.job)]);                                       merges.push(_acctMrg(5, 1, 5, 2));
+      grid.push([]);
+      grid.push(['NGC CODE', 'DESCRIPTION', 'AMOUNT'].map(h => XC(h, H)));
+      g.codes.forEach(c => grid.push([XC(_ngcCodeLabel(c), { bold: true, align: 'center' }), XC(_ngcCodeDescLabel(c)),
+        XC(c.cents / 100, { bold: true, z: _MONEYZ })]));
+      let R = grid.length;
+      grid.push([XC('TOTAL — ' + _ngcJobLabel(g.jobNo).toUpperCase(), { bold: true, align: 'right', fill: 'FFF0F4FF' }), null,
+                 XC(g.cents / 100, { bold: true, z: _MONEYZ, fill: 'FFF0F4FF' })]);
+      merges.push(_acctMrg(R, 0, R, 1));
+      grid.push([]);
+      grid.push([XC('AREA DETAIL', { bold: true, border: false })]);
+      grid.push(['AREA', 'NGC CODE', 'AMOUNT'].map(h => XC(h, H)));
+      g.areas.forEach(a => grid.push([XC(a.area), XC(a.ngc || 'Not linked', { align: 'center' }), XC(a.cents / 100, { z: _MONEYZ })]));
+      const ws = _acctXSheet(grid, [{ wch: 36 }, { wch: 40 }, { wch: 16 }], merges);
+      XL.utils.book_append_sheet(wb, ws, sheetName(g.jobNo === _NGC_COWO ? 'CO & WO' : g.jobNo ? 'Job ' + g.jobNo : 'No Job #'));
+    });
+    XL.writeFile(wb, P.base + '.xlsx');
   }
 </script>
 
