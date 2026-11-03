@@ -1959,6 +1959,7 @@
     <button type="button" class="acct-subtab-btn"        data-sub="earnings"   onclick="acctSetSubTab('earnings')">Employee Earnings Detail</button>
     <button type="button" class="acct-subtab-btn"        data-sub="timesheets" onclick="acctSetSubTab('timesheets')">Weekly Time Sheets</button>
     <button type="button" class="acct-subtab-btn"        data-sub="jobcost"    onclick="acctSetSubTab('jobcost')">NGC Job Cost Summary</button>
+    <button type="button" class="acct-subtab-btn"        data-sub="ngcpay"     onclick="acctSetSubTab('ngcpay')">NGC Payroll</button>
   </div>
 
   <!-- Admin notice about approvals -->
@@ -22319,18 +22320,21 @@ function computeCorPaid(corb) {
     if (_acctSubTab === 'earnings')   return acctRenderEarnings();
     if (_acctSubTab === 'timesheets') return acctRenderTimesheets();
     if (_acctSubTab === 'jobcost')    return acctRenderJobCost();
+    if (_acctSubTab === 'ngcpay')     return acctRenderNgcPayroll();
     return acctRender();
   }
   function acctExportActivePDF() {
     if (_acctSubTab === 'earnings')   return acctExportEarningsPDF();
     if (_acctSubTab === 'timesheets') return acctExportTimesheetsPDF();
     if (_acctSubTab === 'jobcost')    return acctExportJobCostPDF();
+    if (_acctSubTab === 'ngcpay')     return acctExportNgcPayrollPDF();
     return acctExportPDF();
   }
   function acctExportActiveExcel() {
     if (_acctSubTab === 'earnings')   return acctExportEarningsExcel();
     if (_acctSubTab === 'timesheets') return acctExportTimesheetsExcel();
     if (_acctSubTab === 'jobcost')    return acctExportJobCostExcel();
+    if (_acctSubTab === 'ngcpay')     return acctExportNgcPayrollExcel();
     return acctExportExcel();
   }
 
@@ -23424,7 +23428,9 @@ function computeCorPaid(corb) {
     }, e => { console.error('ngcjobnumbers read:', e); _ngcJobNos = _ngcJobNos || {}; _ngcJcRerender(); });
   }
   function _ngcJcRerender() {
-    if (activeTab !== 'accounting' || _acctNav !== 'detail' || _acctSubTab !== 'jobcost') return;
+    if (activeTab !== 'accounting' || _acctNav !== 'detail') return;
+    if (_acctSubTab === 'ngcpay') return acctRenderNgcPayroll();
+    if (_acctSubTab !== 'jobcost') return;
     const ae = document.activeElement;
     if (ae && ae.closest && ae.closest('#ngc-jc-setup') && ae.tagName === 'INPUT') return;   // don't clobber typing
     acctRenderJobCost();
@@ -23785,6 +23791,239 @@ function computeCorPaid(corb) {
       g.areas.forEach(a => grid.push([XC(a.area), XC(a.ngc || 'Not linked', { align: 'center' }), XC(a.cents / 100, { z: _MONEYZ })]));
       const ws = _acctXSheet(grid, [{ wch: 36 }, { wch: 40 }, { wch: 16 }], merges);
       XL.utils.book_append_sheet(wb, ws, sheetName(g.jobNo === _NGC_COWO ? 'CO & WO' : g.jobNo ? 'Job ' + g.jobNo : 'No Job #'));
+    });
+    XL.writeFile(wb, P.base + '.xlsx');
+  }
+
+  // ═══════════════════════ NGC PAYROLL (per-employee time card) ═══════════════════════
+  // One card per employee, in the NGC "Weekly Time Card" format:
+  //   • top row = the employee's DAILY pay, identical to the Weekly Time Sheet (same
+  //     day-by-day rules, SAT when there is overflow OT);
+  //   • below it, each day's pay is broken into JOB # / LOT # / CODE # (NGC) / BUDGET
+  //     blocks, drawn from that employee's own NGC Job Cost lines for the week.
+  // Lots are condensed: the employee's lines are grouped by Job # + NGC code (+ EWO),
+  // and each group shows its largest Area as the LOT #. Groups fill the days in order,
+  // so every day's BUDGET cells sum to that day's pay, and the whole card sums to the
+  // employee's weekly total (= their share of the NGC Job Cost Summary). Read-only.
+  const _NGCP_DAYS = ['THU', 'FRI', 'SAT', 'MON', 'TUE', 'WED'];
+
+  function _ngcPayrollData(job, week) {
+    const data = acctEmployeeEarnings(job, week);
+    const employees = data.employees.map(emp => {
+      const gm = new Map();
+      (emp.allocations || []).forEach(a => {
+        const c = a.employeeShareCents || 0;
+        if (!c) return;
+        const cowo  = a.sourceType === 'COR' || _ngcIsCoWo(a.area) || _ngcIsCoWo(a.areaDisplay);
+        const jobNo = _ngcResolveJobNo(job, a.area) || (cowo ? _NGC_COWO : '');
+        const app   = String(a.laborCode || '').trim();
+        const ngc   = _ngcResolveCode(app);
+        const ewo   = cowo ? String(a.corNumber || '').trim() : '';
+        const k = jobNo + '|' + (ngc || 'u:' + app) + '|' + ewo;
+        if (!gm.has(k)) gm.set(k, { jobNo, ngc, app, ewo, cents: 0, areas: new Map() });
+        const g = gm.get(k);
+        g.cents += c;
+        const ad = a.areaDisplay || a.area || '—';
+        g.areas.set(ad, (g.areas.get(ad) || 0) + c);
+      });
+      const groups = [...gm.values()]
+        .sort((a, b) => _ngcJobRank(a.jobNo) - _ngcJobRank(b.jobNo) || _ngcNumSort(a.jobNo, b.jobNo) ||
+                        _ngcNumSort(a.ngc || a.app, b.ngc || b.app) || _ngcNumSort(a.ewo, b.ewo))
+        .map(g => ({ ...g, lot: [...g.areas.entries()].sort((x, y) => y[1] - x[1] || _ngcNumSort(x[0], y[0]))[0][0] }));
+
+      // Daily pay exactly as the Weekly Time Sheet (THU FRI SAT MON TUE WED).
+      const daily = _acctEarnDaily(emp, true).map(c => c || 0);
+
+      // Fill the days in order from the groups. A group that runs into the next day
+      // stays in the same block row; new groups take the first free block.
+      const blocks = [];
+      let gi = 0, left = groups.length ? groups[0].cents : 0, prevB = -1, prevG = -1;
+      daily.forEach((dc, d) => {
+        let rem = dc, first = true;
+        const used = new Set();
+        while (rem > 0 && gi < groups.length) {
+          const take = Math.min(rem, left);
+          let b = (first && gi === prevG && prevB >= 0) ? prevB : -1;
+          if (b < 0 || used.has(b)) { b = 0; while (used.has(b)) b++; }
+          used.add(b); first = false;
+          (blocks[b] = blocks[b] || [])[d] = { g: groups[gi], cents: take };
+          prevB = b; prevG = gi;
+          rem -= take; left -= take;
+          if (left <= 0) { gi++; left = gi < groups.length ? groups[gi].cents : 0; }
+        }
+      });
+      const filled = blocks.reduce((s, bl) => s + (bl || []).reduce((t, x) => t + (x ? x.cents : 0), 0), 0);
+      return { name: emp.name, empNum: emp.empNum || '', totalCents: emp.totalCents, daily, groups,
+               blocks: blocks.map(bl => _NGCP_DAYS.map((_, d) => (bl && bl[d]) || null)), balanced: filled === emp.totalCents };
+    });
+    const jcCents = _ngcJobCostData(job, week).reduce((s, g) => s + g.cents, 0);
+    return { employees, totalCents: employees.reduce((s, e) => s + e.totalCents, 0), jobCostCents: jcCents };
+  }
+  const _ngcpJobCell  = x => x ? (x.g.jobNo === _NGC_COWO ? 'CO/WO' : (x.g.jobNo || '—')) : '';
+  const _ngcpCodeCell = x => x ? (x.g.ngc || (x.g.app ? x.g.app + '*' : '—')) : '';
+  const _ngcpBlockTotal = bl => bl.reduce((s, x) => s + (x ? x.cents : 0), 0);
+
+  async function acctRenderNgcPayroll() {
+    const week = (document.getElementById('acct-week-select') || {}).value || '';
+    const job  = (document.getElementById('acct-job-select')  || {}).value || '';
+    const pa   = document.getElementById('acct-print-area');
+    if (!pa) return;
+    if (!week || !job) { pa.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">Open a project's week to view its NGC Payroll.</div>`; return; }
+    _ngcJcEnsureSubs();
+    if (_ngcCodeMap === null || _ngcJobNos === null) { pa.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">Loading…</div>`; return; }
+    await acctEnsureDailyInputs();
+    const D = _ngcPayrollData(job, week);
+    if (!D.employees.length) { pa.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);">No approved pay sheet amounts for this week.</div>`; return; }
+    const $ = c => _acctMoney(c);
+    const bd = 'border:1px solid #000;padding:4px 6px;font-size:.74rem;';
+    const lab = bd + 'font-weight:700;text-align:center;white-space:nowrap;';
+    const num = bd + 'text-align:right;white-space:nowrap;';
+    const cen = bd + 'text-align:center;';
+    const tot = 'border:1px solid #000;border-left:3px double #000;padding:4px 6px;font-size:.74rem;text-align:right;font-weight:700;white-space:nowrap;';
+    const cards = D.employees.map(e => {
+      const blockRows = e.blocks.map((bl, bi) => {
+        const ewo = bl.some(x => x && x.g.ewo);
+        const rows = [];
+        if (bi > 0) rows.push(`<tr><td style="${lab}border-top:2px solid #000;">${eh(e.name.toUpperCase())}</td>${'<td style="' + bd + 'border-top:2px solid #000;"></td>'.repeat(8)}</tr>`);
+        if (bi === 0) rows.push(`<tr><td style="${lab}border-top:2px solid #000;">JOB NAME</td><td colspan="7" style="${bd}border-top:2px solid #000;">${eh(job)}</td><td style="${tot}border-top:2px solid #000;"></td></tr>`);
+        if (bi === 0 || ewo) rows.push(`<tr><td style="${lab}">EWO</td><td style="${bd}"></td>${bl.map(x => `<td style="${cen}">${eh(x ? x.g.ewo : '')}</td>`).join('')}<td style="${tot}"></td></tr>`);
+        rows.push(`<tr><td style="${lab}">JOB #</td><td style="${bd}"></td>${bl.map(x => `<td style="${cen}font-weight:700;">${eh(_ngcpJobCell(x))}</td>`).join('')}<td style="${tot}"></td></tr>`);
+        rows.push(`<tr><td style="${lab}">LOT #</td><td style="${bd}"></td>${bl.map(x => `<td style="${cen}font-size:.66rem;">${eh(x ? x.g.lot : '')}</td>`).join('')}<td style="${tot}"></td></tr>`);
+        rows.push(`<tr><td style="${lab}">CODE #</td><td style="${bd}"></td>${bl.map(x => `<td style="${cen}">${eh(_ngcpCodeCell(x))}</td>`).join('')}<td style="${tot}"></td></tr>`);
+        rows.push(`<tr><td style="${lab}border-bottom:2px solid #000;">BUDGET</td><td style="${bd}border-bottom:2px solid #000;"></td>${bl.map(x => `<td style="${num}border-bottom:2px solid #000;">${x ? $(x.cents) : ''}</td>`).join('')}<td style="${tot}border-bottom:2px solid #000;">${$(_ngcpBlockTotal(bl))}</td></tr>`);
+        return rows.join('');
+      }).join('');
+      return `
+      <div style="background:#fff;color:#000;border-radius:8px;padding:24px;max-width:1100px;margin:0 auto 28px;font-family:Arial,sans-serif;border:1px solid var(--border);overflow-x:auto;">
+        <div style="text-align:center;font-weight:700;font-size:.95rem;">NGC CONSTRUCTION INC &nbsp;DBA DRYWALL</div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin:6px 0 10px;">
+          <div style="font-size:.8rem;"><b>WEEK ENDING:</b> &nbsp;${_fmtWeekDate(week)}</div>
+          <div style="font-size:1.15rem;font-weight:700;">WEEKLY TIME CARD</div><div style="width:160px;"></div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;min-width:860px;">
+          <thead><tr><th style="${lab}">EMPLOYEE NAME</th><th style="${lab}">EMP. #</th>${_NGCP_DAYS.map(d => `<th style="${lab}">${d}</th>`).join('')}<th style="${tot}text-align:center;">WEEKLY TOTAL</th></tr></thead>
+          <tbody>
+            <tr><td style="${lab}">${eh(e.name.toUpperCase())}</td><td style="${lab}">${eh(e.empNum)}</td>${e.daily.map(c => `<td style="${num}">${c ? $(c) : ''}</td>`).join('')}<td style="${tot}">${$(e.totalCents)}</td></tr>
+            ${blockRows}
+          </tbody>
+        </table>
+        ${e.balanced ? '' : `<div style="margin-top:8px;color:#b45309;font-size:.75rem;">⚠ Breakdown does not equal the weekly total for this employee.</div>`}
+        <div style="margin-top:14px;font-size:.75rem;"><b>SUPERINTENDENT AUTHORIZATION:</b> ____________________________</div>
+      </div>`;
+    }).join('');
+    const ok = D.totalCents === D.jobCostCents;
+    const banner = `<div style="max-width:1100px;margin:0 auto 14px;padding:8px 14px;border-radius:6px;font-size:.8rem;${ok ? 'background:#ecfdf5;border:1px solid #86efac;color:#065f46;' : 'background:#fff8e1;border:1px solid #f0c000;color:#7a5c00;'}">
+      ${ok ? '✓' : '⚠'} ${D.employees.length} employee${D.employees.length !== 1 ? 's' : ''} · NGC Payroll total ${$(D.totalCents)} ${ok ? '= NGC Job Cost Summary.' : `vs NGC Job Cost Summary ${$(D.jobCostCents)} (difference ${$(D.jobCostCents - D.totalCents)} is pay sheet money with no named employee on the crew split).`}
+      ${D.employees.some(e => e.groups.some(g => !g.ngc)) ? '<div style="margin-top:4px;">* = labor code not linked to an NGC code (link it under NGC Job Cost Summary → ⚙ Job # &amp; Code Links).</div>' : ''}</div>`;
+    pa.innerHTML = banner + cards;
+  }
+
+  function _ngcPayrollExportPrep() {
+    const week = (document.getElementById('acct-week-select') || {}).value || '';
+    const job  = (document.getElementById('acct-job-select')  || {}).value || '';
+    if (!week || !job) { alert('Open a project\'s week first.'); return null; }
+    if (_ngcCodeMap === null || _ngcJobNos === null) { alert('Still loading — try again in a moment.'); return null; }
+    const D = _ngcPayrollData(job, week);
+    if (!D.employees.length) { alert('No approved pay sheet amounts for this week.'); return null; }
+    const safe = s => s.replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
+    return { week, job, D, base: `NGC_Payroll_${safe(job)}_${week.replace(/[^a-zA-Z0-9_-]/g, '_')}` };
+  }
+
+  function acctExportNgcPayrollPDF() {
+    if (typeof window.jspdf === 'undefined') { alert('PDF library not loaded — please try again in a moment.'); return; }
+    const P = _ngcPayrollExportPrep(); if (!P) return;
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+    const PW = 792, PH = 612, M = 36, rh = 15;
+    const wLab = 130, wEmp = 60, wDay = 75, wTot = 80;
+    const xEmp = M + wLab, xDay = xEmp + wEmp, xTot = xDay + wDay * 6;
+    const cell = (x, y, w, h, txt, o) => { o = o || {};
+      if (o.fill) { pdf.setFillColor(242, 242, 242); pdf.rect(x, y, w, h, 'F'); }
+      pdf.setDrawColor(0); pdf.setLineWidth(o.heavy ? 1.2 : 0.5); pdf.rect(x, y, w, h, 'S');
+      if (txt == null || txt === '') return;
+      pdf.setFont('helvetica', o.bold ? 'bold' : 'normal'); pdf.setFontSize(o.size || 7.5); pdf.setTextColor(0, 0, 0);
+      const a = o.align || 'center', tx = a === 'right' ? x + w - 4 : a === 'left' ? x + 4 : x + w / 2;
+      if (o.wrap) {
+        const lines = pdf.splitTextToSize(String(txt), w - 6).slice(0, 2);
+        const y0 = y + h / 2 + 2.5 - (lines.length - 1) * 3.6;
+        lines.forEach((ln, i) => pdf.text(ln, tx, y0 + i * 7.2, { align: a }));
+      } else pdf.text(String(txt), tx, y + h / 2 + 2.6, { align: a, maxWidth: w - 6 });
+    };
+    const row = (y, label, emp, vals, total, o) => { o = o || {};
+      cell(M, y, wLab, o.h || rh, label, { bold: true, size: o.labSize });
+      cell(xEmp, y, wEmp, o.h || rh, emp, { bold: true });
+      vals.forEach((v, d) => cell(xDay + wDay * d, y, wDay, o.h || rh, v, { align: o.align, size: o.size, wrap: o.wrap, bold: o.bold }));
+      cell(xTot, y, wTot, o.h || rh, total, { align: 'right', bold: true });
+      return y + (o.h || rh);
+    };
+    P.D.employees.forEach((e, ei) => {
+      if (ei) pdf.addPage();
+      let y = M;
+      const title = (cont) => {
+        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11); pdf.setTextColor(0, 0, 0);
+        pdf.text('NGC CONSTRUCTION INC  DBA DRYWALL', PW / 2, y + 10, { align: 'center' });
+        pdf.setFontSize(9); pdf.text('WEEK ENDING:  ' + _acctWeekEndDisp(P.week), M, y + 28);
+        pdf.setFontSize(14); pdf.text('WEEKLY TIME CARD' + (cont ? ' (cont.)' : ''), PW / 2, y + 30, { align: 'center' });
+        y += 40;
+        row(y, 'EMPLOYEE NAME', 'EMP. #', _NGCP_DAYS, 'WEEKLY TOTAL', { bold: true }); y += rh;
+      };
+      title(false);
+      y = row(y, e.name.toUpperCase(), e.empNum, e.daily.map(c => c ? _acctPdfAmt(c) : ''), _acctPdfAmt(e.totalCents), { align: 'right' });
+      e.blocks.forEach((bl, bi) => {
+        const ewo = bi === 0 || bl.some(x => x && x.g.ewo);
+        const need = rh * ((bi ? 1 : 1) + (ewo ? 1 : 0) + 3) + 24;
+        if (y + need > PH - M - 50) { pdf.addPage(); y = M; title(true); }
+        const yTop = y;
+        if (bi === 0) {
+          cell(M, y, wLab, rh, 'JOB NAME', { bold: true });
+          cell(xEmp, y, wEmp + wDay * 6, rh, P.job, { align: 'left' });
+          cell(xTot, y, wTot, rh, '');
+          y += rh;
+        } else {
+          y = row(y, e.name.toUpperCase(), '', _NGCP_DAYS.map(() => ''), '');
+        }
+        if (ewo) y = row(y, 'EWO', '', bl.map(x => x ? x.g.ewo : ''), '');
+        y = row(y, 'JOB #', '', bl.map(_ngcpJobCell), '', { bold: true });
+        y = row(y, 'LOT #', '', bl.map(x => x ? x.g.lot : ''), '', { size: 6, wrap: true, h: 20 });
+        y = row(y, 'CODE #', '', bl.map(_ngcpCodeCell), '');
+        y = row(y, 'BUDGET', '', bl.map(x => x ? _acctPdfAmt(x.cents) : ''), _acctPdfAmt(_ngcpBlockTotal(bl)), { align: 'right' });
+        pdf.setLineWidth(1.4); pdf.line(M, yTop, xTot + wTot, yTop); pdf.line(M, y, xTot + wTot, y);
+      });
+      if (y + 50 > PH - M) { pdf.addPage(); y = M; }
+      _acctPdfSigBlock(pdf, M, y + 6);
+    });
+    pdf.save(P.base + '.pdf');
+  }
+
+  function acctExportNgcPayrollExcel() {
+    if (typeof XLSX === 'undefined') { alert('Excel library not loaded — please try again in a moment.'); return; }
+    const P = _ngcPayrollExportPrep(); if (!P) return;
+    const XL = _acctXL(), XC = _acctXCell, wb = XL.utils.book_new(), sheetName = _acctSheetNamer();
+    P.D.employees.forEach(e => {
+      const grid = [], merges = [];
+      const L = (t) => XC(t, { bold: true, align: 'center' });
+      const blankDays = () => _NGCP_DAYS.map(() => XC(''));
+      grid.push([null, null, XC('NGC CONSTRUCTION INC  DBA DRYWALL', { bold: true, size: 12, align: 'center', border: false })]); merges.push(_acctMrg(0, 2, 0, 6));
+      grid.push([XC('WEEK ENDING:', { bold: true, border: false }), XC(_acctWeekEndDisp(P.week), { align: 'center' }), null, null,
+                 XC('WEEKLY TIME CARD', { bold: true, size: 14, align: 'center', border: false })]); merges.push(_acctMrg(1, 4, 1, 6));
+      grid.push([]);
+      grid.push(['EMPLOYEE NAME', 'EMP. #', ..._NGCP_DAYS, 'WEEKLY TOTAL'].map(h => XC(h, { bold: true, align: 'center', fill: 'FFF2F2F2' })));
+      grid.push([L(e.name.toUpperCase()), L(e.empNum), ...e.daily.map(c => c ? XC(c / 100, { z: _MONEYZ }) : XC('')), XC(e.totalCents / 100, { bold: true, z: _MONEYZ })]);
+      e.blocks.forEach((bl, bi) => {
+        const ewo = bi === 0 || bl.some(x => x && x.g.ewo);
+        if (bi === 0) { const R = grid.length; grid.push([L('JOB NAME'), XC(P.job), ...blankDays(), XC('')]); merges.push(_acctMrg(R, 1, R, 7)); }
+        else grid.push([L(e.name.toUpperCase()), XC(''), ...blankDays(), XC('')]);
+        if (ewo) grid.push([L('EWO'), XC(''), ...bl.map(x => XC(x ? x.g.ewo : '', { align: 'center' })), XC('')]);
+        grid.push([L('JOB #'), XC(''), ...bl.map(x => XC(_ngcpJobCell(x), { bold: true, align: 'center' })), XC('')]);
+        grid.push([L('LOT #'), XC(''), ...bl.map(x => XC(x ? x.g.lot : '', { align: 'center', wrap: true, size: 8 })), XC('')]);
+        grid.push([L('CODE #'), XC(''), ...bl.map(x => XC(_ngcpCodeCell(x), { align: 'center' })), XC('')]);
+        grid.push([L('BUDGET'), XC(''), ...bl.map(x => x ? XC(x.cents / 100, { z: _MONEYZ }) : XC('')), XC(_ngcpBlockTotal(bl) / 100, { bold: true, z: _MONEYZ })]);
+      });
+      grid.push([]);
+      const R = grid.length;
+      grid.push([null, null, null, null, XC('SUPERINTENDENT AUTHORIZATION:', { bold: true, border: false })]); merges.push(_acctMrg(R, 4, R, 8));
+      const ws = _acctXSheet(grid, [{ wch: 26 }, { wch: 10 }, ..._NGCP_DAYS.map(() => ({ wch: 16 })), { wch: 15 }], merges);
+      XL.utils.book_append_sheet(wb, ws, sheetName(e.name));
     });
     XL.writeFile(wb, P.base + '.xlsx');
   }
