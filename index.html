@@ -17005,12 +17005,23 @@ function psSplitPctChanged(i, val) {
 }
 
 function _psRecalcSplitAmounts(total) {
-  // When total changes, update any splits that have a % set
+  // When the W/E total changes, crew split AMOUNTS that are already entered stay exactly
+  // as entered — only their % Split display is refreshed to the new share of the total.
+  // A split that has a % but no amount yet (e.g. % typed before any W/E was entered)
+  // gets its amount filled in once, from that %.
   _ps().splits.forEach((s, i) => {
+    const amt = parseFloat(s.amount) || 0;
+    if (amt > 0) {
+      s.pctSplit  = total > 0 ? (amt / total * 100).toFixed(1) : '';
+      const pctEl = document.getElementById('ps-split-pct-' + i);
+      if (pctEl) pctEl.value = s.pctSplit;
+      return;
+    }
     if (!s.pctSplit) return;
-    const pct    = parseFloat(s.pctSplit) || 0;
-    s.amount     = ((pct / 100) * total).toFixed(2);
-    const amtEl  = document.getElementById('ps-split-amt-' + i);
+    const pct = parseFloat(s.pctSplit) || 0;
+    if (!(pct > 0) || !(total > 0)) return;
+    s.amount    = ((pct / 100) * total).toFixed(2);
+    const amtEl = document.getElementById('ps-split-amt-' + i);
     if (amtEl) amtEl.value = _psAmtComma(s.amount);
   });
   _psUpdateSplitTotalsDisplay();
@@ -17028,6 +17039,11 @@ function _psUpdateSplitTotalsDisplay() {
   }
   if (amtEl) {
     amtEl.textContent = '$' + totalAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // Splits no longer auto-change with W/E — flag in red when they don't add up to it.
+    const weTotal = _psGetTotal();
+    const off = _psCurrentType !== 'daily' && totalAmt > 0 && Math.round(totalAmt * 100) !== Math.round(weTotal * 100);
+    amtEl.style.color = off ? '#dc2626' : '';
+    amtEl.title = off ? `Crew splits ${fm(totalAmt)} do not equal the W/E Earned total ${fm(weTotal)}` : '';
   }
 }
 
@@ -17152,6 +17168,7 @@ function psRenderCrewTable() {
     <tbody>${rows}</tbody>
     ${tfoot}
   </table>`;
+  if (!isDaily) _psUpdateSplitTotalsDisplay();   // apply the splits ≠ W/E red flag
 }
 
 function psAddSplitRows(n) {
