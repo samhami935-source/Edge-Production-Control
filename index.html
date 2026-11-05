@@ -3192,7 +3192,7 @@ firebase.auth().onAuthStateChanged(async user => {
   // One-time: regroup any older weekly pay sheets into one-per-foreman (submitter).
   psRegroupPaysheetsBySubmitter().catch(() => {});
   if (_painted) {
-    _refreshActiveView();   // replace the cache paint with fresh server data
+    _reopenActiveTab();     // replace the cache paint with fresh server data (startup — unchanged)
   } else {
     _revealApp();
   }
@@ -3274,7 +3274,10 @@ async function _resumeRefreshData() {
 // Re-render whatever tab is open, reusing the normal tab entry points (idempotent —
 // their live listeners unsubscribe before re-subscribing). Skips the re-render when a
 // modal is open or focus is in a field, so active data entry is never clobbered.
-function _refreshActiveView() {
+// Startup only (cache paint → fresh server data): re-open the active tab through its
+// normal entry point, exactly as before. Coming back to the app uses _refreshActiveView,
+// which keeps the user on the screen they were on.
+function _reopenActiveTab() {
   if (document.querySelector('.modal-overlay.open, .modal.open')) return;
   const ae = document.activeElement;
   const typing = !!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable));
@@ -3290,10 +3293,53 @@ function _refreshActiveView() {
       case 'tasks':        switchToTasks(); break;
       case 'accounting':   switchToAccounting(); break;
       case 'co':           switchToCO(); break;
-      // Data-entry tabs: only re-render when the user isn't mid-entry (cache is already
-      // refreshed, so switching away and back will reflect it either way).
       case 'paysheet':     if (!typing) switchToPaysheet(); break;
       case 'daily-inputs': if (!typing) switchToDailyInputs(); break;
+    }
+  } catch (e) { console.error('View refresh failed:', e); }
+}
+
+function _refreshActiveView() {
+  if (document.querySelector('.modal-overlay.open, .modal.open')) return;
+  const ae = document.activeElement;
+  const typing = !!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable));
+  try {
+    // Re-draw the CURRENT screen in place with the fresh data. The tab entry points
+    // (switchTo*) always reset to the tab's main page, which made coming back to the
+    // app after a while kick the user out of the project / week / detail they were on.
+    switch (activeTab) {
+      case 'dashboard':    dashRefreshIfActive(); break;
+      case 'payroll':
+        if (prActiveJob) { renderPayrollJobTabs(); applyPayrollFilters(); }
+        else { renderAllJobsOverview(); renderPayrollSummary(); }
+        renderWOTable();
+        break;
+      case 'budgets':      renderBudgetsTable(); renderBurnLog(); break;
+      case 'stocking':     switchToStocking(); break;   // keeps its selected job
+      case 'purchasing':
+        purPopulateJobSelect();                          // keeps _purJob selected
+        if (_purNav === 'folders') purRenderFolders(); else if (!typing) purRenderLog();
+        purApplyNavVisibility();
+        break;
+      case 'lc':           if (!typing) switchToLaborCodes(); break;   // keeps its sub-tab
+      case 'emp':          if (!typing) switchToEmployeeNames(); break;
+      case 'tasks':        switchToTasks(); break;
+      case 'accounting':
+        acctPopulateWeekSelect(); acctPopulateJobSelect();   // both keep their current value
+        if (!typing) acctRenderRouter();                     // stays on folders / list / detail + sub-tab
+        break;
+      case 'co': {
+        const jf = document.getElementById('co-filter-job'), jv = jf ? jf.value : '';
+        coPopulateJobFilter();
+        if (jf) jf.value = jv;
+        if (_coActiveSubTab === 'writeup') { if (_cwNav === 'folders') cwRenderFolders(); }   // never disturb an open write-up
+        else renderCOLog();                                                                    // stays on overview / job view
+        break;
+      }
+      // Data-entry tabs: refresh the project folders only — an open pay sheet / daily
+      // input workspace is left exactly as it is (its live listeners keep logs current).
+      case 'paysheet':     if (_psNav === 'folders') psRenderFolders(); break;
+      case 'daily-inputs': if (_diNav === 'folders') diRenderFolders(); break;
     }
   } catch (e) { console.error('View refresh failed:', e); }
 }
@@ -14444,13 +14490,13 @@ function _cwPdfCss(scope) {
     ${p}.logo{text-align:center;} ${p}.logo img{height:70px;object-fit:contain;}
     ${p}.title{text-align:center;font-weight:800;font-size:1.35rem;letter-spacing:.02em;margin:-6px 0 14px;}
     ${p}table{width:100%;border-collapse:collapse;table-layout:fixed;}
-    ${p}td{font-size:.85rem;padding:2px 6px;vertical-align:top;}
+    ${p}td{font-size:.85rem;padding:2px 6px;vertical-align:top;white-space:normal;overflow-wrap:break-word;}
     ${p}.bar td{background:#c8a95a !important;color:#1a1a1a;font-weight:700;font-size:.82rem;padding:5px 10px;letter-spacing:.02em;}
     ${p}.bar.c td{text-align:center;}
     ${p}.meta .lbl{text-align:right;font-weight:700;white-space:nowrap;}
     ${p}.meta .lbl2{font-weight:700;white-space:nowrap;text-align:right;width:1%;}
     ${p}.meta .gap td{height:14px;}
-    ${p}.r{text-align:right;} ${p}.c{text-align:center;} ${p}.b{font-weight:700;}
+    ${p}.r{text-align:right;white-space:nowrap;} ${p}.c{text-align:center;} ${p}.b{font-weight:700;}
     ${p}.cs td{font-size:.85rem;padding:2px 6px;}
     ${p}.cs .hd{font-weight:700;}
     ${p}.tl{font-weight:700;padding-left:22px;}
