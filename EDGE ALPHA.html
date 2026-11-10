@@ -14387,102 +14387,107 @@ function cwExportPDF() {
   if (!(_cwCur.corNumber||'').trim()) { toast('Enter a COR number first.', 'error'); return; }
   _cwExportDocPDF(_cwCollectDoc());
 }
+// NGC Construction logo (blue) for the Proposed Change Order PDF.
+const _NGC_LOGO_SRC = 'data:image/jpeg;base64,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KBlLgZK55FUtZtbe+0yS0uoDPDMyI6BS2QWGent3qj4cstR06W6s75vPjgCR2t0fvSxfMQG/2lzj8j3pKKcb3DqbjMqqWYhVAyST0pI5ElXdG6uvqpyKoa9bLeaNPbN54Em0brcZdDuGGA74PJHoDUHhtb9LO4XUFjaQTnbPHF5X2hcDDlOx7fhmjlXLcOpqyTRQgGWRIwem5gM0RyxzKWikVwDglTmszxNa/avD2oKlv505tZUiUJubcykYH1qfRbdbfSbUCHypDDH5g27TuCgc+/GPwosuW4dS5JNFCAZZEQHpuYDNKjrIoZGDKehByDWF4ttp7m301beFpHj1GGQkRlwignLEDsKXwjbz2mnXMF3byQXX2uV5gVxGzMc5j/2D2HbnNPkXJzXC+ptySxxLukkVATjLHFKsiMzKrqzL1APSsTxjZz3uhbLeBp3juYZSijLFVkUnA7nAPFaNlh5rm4WNlSVl2lkKlsKBnB5pcq5bh1LZIAJPAFMinhnGYZkkHqjA1j+LrS8vdCaKzRpSJo2mhQ4MsQYF1H1Hbv0rQsxayStNb2zRNsVS7RGPIGcDBAPH9aOVctw6lp5EiXfI6oo7scCmxzwzEiKVJCOu1gcUTRRSp++jV1U7gCueR3xWH4KsWs/DVos9qbe5VXVw6bWxvYgH88/jQkuVsOpvPIkSl5HVFHUscClDBgGUgg9CO9YvjK3mu/COo21vC88ssJVI0XcWOewrWt/+PaLgj5BwRjHHpSt7tw6jpJooQDLIkYPQswGafXO3FtLD4vmvryCS4spLARQ7YzIEYMS67R0LDHPfGKteFLS8sPDNlbX+ROiHKsclASSqk+wwPwqnBKN7hc1jJGsixl1Dt0Unk/hQjpIMoysM4yDmsXxFo66y9vGjPBdwK0trdKp/cyArjnpg8gjuM1c0L7WdIia/t1t7pmczRp90NuOcex6/jScVy3uHU0KQkAEngClpCQASen0qBjY5Y5V3Rurr6qcihpI0ZVd1UucKCcZPtWJ4LtprPwvbW9xA8EqNJujdNpGZGI4+hFT+IdKg1mCCznEi5kLJNGp3QuFO1wR0IOK0cUp8t9BX0NVXRywVlYqcHBzg0rMqKWZgqgZJJwBWX4eTUEsJBqsaLdiZhI8YwsuMAOPqADVfxVa3Vzb2DQxNPbw3scl1AgyZIxnt/Fg4OO+KSiubluF9DaimimXdFIki+qsCKfVOF7VBPdQ20ibsbyISGkwOPlxk4z6VcqWhhRRRSAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA//2Q==';
 function _cwDocBody(doc) {
-  const logoEl = document.querySelector('.auth-logo img');
-  const logoSrc = (logoEl && logoEl.src) || '';
+  const logoSrc = _NGC_LOGO_SRC;
   const money = n => fm(Number(n)||0);
   const labor = (doc.laborLines||[]);
   const mats  = (doc.materialLines||[]);
   const fees  = doc.fees || {};
   const feeAmt = k => { const f = fees[k] || {}; return (Number(f.amount) || (Number(f.qty)||0)*(Number(f.price)||0)) || 0; };
-  // Right-hand totals column (mirrors the Division 9 PROPOSED CHANGE ORDER sheet).
   const _matMk = doc.matMarkupProfit != null ? doc.matMarkupProfit : (doc.markupProfit || 0);
   const _labMk = doc.laborMarkupProfit || 0;
-  const totalsRows = [
-    ['LABOR TOTAL','', money(doc.laborTotal)],
-    ['MATERIAL TOTAL','', money(doc.materialTotal)],
-    ['DELIVERY','', money(feeAmt('delivery'))],
-    ['EQUIPMENT','', money(feeAmt('equipment'))],
-    ['STOCKING','', money(feeAmt('stocking'))],
-    ['SUBTOTAL','', money(doc.subtotal)],
-    [_labMk>0 ? 'MARKUP (Mat)' : 'MARKUP (Mat Only)', (doc.markupPct||0)+'%', money(_matMk)],
-  ];
-  if (_labMk > 0) totalsRows.push(['MARKUP (Labor)', (doc.laborMarkupPct||0)+'%', money(_labMk)]);
-  totalsRows.push(['TOTAL','', money(doc.grandTotal)]);
-  const nRows = Math.max(mats.length, labor.length, totalsRows.length);
-  const bodyRows = Array.from({length:nRows}).map((_,i) => {
-    const m = mats[i], l = labor[i], t = totalsRows[i];
-    return `<tr>
-      <td>${m ? eh(m.description||'') : ''}</td>
-      <td class="r">${m ? money(m.amount) : ''}</td>
-      <td>${l ? eh(l.trade||'') : ''}</td>
-      <td class="r">${l ? money(l.amount) : ''}</td>
-      <td class="tl">${t ? t[0] : ''}</td>
-      <td class="c b">${t ? t[1] : ''}</td>
-      <td class="r b">${t ? t[2] : ''}</td>
-    </tr>`;
-  }).join('');
+  // Cost summary stays together, in three groups: totals · fees · subtotal/markup/total.
+  const markupRows = [[_labMk>0 ? 'Markup (Mat)' : 'Markup (Mat Only)', (doc.markupPct||0)+'%', money(_matMk), _matMk]];
+  if (_labMk > 0) markupRows.push(['Markup (Labor)', (doc.laborMarkupPct||0)+'%', money(_labMk), _labMk]);
+  // 4th item = the raw amount; $0 rows are left off the PDF (Subtotal always shows),
+  // and a group with nothing left is dropped. Saved values/totals are untouched.
+  const sumGroups = [
+    [['Labor Total','', money(doc.laborTotal), doc.laborTotal], ['Material Total','', money(doc.materialTotal), doc.materialTotal]],
+    [['Delivery','', money(feeAmt('delivery')), feeAmt('delivery')], ['Equipment','', money(feeAmt('equipment')), feeAmt('equipment')], ['Stocking','', money(feeAmt('stocking')), feeAmt('stocking')]],
+    [['Subtotal','', money(doc.subtotal), null], ...markupRows],
+  ].map(g => g.filter(t => t[3] === null || (Number(t[3])||0) !== 0)).filter(g => g.length);
+  // Same columns in every summary table; amounts are left-aligned with the $ attached,
+  // so every amount starts at the same spot as Total's.
+  const sumCols = '<colgroup><col><col style="width:44px"><col style="width:96px"></colgroup>';
+  const amtCells = m => `<td class="b">${m}</td>`;
+  const sumHTML = sumGroups.map(g => `<table class="sum">${sumCols}${g.map(t =>
+    `<tr><td class="b">${t[0]}</td><td class="c b">${t[1]}</td>${amtCells(t[2])}</tr>`).join('')}</table>`).join('');
+  const lineBlock = (title, rows, label, totalLbl, total) => `
+    <div class="tag">${title}</div>
+    <table class="lines">
+      <colgroup><col style="width:28px"><col><col style="width:110px"></colgroup>
+      ${rows.length ? rows.map((r, i) => `<tr><td>${i + 1}.</td>${r}</tr>`).join('') : '<tr><td></td><td class="muted">—</td><td></td></tr>'}
+      <tr class="tot"><td colspan="2">${totalLbl}</td><td class="r">${money(total)}</td></tr>
+    </table>`;
+  // PDF only: leave out blank lines, and a whole Materials/Labor block when it has
+  // nothing entered (the saved write-up and its totals are untouched).
+  const _hasLine = (txt, amt) => String(txt||'').trim() !== '' || (Number(amt)||0) !== 0;
+  const matRows = mats.filter(m => _hasLine(m.description, m.amount)).map(m => `<td>${eh(m.description||'')}</td><td class="r">${money(m.amount)}</td>`);
+  const labRows = labor.filter(l => _hasLine(l.trade, l.amount)).map(l => `<td>${eh(l.trade||'')}</td><td class="r">${money(l.amount)}</td>`);
+  const showMat = matRows.length > 0 || (Number(doc.materialTotal)||0) !== 0;
+  const showLab = labRows.length > 0 || (Number(doc.laborTotal)||0) !== 0;
+  const sub = doc.corNumber ? 'COR NO. ' + eh(doc.corNumber) : '';
   // .pg fills one full page; the .sp spacers share any leftover height so the
   // sheet always reaches the bottom of the page instead of leaving a blank strip.
   return `<div class="pg">
-    <div class="logo">${logoSrc?`<img src="${logoSrc}" alt="">`:''}</div>
-    <div class="title">PROPOSED CHANGE ORDER</div>
+    <div class="hdr">
+      <img class="hlogo" src="${logoSrc}" alt="NGC Construction Inc.">
+      <div class="htxt">
+        <div class="title">Proposed Change Order</div>
+        <div class="subt">${sub}</div>
+      </div>
+    </div>
+    <div class="hrule"></div>
     <table class="meta">
-      <colgroup><col style="width:13%"><col style="width:47%"><col style="width:13%"><col style="width:27%"></colgroup>
-      <tr><td class="lbl">TO:</td><td>${eh(doc.toName||'')}</td><td class="lbl2">PROJECT:</td><td>${eh(doc.project||'')}</td></tr>
-      <tr class="gap"><td colspan="4"></td></tr>
-      <tr><td class="lbl">ATTN:</td><td></td><td class="lbl2">COR NO:</td><td>${eh(doc.corNumber||'')}</td></tr>
-      <tr><td class="lbl">CC:</td><td>${eh(doc.cc||'')}</td><td class="lbl2">DATE:</td><td>${doc.date?eh(fmtDate(doc.date)):''}</td></tr>
-      <tr class="gap"><td colspan="4"></td></tr>
-      <tr><td class="lbl">REFERENCE:</td><td colspan="3">${eh(doc.reference||'')}</td></tr>
+      <colgroup><col style="width:58px"><col><col style="width:104px"><col style="width:190px"></colgroup>
+      <tr><td class="lbl">TO:</td><td>${eh(doc.toName||'')}</td><td class="lbl">DATE:</td><td>${doc.date?eh(fmtDate(doc.date)):''}</td></tr>
+      <tr><td class="lbl">ATTN:</td><td>${eh(doc.attn||'')}</td><td class="lbl">REFERENCE:</td><td>${eh(doc.reference||'')}</td></tr>
+      <tr><td class="lbl">CC:</td><td>${eh(doc.cc||'')}</td><td class="lbl">PROJECT:</td><td>${eh(doc.project||'')}</td></tr>
     </table>
+    <div style="height:24px;"></div>
+    <div class="tag">DESCRIPTION / SCOPE OF WORK</div>
+    <div class="scope">${eh(doc.scope||'')}</div>
+    <div style="height:24px;"></div>
+    <div class="cols">
+      <div class="left">
+        ${showMat ? lineBlock('MATERIALS', matRows, 'DESCRIPTION', 'Total Material', doc.materialTotal) : ''}
+        ${showMat && showLab ? '<div style="height:16px;"></div>' : ''}
+        ${showLab ? lineBlock('LABOR', labRows, 'TRADE', 'Total Labor', doc.laborTotal) : ''}
+      </div>
+      <div class="right">
+        <div class="tag">COST SUMMARY</div>
+        <div class="sumbox">
+          ${sumHTML}
+          <table class="sum grand">${sumCols}<tr><td colspan="2">Total</td>${amtCells(money(doc.grandTotal))}</tr></table>
+        </div>
+      </div>
+    </div>
     <div class="sp"></div>
-    <table style="margin-top:12px;"><tr class="bar c"><td>DESCRIPTION / SCOPE OF WORK</td></tr></table>
-    <div style="min-height:60px;font-size:.84rem;white-space:pre-wrap;padding:8px 4px;">${eh(doc.scope||'')}</div>
-    <div class="sp"></div>
-    <table style="margin-top:8px;"><tr class="bar c"><td>CHANGE ORDER COST SUMMARY</td></tr></table>
-    <table class="cs" style="margin-top:8px;">
-      <colgroup><col style="width:19%"><col style="width:11%"><col style="width:16%"><col style="width:11%"><col style="width:22%"><col style="width:7%"><col style="width:14%"></colgroup>
-      <tr><td class="hd">Materials</td><td></td><td class="hd">Labor</td><td></td><td colspan="3"></td></tr>
-      ${bodyRows}
-      <tr><td style="height:8px;" colspan="7"></td></tr>
-      <tr>
-        <td class="b">Total Material</td><td class="r b">${money(doc.materialTotal)}</td>
-        <td class="b">Total Labor</td><td class="r b">${money(doc.laborTotal)}</td>
-        <td colspan="3"></td>
-      </tr>
-    </table>
-    <div class="sp"></div>
-    <div style="margin-top:18px;font-size:.85rem;">Respectfully,</div>
-    <table style="margin-top:2px;table-layout:fixed;">
-      <colgroup><col style="width:60%"><col style="width:6%"><col style="width:34%"></colgroup>
-      <tr>
-        <td style="vertical-align:bottom;height:44px;padding:0 4px;"><span class="sign">${eh(doc.signature||'')}</span></td>
-        <td></td>
-        <td style="vertical-align:bottom;height:44px;padding:0 6px;font-size:.95rem;">${doc.date?eh(fmtDate(doc.date)):''}</td>
-      </tr>
-      <tr>
-        <td style="border-top:1px solid #333;font-size:.7rem;font-weight:700;letter-spacing:.03em;padding-top:3px;">SIGNATURE</td>
-        <td></td>
-        <td style="border-top:1px solid #333;font-size:.7rem;font-weight:700;letter-spacing:.03em;padding-top:3px;">DATE</td>
-      </tr>
-    </table>
-    <div class="sp"></div>
-    <table style="margin-top:16px;"><tr class="bar"><td>APPROVED BY:</td></tr></table>
-    <table style="margin-top:2px;table-layout:fixed;">
-      <colgroup><col style="width:60%"><col style="width:6%"><col style="width:34%"></colgroup>
-      <tr><td style="height:44px;"></td><td></td><td style="height:44px;"></td></tr>
-      <tr>
-        <td style="border-top:1px solid #333;font-size:.7rem;font-weight:700;letter-spacing:.03em;padding-top:3px;">SIGNATURE</td>
-        <td></td>
-        <td style="border-top:1px solid #333;font-size:.7rem;font-weight:700;letter-spacing:.03em;padding-top:3px;">DATE</td>
-      </tr>
-    </table>
-    <div class="sp"></div>
+    <!-- Signature blocks sit compact and low on the page, just above the footer. -->
+    <div class="sigs">
+      <div class="sh">Respectfully,</div>
+      <table>
+        <colgroup><col style="width:60%"><col style="width:6%"><col style="width:34%"></colgroup>
+        <tr>
+          <td class="sv"><span class="sign">${eh(doc.signature||'')}</span></td>
+          <td></td>
+          <td class="sv sd">${doc.date?eh(fmtDate(doc.date)):''}</td>
+        </tr>
+        <tr><td class="sl">SIGNATURE</td><td></td><td class="sl">DATE</td></tr>
+      </table>
+      <div class="sh" style="margin-top:18px;">Approved by,</div>
+      <table>
+        <colgroup><col style="width:60%"><col style="width:6%"><col style="width:34%"></colgroup>
+        <tr><td class="sv"></td><td></td><td class="sv"></td></tr>
+        <tr><td class="sl">SIGNATURE</td><td></td><td class="sl">DATE</td></tr>
+      </table>
+    </div>
+    <div style="height:26px;"></div>
     <div class="foot">
       <div class="co">NGC Construction INC.</div>
-      <div>6445 Harvest Ave, Visalia, CA 93291</div>
-      <div>License # 1011076</div>
+      <div>6445 Harvest Ave, Visalia, CA 93291 &nbsp;·&nbsp; License # 1011076</div>
     </div>
   </div>`;
 }
@@ -14493,25 +14498,39 @@ function _cwPdfCss(scope) {
   const bodySel = scope || 'body';
   return `
     ${p}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    ${bodySel}{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;background:#fff;${scope?'width:816px;padding:16px 46px;':'margin:0;padding:16px 46px;'}}
-    ${p}.sign{font-family:'Great Vibes','Snell Roundhand','Brush Script MT',cursive;font-size:2.1rem;line-height:1;color:#12203a;}
-    ${p}.logo{text-align:center;} ${p}.logo img{height:70px;object-fit:contain;}
-    ${p}.title{text-align:center;font-weight:800;font-size:1.35rem;letter-spacing:.02em;margin:14px 0 14px;}
-    ${p}.pg{display:flex;flex-direction:column;min-height:1020px;}
-    ${p}.sp{flex:1 1 0;}
+    ${bodySel}{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;background:#fff;${scope?'width:916px;padding:0 50px;box-sizing:border-box;':'margin:0;padding:0 50px;'}}
+    ${p}.sign{font-family:'Great Vibes','Snell Roundhand','Brush Script MT',cursive;font-size:1.75rem;line-height:1;color:#12203a;}
+    ${p}.pg{display:flex;flex-direction:column;min-height:1184px;}
+    ${p}.sp{flex:1 1 0;min-height:8px;}
     ${p}table{width:100%;border-collapse:collapse;table-layout:fixed;}
     ${p}td{font-size:.85rem;padding:2px 6px;vertical-align:top;white-space:normal;overflow-wrap:break-word;border:0;}
-    ${p}.bar td{background:#c8a95a !important;color:#1a1a1a;font-weight:700;font-size:.82rem;padding:5px 10px;letter-spacing:.02em;}
-    ${p}.bar.c td{text-align:center;}
-    ${p}.meta .lbl{text-align:right;font-weight:700;white-space:nowrap;}
-    ${p}.meta .lbl2{font-weight:700;white-space:nowrap;text-align:right;width:1%;}
-    ${p}.meta .gap td{height:14px;}
     ${p}.r{text-align:right;white-space:nowrap;} ${p}.c{text-align:center;} ${p}.b{font-weight:700;}
-    ${p}.cs td{font-size:.85rem;padding:2px 6px;}
-    ${p}.cs .hd{font-weight:700;}
-    ${p}.tl{font-weight:700;padding-left:22px;}
-    ${p}.foot{text-align:center;margin-top:18px;font-size:.82rem;line-height:1.55;}
-    ${p}.foot .co{font-weight:800;font-size:.88rem;}
+    ${p}.hdr{display:flex;align-items:center;justify-content:space-between;padding-top:34px;}
+    ${p}.hlogo{width:300px;object-fit:contain;margin-left:-10px;}
+    ${p}.htxt{text-align:right;}
+    ${p}.title{font-weight:800;font-size:1.45rem;letter-spacing:-.01em;color:#3c418b;line-height:1.1;}
+    ${p}.subt{font-size:.86rem;letter-spacing:.06em;color:#555;margin-top:6px;text-transform:uppercase;text-align:center;}
+    ${p}.hrule{height:0;margin:14px 0 16px;}
+    ${p}.meta{width:100%;}
+    ${p}.meta td{padding:2px 4px;font-size:.88rem;}
+    ${p}.meta .lbl{font-weight:700;white-space:nowrap;text-align:right;padding-right:8px;}
+    ${p}.tag{display:inline-block;align-self:flex-start;background:#3c418b;color:#fff;font-weight:800;font-size:.86rem;letter-spacing:.06em;padding:6px 12px;margin-bottom:8px;}
+    ${p}.scope{min-height:96px;font-size:.88rem;white-space:pre-wrap;line-height:1.5;background:#eceef7;padding:10px 14px 12px;}
+    ${p}.cols{display:flex;gap:28px;align-items:flex-start;}
+    ${p}.cols .left{flex:1 1 0;display:flex;flex-direction:column;}
+    ${p}.cols .right{width:318px;display:flex;flex-direction:column;}
+    ${p}.lines td{padding:3px 4px;}
+    ${p}.lines .tot td{font-weight:800;border-top:2px solid #3c418b;padding-top:6px;}
+    ${p}.muted{color:#999;}
+    ${p}.sumbox{background:#eceef7;padding:10px 14px 12px;}
+    ${p}.sum{margin-bottom:12px;} ${p}.sum td{padding:2px 2px;font-size:.84rem;white-space:nowrap;}
+    ${p}.sum.grand{margin-bottom:0;} ${p}.sum.grand td{font-weight:800;font-size:.95rem;}
+    ${p}.sl{border-top:1px solid #333;font-size:.64rem;font-weight:700;letter-spacing:.03em;padding-top:3px;}
+    ${p}.sigs .sh{font-size:.78rem;}
+    ${p}.sigs .sv{vertical-align:bottom;height:34px;padding:0 4px;}
+    ${p}.sigs .sd{font-size:.84rem;padding:0 6px 1px;}
+    ${p}.foot{padding-bottom:34px;text-align:center;font-size:.8rem;line-height:1.55;color:#333;}
+    ${p}.foot .co{font-weight:800;font-size:.88rem;color:#1a1a1a;}
   `;
 }
 function _cwDocHTML(doc) {
@@ -14525,7 +14544,7 @@ function _cwDocHTML(doc) {
     @page{ size:816px 1056px; margin:0; }
     html,body{ margin:0; padding:0; background:#fff; }
     ${_cwPdfCss('#cw-print-root')}
-    #cw-print-root{ margin:0 auto; }
+    #cw-print-root{ margin:0; zoom:0.8908; } /* 916px layout → 816px page */
   </style></head><body><div id="cw-print-root">${_cwDocBody(doc)}</div></body></html>`;
 }
 function _cwExportDocPDF(doc) {
@@ -14578,6 +14597,13 @@ function _cwEnsureSignFont() {
 // scoped under #cw-pdf-root so the app's CSS can't interfere.
 // opts.output === 'datauri' → return the PDF as a data URI instead of downloading it
 // (used by _cwViewDocPDF to show it in a viewer). Default behavior is unchanged.
+// File name for a COR PDF: "<Project> COR <number>" (characters a file name can't hold are dropped).
+function _cwPdfBaseName(doc) {
+  const proj = String((doc && doc.project) || '').trim();
+  const cor  = String((doc && doc.corNumber) || '').trim();
+  const name = [proj, cor ? 'COR ' + cor : ''].filter(Boolean).join(' ') || 'Change Order';
+  return name.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
+}
 async function _cwDownloadDocPDF(doc, opts) {
   if (!doc) { toast('Change order not found.', 'error'); return; }
   const _asUri = !!(opts && opts.output === 'datauri');
@@ -14594,7 +14620,7 @@ async function _cwDownloadDocPDF(doc, opts) {
     // reliably under html2canvas (off-screen / iframe elements come out blank).
     wrap = document.createElement('div');
     wrap.id = 'cw-pdf-root';
-    wrap.style.cssText = 'position:fixed;left:0;top:0;z-index:-1;width:816px;background:#fff;';
+    wrap.style.cssText = 'position:fixed;left:0;top:0;z-index:-1;width:916px;background:#fff;';
     wrap.innerHTML = `<style>${_cwPdfCss('#cw-pdf-root')}</style>` + _cwDocBody(doc);
     document.body.appendChild(wrap);
     // Wait for layout + the logo image + the signature font before capturing.
@@ -14625,7 +14651,8 @@ async function _cwDownloadDocPDF(doc, opts) {
       let pos = 0;
       while (pos < imgH) { pdf.addImage(imgData, 'JPEG', 0, -pos, pageW, imgH); pos += pageH; if (pos < imgH) pdf.addPage(); }
     }
-    const fname = ('COR ' + (doc.corNumber || 'change-order')).trim().replace(/[^\w.-]+/g, '_') + '.pdf';
+    const fname = _cwPdfBaseName(doc) + '.pdf';
+    try { pdf.setProperties({ title: _cwPdfBaseName(doc) }); } catch(_) {}
     if (_asUri) return pdf.output('datauristring');
     pdf.save(fname);
     toast('PDF downloaded — ready to send.', 'success');
@@ -14639,26 +14666,15 @@ async function _cwDownloadDocPDF(doc, opts) {
   }
 }
 
-// Open the generated COR PDF in a viewer — same experience as the Signed PDF button
-// (_cwOpenAttachment): new tab on desktop, in-app viewer in the iPad home-screen app.
-// The tab is opened synchronously on the tap (before the async build) so pop-up
-// blockers don't stop it, then the finished PDF is written into it.
+// COR PDF button. On a computer/browser it downloads the file straight away, named
+// "<Project> COR <number>.pdf" (the browser's own PDF viewer can only offer "download").
+// In the iPad home-screen app (no downloads there) it opens the in-app viewer instead.
 async function _cwViewDocPDF(doc) {
   if (!doc) { toast('Change order not found.', 'error'); return; }
-  const title = 'COR ' + (doc.corNumber || '');
-  const pwa = _isStandalonePWA();
-  const win = pwa ? null : window.open('', '_blank');
-  if (!pwa && !win) { toast('Pop-up blocked — allow pop-ups to view the PDF.', 'error'); return; }
-  if (win) {
-    win.document.write(`<!doctype html><title>${eh(title)}</title><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;font-family:-apple-system,Segoe UI,Arial,sans-serif;color:#666;background:#f5f5f5;">Preparing PDF…</body>`);
-    win.document.close();
-  }
+  if (!_isStandalonePWA()) return _cwDownloadDocPDF(doc);
   const url = await _cwDownloadDocPDF(doc, { output: 'datauri' });
-  if (!url) { if (win) { try { win.close(); } catch(_) {} } return; }
-  if (pwa) { _appViewer({ title, url, print: false }); return; }
-  win.document.open();
-  win.document.write(`<!doctype html><title>${eh(title)}</title><body style="margin:0"><iframe src="${url}" style="border:0;width:100vw;height:100vh;"></iframe></body>`);
-  win.document.close();
+  if (!url) return;
+  _appViewer({ title: _cwPdfBaseName(doc), url, print: false });
 }
 
 function switchToAccounting() {
