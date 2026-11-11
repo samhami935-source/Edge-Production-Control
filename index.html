@@ -16828,7 +16828,7 @@ function _diDayLabel(key) {
     : (key || 'No date');
 }
 // → [{ key, label, dateShort, foreman, foremen, operations:[desc], employeeCount, areas:[label],
-//      crews:[{ name, operations, employeeCount }], byOperation:[{ operation, employeeCount }] }],
+//      crews:[{ name, operations, employeeCount }], byOperation:[{ operation, employeeCount, areas }] }],
 // oldest day first.
 // Operations and areas are listed once each, in the order logged.
 function _diDailyReportDays(subs) {
@@ -16836,7 +16836,7 @@ function _diDailyReportDays(subs) {
   [...subs].sort((x, y) => String(x.submittedAt || x.date || '').localeCompare(String(y.submittedAt || y.date || '')))
     .forEach(sub => {
       const key = _diSubDayKey(sub);
-      if (!days.has(key)) days.set(key, { key, foremen: new Set(), ops: new Set(), emps: new Set(), areas: new Set(), crews: new Map(), opEmps: new Map() });
+      if (!days.has(key)) days.set(key, { key, foremen: new Set(), ops: new Set(), emps: new Set(), areas: new Set(), crews: new Map(), opEmps: new Map(), opAreas: new Map() });
       const day = days.get(key);
       // Foreman = the person who submitted the daily input (same as the log's Foreman column).
       const foreman = String(sub.submittedBy || '').trim();
@@ -16849,6 +16849,7 @@ function _diDailyReportDays(subs) {
         if (!day.crews.has(ck)) day.crews.set(ck, { name: lead, ops: new Set(), emps: new Set() });
         const cr = day.crews.get(ck);
         const empOps = new Map();   // employee → labor descriptions they logged in this crew
+        const crewAreas = [];       // [area label, labor description] in the order logged
         (crew.entries || []).forEach(e => {
           const emp = (e.employee || '').trim(), area = (e.area || '').trim(), code = (e.costCode || '').trim();
           if (!emp && !area && !code) return;
@@ -16857,6 +16858,7 @@ function _diDailyReportDays(subs) {
           const op = _diReportLaborDesc(code);
           if (op) { day.ops.add(op); cr.ops.add(op); }
           if (emp) { if (!empOps.has(emp.toLowerCase())) empOps.set(emp.toLowerCase(), new Set()); if (op) empOps.get(emp.toLowerCase()).add(op); }
+          if (area) crewAreas.push([areaDisplayLabel(area), op]);
         });
         // Employee count per labor description for the whole day (crews combined). A crew
         // member with no labor code yet counts toward the crew's first description.
@@ -16864,6 +16866,13 @@ function _diDailyReportDays(subs) {
         empOps.forEach((ops, emp) => {
           if (!ops.size && firstOp) ops.add(firstOp);
           ops.forEach(op => { if (!day.opEmps.has(op)) day.opEmps.set(op, new Set()); day.opEmps.get(op).add(emp); });
+        });
+        // Areas per labor description (same rule: no code yet → the crew's first description).
+        crewAreas.forEach(([ar, op]) => {
+          const o = op || firstOp; if (!o) return;
+          if (!day.opEmps.has(o)) day.opEmps.set(o, new Set());
+          if (!day.opAreas.has(o)) day.opAreas.set(o, new Set());
+          day.opAreas.get(o).add(ar);
         });
       });
     });
@@ -16873,7 +16882,8 @@ function _diDailyReportDays(subs) {
                  foremen: [...d.foremen], operations: [...d.ops], employeeCount: d.emps.size, areas: [...d.areas],
                  crews: [...d.crews.values()].filter(c => c.ops.size || c.emps.size)
                    .map(c => ({ name: c.name, operations: [...c.ops], employeeCount: c.emps.size })),
-                 byOperation: [...d.opEmps.entries()].map(([operation, emps]) => ({ operation, employeeCount: emps.size })) }));
+                 byOperation: [...d.opEmps.entries()].map(([operation, emps]) => ({ operation, employeeCount: emps.size,
+                   areas: [...(d.opAreas.get(operation) || [])] })) }));
 }
 function diExportSelectedToExcel() {
   if (!_diSelectedInputs.size) {
@@ -16886,13 +16896,14 @@ function diExportSelectedToExcel() {
   if (!days.length) { alert('No employee entries were found in the selected submissions.'); return; }
 
   // Styled HTML table exported as .xls — Excel opens this and keeps the formatting.
-  // One block per day: band, Foreman / Date, then one Operation / Employee Count pair per
-  // labor description (all crews combined).
+  // One block per day: band, Foreman / Date, then per labor description (all crews
+  // combined) Operation / Employee Count / Areas, then the Total Employees control number.
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const bandStyle = 'background:#e4dcf2;color:#1a1a1a;font-weight:bold;font-size:13px;padding:6px 10px;border-bottom:2px solid #5b3a8e;';
   const lblStyle  = 'font-weight:bold;text-align:right;padding:4px 10px;white-space:nowrap;vertical-align:top;';
   const valStyle  = 'font-weight:bold;padding:4px 10px;';
   const sepStyle  = 'height:6px;border-bottom:1px solid #d9d2e9;';
+  const areaStyle = 'padding:4px 10px;border:1px solid #d9d2e9;';
   const totLblStyle = lblStyle + 'border-top:2px solid #5b3a8e;background:#f3eefb;padding-top:6px;padding-bottom:6px;';
   const totValStyle = valStyle + 'border-top:2px solid #5b3a8e;background:#f3eefb;text-align:left;font-size:13px;padding-top:6px;padding-bottom:6px;';
   const bodyHtml = days.map((d, di) => {
@@ -16906,7 +16917,9 @@ function diExportSelectedToExcel() {
       + d.byOperation.map(o =>
           `<tr><td colspan="2" style="${sepStyle}"></td></tr>`
           + `<tr><td style="${lblStyle}">Operation:</td><td style="${valStyle}">${esc(o.operation)}</td></tr>`
-          + `<tr><td style="${lblStyle}">Employee Count:</td><td style="${valStyle}text-align:left;">${esc(o.employeeCount)}</td></tr>`).join('')
+          + `<tr><td style="${lblStyle}">Employee Count:</td><td style="${valStyle}text-align:left;">${esc(o.employeeCount)}</td></tr>`
+          + o.areas.map((ar, i) =>
+              `<tr><td style="${lblStyle}">${i === 0 ? 'Areas:' : ''}</td><td style="${areaStyle}${i % 2 ? 'background:#f3eefb;' : 'background:#ffffff;'}">${esc(ar)}</td></tr>`).join('')).join('')
       // Control number: the Employee Counts above added up.
       + `<tr><td style="${totLblStyle}">Total Employees:</td><td style="${totValStyle}">${esc(d.byOperation.reduce((n, o) => n + o.employeeCount, 0))}</td></tr>`;
   }).join('');
@@ -16988,6 +17001,17 @@ function diExportSelectedToPDF() {
       y += 6;
       field('Operation:', o.operation);
       field('Employee Count:', o.employeeCount);
+      o.areas.forEach((ar, i) => {
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5);
+        const lines = pdf.splitTextToSize(ar, VW - 12);
+        const h = Math.max(18, lines.length * 12 + 6);
+        need(h);
+        if (i % 2) { pdf.setFillColor(243, 238, 251); pdf.rect(VX, y, VW, h, 'F'); }
+        pdf.setDrawColor(217, 210, 233); pdf.setLineWidth(0.75); pdf.rect(VX, y, VW, h, 'S');
+        if (i === 0) { pdf.setFont('helvetica', 'bold'); pdf.text('Areas:', M + LW, y + 12, { align: 'right' }); pdf.setFont('helvetica', 'normal'); }
+        pdf.setTextColor(...BLK); pdf.text(lines, VX + 6, y + 12);
+        y += h;
+      });
     });
     // Control number: the Employee Counts above added up.
     need(26);
