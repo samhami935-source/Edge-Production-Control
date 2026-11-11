@@ -16853,7 +16853,7 @@ function _diDailyReportDays(subs) {
   const short = k => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(k); return m ? `${+m[2]}/${+m[3]}/${m[1].slice(2)}` : k; };
   return [...days.values()].filter(d => d.areas.size || d.ops.size || d.emps.size).sort((x, y) => x.key.localeCompare(y.key))
     .map(d => ({ key: d.key, label: _diDayLabel(d.key), dateShort: short(d.key), foreman: [...d.foremen].join(', '),
-                 operations: [...d.ops], employeeCount: d.emps.size, areas: [...d.areas] }));
+                 foremen: [...d.foremen], operations: [...d.ops], employeeCount: d.emps.size, areas: [...d.areas] }));
 }
 function diExportSelectedToExcel() {
   if (!_diSelectedInputs.size) {
@@ -16866,23 +16866,21 @@ function diExportSelectedToExcel() {
   if (!days.length) { alert('No employee entries were found in the selected submissions.'); return; }
 
   // Styled HTML table exported as .xls — Excel opens this and keeps the formatting.
-  // One block per day: band, Date / Operation / Employee Count, then the areas one per row.
+  // One block per day: band, then Foreman / Date / Operation / Employee Count.
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const bandStyle = 'background:#e4dcf2;color:#1a1a1a;font-weight:bold;font-size:13px;padding:6px 10px;border-bottom:2px solid #5b3a8e;';
   const lblStyle  = 'font-weight:bold;text-align:right;padding:4px 10px;white-space:nowrap;vertical-align:top;';
   const valStyle  = 'font-weight:bold;padding:4px 10px;';
-  const areaStyle = 'padding:4px 10px;border:1px solid #d9d2e9;';
   const bodyHtml = days.map((d, di) => {
-    const band = `${d.label}  •  Foreman: ${d.foreman || '—'}`;
+    // Foreman gets its own row (several foremen can submit the same day — in the
+    // header band the extra names would wrap out of sight in Excel).
     return (di > 0 ? '<tr><td colspan="2" style="height:18px;"></td></tr>' : '')
-      + `<tr><td colspan="2" style="${bandStyle}">${esc(band)}</td></tr>`
+      + `<tr><td colspan="2" style="${bandStyle}">${esc(d.label)}</td></tr>`
+      + (d.foremen.length ? d.foremen : ['—']).map((f, i) =>
+          `<tr><td style="${lblStyle}">${i === 0 ? 'Foreman:' : ''}</td><td style="${valStyle}white-space:nowrap;">${esc(f)}</td></tr>`).join('')
       + `<tr><td style="${lblStyle}">Date:</td><td style="${valStyle}">${esc(d.dateShort)}</td></tr>`
       + `<tr><td style="${lblStyle}">Operation:</td><td style="${valStyle}">${esc(d.operations.join(', '))}</td></tr>`
-      + `<tr><td style="${lblStyle}">Employee Count:</td><td style="${valStyle}text-align:left;">${esc(d.employeeCount)}</td></tr>`
-      + (d.areas.length ? d.areas : ['']).map((ar, i) => {
-          const bg = i % 2 ? 'background:#f3eefb;' : 'background:#ffffff;';
-          return `<tr><td style="${lblStyle}">${i === 0 ? 'Areas:' : ''}</td><td style="${areaStyle}${bg}">${esc(ar)}</td></tr>`;
-        }).join('');
+      + `<tr><td style="${lblStyle}">Employee Count:</td><td style="${valStyle}text-align:left;">${esc(d.employeeCount)}</td></tr>`;
   }).join('');
   const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">`
     + `<head><meta charset="utf-8"></head><body>`
@@ -16902,7 +16900,7 @@ function diExportSelectedToExcel() {
 }
 
 // Same report as the Excel export, rendered to a PDF (native jsPDF drawing, same data
-// and layout). Portrait letter; paginates long area lists.
+// and layout). Portrait letter; paginates when there are many days.
 function diExportSelectedToPDF() {
   if (!_diSelectedInputs.size) {
     alert('Select one or more daily inputs in the Submission Log first (use the checkboxes on the left of each row).');
@@ -16951,24 +16949,12 @@ function diExportSelectedToPDF() {
 
   days.forEach((d, di) => {
     if (di > 0) y += 18;
-    need(28 + 16 * 4 + 18);                       // keep band + fields + first area together
-    const head = `${d.label}  •  Foreman: ${d.foreman || '—'}`;
-    band(head);
+    need(28 + 16 * 4);                            // keep band + fields together
+    band(d.label);
+    field('Foreman:', d.foreman || '—');
     field('Date:', d.dateShort);
     field('Operation:', d.operations.join(', '));
     field('Employee Count:', d.employeeCount);
-    y += 2;
-    (d.areas.length ? d.areas : ['']).forEach((ar, i) => {
-      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5);
-      const lines = pdf.splitTextToSize(ar, VW - 12);
-      const h = Math.max(18, lines.length * 12 + 6);
-      if (need(h)) { band(head + '  (cont.)'); }
-      if (i % 2) { pdf.setFillColor(243, 238, 251); pdf.rect(VX, y, VW, h, 'F'); }
-      pdf.setDrawColor(217, 210, 233); pdf.setLineWidth(0.75); pdf.rect(VX, y, VW, h, 'S');
-      if (i === 0) { pdf.setFont('helvetica', 'bold'); pdf.text('Areas:', M + LW, y + 12, { align: 'right' }); pdf.setFont('helvetica', 'normal'); }
-      pdf.setTextColor(...BLK); pdf.text(lines, VX + 6, y + 12);
-      y += h;
-    });
   });
 
   pdf.save(`daily-inputs-${new Date().toISOString().slice(0, 10)}.pdf`);
