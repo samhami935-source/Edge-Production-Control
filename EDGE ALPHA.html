@@ -733,7 +733,7 @@
       <span><span class="ico ico-clipboard" aria-hidden="true"></span></span><span class="tab-name">Labor Codes</span>
     </div>
     <div class="tab" id="daily-inputs-tab" onclick="switchToDailyInputs()">
-      <span><span class="ico ico-edit" aria-hidden="true"></span></span><span class="tab-name">Daily Inputs</span>
+      <span><span class="ico ico-edit" aria-hidden="true"></span></span><span class="tab-name">Daily Reports</span>
     </div>
     <div class="tab" id="paysheet-tab" onclick="switchToPaysheet()">
       <span><span class="ico ico-file" aria-hidden="true"></span></span><span class="tab-name">Pay Sheet</span>
@@ -1646,7 +1646,7 @@
   <!-- Pay Sheet content -->
   <div id="paysheet-content" style="display:none;">
 
-    <!-- Hidden job selector — synced from di-job-select in Daily Input -->
+    <!-- Hidden job selector — synced from di-job-select in Daily Report -->
     <select id="ps-job-select" style="display:none;" onchange="onJobChanged()">
       <option value="">— Select Job —</option>
     </select>
@@ -1659,7 +1659,7 @@
       </select>
     </div>
 
-    <!-- ═══ DAILY INPUTS tab group: Budget by Area + Daily Input + Daily Entries + Submission Log ═══ -->
+    <!-- ═══ DAILY REPORTS tab group: Budget by Area + Daily Report + Daily Entries + Submission Log ═══ -->
     <div id="di-tab-group">
 
     <!-- Project navigation (accounting-style): folders overview + Back button -->
@@ -1702,10 +1702,10 @@
       </div>
     </details>
 
-    <!-- Daily Input -->
+    <!-- Daily Report -->
     <details id="ps-daily-details" style="margin-bottom:24px;" open>
       <summary style="cursor:pointer;font-weight:600;font-size:.95rem;color:var(--accent);padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;list-style:none;display:flex;align-items:center;gap:8px;">
-        <span><span class="ico ico-edit" aria-hidden="true"></span></span><span>Daily Input</span>
+        <span><span class="ico ico-edit" aria-hidden="true"></span></span><span>Daily Report</span>
         <span id="di-draft-badge" style="margin-left:auto;font-size:.78rem;color:#60a5fa;display:none;"><span class="ico ico-pin" aria-hidden="true"></span> Draft saved</span>
         <span id="di-saved-badge" style="font-size:.78rem;color:var(--green);display:none;">✓ Saved</span>
       </summary>
@@ -1752,7 +1752,7 @@
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
             <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Daily Entries</div>
             <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
-              <button id="di-save-btn" class="btn" onclick="diOpenSaveConfirm()" style="margin-top:0;padding:5px 12px;font-size:.78rem;white-space:nowrap;"><span class="ico ico-save" aria-hidden="true"></span> Save Daily Input</button>
+              <button id="di-save-btn" class="btn" onclick="diOpenSaveConfirm()" style="margin-top:0;padding:5px 12px;font-size:.78rem;white-space:nowrap;"><span class="ico ico-save" aria-hidden="true"></span> Save Daily Report</button>
               <button id="di-draft-btn" class="btn btn-outline" onclick="diSaveDraft()" style="margin-top:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="Save progress as a draft"><span class="ico ico-pin" aria-hidden="true"></span> Save Draft</button>
               <button class="btn btn-outline" onclick="diOpenDraftsModal()" style="margin-top:0;padding:5px 10px;font-size:.78rem;white-space:nowrap;border-color:#60a5fa;color:#60a5fa;" title="View and load saved drafts" id="di-drafts-btn"><span class="ico ico-clipboard" aria-hidden="true"></span> Drafts</button>
               <div style="width:1px;background:var(--border);margin:0 2px;height:20px;align-self:center;"></div>
@@ -1807,7 +1807,7 @@
     <!-- Workspace: everything scoped to the active project (compiled pay sheets, submission log, builder) -->
     <div id="ps-workspace">
 
-    <!-- Pay Week compile controls — moved here from Daily Inputs so "Load" populates the visible builder -->
+    <!-- Pay Week compile controls — moved here from Daily Reports so "Load" populates the visible builder -->
     <!-- Admin: Pay Week Schedule Settings -->
     <div id="di-payweek-settings-wrap" style="display:none;margin-top:8px;margin-bottom:16px;background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:8px;font-size:.82rem;overflow:hidden;">
       <div onclick="_diPWSettingsOpen=!_diPWSettingsOpen;_renderPayWeekSettingsBody()" style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;cursor:pointer;user-select:none;">
@@ -1836,9 +1836,9 @@
         <div id="di-compile-selected-bar" style="display:none;align-items:center;gap:8px;"></div>
       </div>
       <div style="margin-bottom:10px;">
-        <button id="di-select-all-btn" class="btn btn-outline" style="display:none;margin-top:0;padding:6px 14px;font-size:.8rem;" onclick="diSelectAllVisible()" title="Select every daily input currently listed"><span class="ico ico-check-square" aria-hidden="true"></span> Select all</button>
-        <button id="di-export-excel-btn" class="btn" style="display:none;margin-top:0;padding:6px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="diExportSelectedToExcel()" title="Export the daily inputs selected via the checkboxes to an Excel file"><span class="ico ico-download" aria-hidden="true"></span> Export selected to Excel</button>
-        <button id="di-export-pdf-btn" class="btn" style="display:none;margin-top:0;padding:6px 14px;font-size:.8rem;background:#b91c1c;color:#fff;border:none;" onclick="diExportSelectedToPDF()" title="Export the daily inputs selected via the checkboxes to a PDF file"><span class="ico ico-download" aria-hidden="true"></span> Export selected to PDF</button>
+        <button id="di-select-all-btn" class="btn btn-outline" style="display:none;margin-top:0;padding:6px 14px;font-size:.8rem;" onclick="diSelectAllVisible()" title="Select every daily report currently listed"><span class="ico ico-check-square" aria-hidden="true"></span> Select all</button>
+        <button id="di-export-excel-btn" class="btn" style="display:none;margin-top:0;padding:6px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="diExportSelectedToExcel()" title="Export the daily reports selected via the checkboxes to an Excel file"><span class="ico ico-download" aria-hidden="true"></span> Export selected to Excel</button>
+        <button id="di-export-pdf-btn" class="btn" style="display:none;margin-top:0;padding:6px 14px;font-size:.8rem;background:#b91c1c;color:#fff;border:none;" onclick="diExportSelectedToPDF()" title="Export the daily reports selected via the checkboxes to a PDF file"><span class="ico ico-download" aria-hidden="true"></span> Export selected to PDF</button>
       </div>
       <div id="di-log-wrap" style="overflow-x:auto;position:relative;">
         <table style="min-width:700px;width:100%;border-collapse:collapse;font-size:.82rem;">
@@ -1942,7 +1942,7 @@
       </select>
       <button class="btn btn-outline" style="padding:7px 14px;font-size:.8rem;" onclick="acctRefreshFromFirestore()">⟳ Refresh</button>
       <button id="acct-backfill-btn" class="btn btn-outline" style="display:none;padding:7px 14px;font-size:.8rem;border-color:#0e7490;color:#22d3ee;" onclick="psBackfillAccountingWeek()" title="Approve + sync every crew of this week's already-approved pay sheets (idempotent — no double-count)">⟳ Sync this week</button>
-      <button id="acct-cleanup-btn" class="btn btn-outline" style="display:none;padding:7px 14px;font-size:.8rem;border-color:#ef4444;color:#ef4444;" onclick="acctCleanupOrphanedPaysheets()" title="Delete pay sheets and daily inputs for jobs that no longer exist"><span class="ico ico-trash" aria-hidden="true"></span> Clean Up</button>
+      <button id="acct-cleanup-btn" class="btn btn-outline" style="display:none;padding:7px 14px;font-size:.8rem;border-color:#ef4444;color:#ef4444;" onclick="acctCleanupOrphanedPaysheets()" title="Delete pay sheets and daily reports for jobs that no longer exist"><span class="ico ico-trash" aria-hidden="true"></span> Clean Up</button>
       <button id="acct-export-pdf-btn" class="btn" style="padding:7px 14px;font-size:.8rem;background:#1a56db;color:#fff;border:none;" onclick="acctExportActivePDF()"><span class="ico ico-download" aria-hidden="true"></span> Export PDF</button>
       <button id="acct-export-excel-btn" class="btn" style="padding:7px 14px;font-size:.8rem;background:#16a34a;color:#fff;border:none;" onclick="acctExportActiveExcel()"><span class="ico ico-download" aria-hidden="true"></span> Export Excel</button>
     </div>
@@ -2335,7 +2335,7 @@
   </div>
 </div>
 
-<!-- Daily Input Drafts Modal -->
+<!-- Daily Report Drafts Modal -->
 <div class="modal-overlay" id="di-drafts-modal" onclick="if(event.target===this)diCloseDraftsModal()">
   <div class="modal" style="width:620px;max-width:96vw;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
@@ -2359,11 +2359,11 @@
   </div>
 </div>
 
-<!-- Pull Daily Inputs Modal (admin: multiselect inputs to re-file into a pay sheet's week) -->
+<!-- Pull Daily Reports Modal (admin: multiselect inputs to re-file into a pay sheet's week) -->
 <div class="modal-overlay" id="ps-pull-modal" onclick="if(event.target===this)psPullClose()">
   <div class="modal" style="width:640px;max-width:96vw;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-      <h2 style="margin:0;font-size:1.1rem;"><span class="ico ico-corner-down-right" aria-hidden="true"></span> Pull Daily Inputs</h2>
+      <h2 style="margin:0;font-size:1.1rem;"><span class="ico ico-corner-down-right" aria-hidden="true"></span> Pull Daily Reports</h2>
       <button class="btn btn-outline" style="margin:0;padding:4px 12px;font-size:.82rem;" onclick="psPullClose()">✕ Close</button>
     </div>
     <p id="ps-pull-sub" style="margin-bottom:12px;"></p>
@@ -2388,7 +2388,7 @@
       <h2 style="margin:0;font-size:1.1rem;"><span class="ico ico-users" aria-hidden="true"></span> Replace Employee List</h2>
       <button class="btn btn-outline" style="margin:0;padding:4px 12px;font-size:.82rem;" onclick="empCloseReplace()">✕ Close</button>
     </div>
-    <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;line-height:1.4;">One employee per line: <strong>number</strong> then <strong>name</strong> (e.g. <code>4456 Diaz, Carlos</code>). This <strong>replaces every current employee</strong>. The current list is backed up first. Past pay sheets, daily inputs and saved crews keep the names/numbers they were saved with.</div>
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;line-height:1.4;">One employee per line: <strong>number</strong> then <strong>name</strong> (e.g. <code>4456 Diaz, Carlos</code>). This <strong>replaces every current employee</strong>. The current list is backed up first. Past pay sheets, daily reports and saved crews keep the names/numbers they were saved with.</div>
     <textarea id="emp-replace-text" class="fi" rows="14" oninput="empReplacePreview()" style="width:100%;flex:1;min-height:200px;resize:vertical;font-family:monospace;font-size:.8rem;"></textarea>
     <div id="emp-replace-preview" style="font-size:.8rem;margin-top:8px;"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
@@ -2432,10 +2432,10 @@
   </div>
 </div>
 
-<!-- Save Daily Input — confirmation modal -->
+<!-- Save Daily Report — confirmation modal -->
 <div class="modal-overlay" id="di-save-input-modal" onclick="if(event.target===this)diCancelSaveInput()">
   <div class="modal" style="width:400px;max-width:96vw;">
-    <h2 style="margin:0 0 10px;"><span class="ico ico-save" aria-hidden="true"></span> Save Daily Input</h2>
+    <h2 style="margin:0 0 10px;"><span class="ico ico-save" aria-hidden="true"></span> Save Daily Report</h2>
     <div id="di-save-input-summary" style="margin-bottom:18px;font-size:.87rem;color:var(--muted);line-height:1.5;"></div>
     <div style="font-size:.82rem;color:var(--muted);margin-bottom:18px;">Once saved this record will appear in the Submission Log and be included in the weekly pay sheet compile. Make sure the crews and hours are correct before confirming.</div>
     <div style="display:flex;gap:10px;">
@@ -2488,7 +2488,7 @@
 
     <div id="cw-approve-labor-section">
       <label style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:2px;">Distribute Foreman Budget across Areas × Labor Codes</label>
-      <div style="font-size:.74rem;color:var(--muted);margin-bottom:8px;font-style:italic;">The Internal amount (full labor) is split evenly and tracked on the payroll budget. These amounts are the foreman's field budget (Daily Inputs).</div>
+      <div style="font-size:.74rem;color:var(--muted);margin-bottom:8px;font-style:italic;">The Internal amount (full labor) is split evenly and tracked on the payroll budget. These amounts are the foreman's field budget (Daily Reports).</div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
         <span style="font-size:.82rem;color:var(--muted);">Foreman Total</span>
         <input id="cw-approve-labor-total" class="fi" type="text" inputmode="decimal" style="width:130px;padding:5px 10px;text-align:right;" placeholder="0.00" oninput="corbFormatDollarInput(this)"/>
@@ -2515,7 +2515,7 @@
       <div id="cw-approve-file-name" style="font-size:.8rem;color:var(--green);margin-top:6px;min-height:1.1em;"></div>
     </div>
 
-    <div style="font-size:.78rem;color:var(--muted);margin:14px 0 18px;">On approval: labor is written to each area × labor code (Daily Input / pay sheet tracking), materials (cost + tax) are added to the material budget, and the material markup profit is added to the Dashboard margin for this job.</div>
+    <div style="font-size:.78rem;color:var(--muted);margin:14px 0 18px;">On approval: labor is written to each area × labor code (Daily Report / pay sheet tracking), materials (cost + tax) are added to the material budget, and the material markup profit is added to the Dashboard margin for this job.</div>
 
     <div style="display:flex;gap:10px;">
       <button class="btn btn-outline" style="flex:1;margin:0;" onclick="cwApproveCancel()">Cancel</button>
@@ -2568,7 +2568,7 @@
   </div>
 </div>
 
-<!-- Choose Save Folder Modal (shown after Save Daily Input) -->
+<!-- Choose Save Folder Modal (shown after Save Daily Report) -->
 <div class="modal-overlay" id="ps-save-dest-modal">
   <div class="modal" style="width:520px;max-width:96vw;">
     <h2><span class="ico ico-save" aria-hidden="true"></span> Choose Save Folder</h2>
@@ -2616,7 +2616,7 @@ const DEFAULT_PW = 'D9Admin';
 // ── Daily Input timing config ─────────────────────────────────────────────────
 // Change these two values to adjust lock cutoff and unlock grant duration
 // without hunting through multiple call sites.
-const DI_LOCK_HOUR          = 17;               // 5:00 PM local time — inputs close at this hour
+const DI_LOCK_HOUR          = 20;               // 8:00 PM local time — inputs close at this hour
 const DI_UNLOCK_DURATION_MS = 60 * 60 * 1000;  // 1 hour unlock grant window
 
 const LABOR_CODES_DEFAULT = [
@@ -2811,11 +2811,11 @@ let _currentUser     = null;
 // ─── In-memory data cache ───
 const _cache = { jobs: null, payroll: null, workorders: null, laborcodes: null, employees: null, paysheets: null, psFolders: null, psFoldersList: [], psFolderMeta: {}, psFolderRequests: [], changeorders: [], corbudgets: [], cowriteups: [], comaterialbudgets: [], jobcontracts: {} };
 
-// Pay-week schedule — Thursday 4:00 AM → Wednesday 5:00 PM (America/Los_Angeles).
+// Pay-week schedule — Thursday 4:00 AM → Wednesday 8:00 PM (America/Los_Angeles).
 // Loaded from Firestore settings/payweek on init; admin can update via UI.
 // anchorStartDate / anchorEndDate are the specific calendar dates the admin picked
 // when setting up the schedule (used to pre-fill the date pickers in the admin UI).
-let _payWeekSettings = { startDay: 4, startHour: 4, endDay: 3, endHour: 17, anchorStartDate: '', anchorEndDate: '' };
+let _payWeekSettings = { startDay: 4, startHour: 4, endDay: 3, endHour: DI_LOCK_HOUR, anchorStartDate: '', anchorEndDate: '' };
 
 async function loadAllData(source) {
   // source: 'cache' (instant on-device read) or undefined (server-default). Passed to
@@ -2905,7 +2905,7 @@ async function loadAllData(source) {
       if (co && co.burnNumber != null) b.burnNumber = co.burnNumber;
     }
   });
-  // Load pay-week schedule settings (admin-editable, defaults to Thu 4am → Wed 5pm)
+  // Load pay-week schedule settings (admin-editable days, defaults to Thu 4am → Wed 8pm)
   try {
     const pwDoc = await db.collection('settings').doc('payweek').get();
     if (pwDoc.exists) {
@@ -2913,7 +2913,8 @@ async function loadAllData(source) {
       if (pw.startDay       !== undefined) _payWeekSettings.startDay       = pw.startDay;
       if (pw.startHour      !== undefined) _payWeekSettings.startHour      = pw.startHour;
       if (pw.endDay         !== undefined) _payWeekSettings.endDay         = pw.endDay;
-      if (pw.endHour        !== undefined) _payWeekSettings.endHour        = pw.endHour;
+      // Pay week closes at the daily report cut-off (DI_LOCK_HOUR, 8:00 PM) — a saved 5 PM is superseded.
+      _payWeekSettings.endHour = DI_LOCK_HOUR;
       if (pw.anchorStartDate)              _payWeekSettings.anchorStartDate = pw.anchorStartDate;
       if (pw.anchorEndDate)               _payWeekSettings.anchorEndDate  = pw.anchorEndDate;
     }
@@ -3567,7 +3568,7 @@ async function removeCSVFile(name) {
   if (total > 0) {
     const parts = [];
     if (relatedPaysheets.length)   parts.push(`${relatedPaysheets.length} saved pay sheet${relatedPaysheets.length !== 1 ? 's' : ''}`);
-    if (relatedDailyInputs.length) parts.push(`${relatedDailyInputs.length} daily input${relatedDailyInputs.length !== 1 ? 's' : ''}`);
+    if (relatedDailyInputs.length) parts.push(`${relatedDailyInputs.length} daily report${relatedDailyInputs.length !== 1 ? 's' : ''}`);
     msg += `\n\nThis will also permanently delete ${parts.join(' and ')} for this job.\n\nThis cannot be undone.`;
   }
   if (!await uiConfirm(msg)) return;
@@ -3646,7 +3647,7 @@ async function purgeOrphanedJobData() {
   add('CO material budgets',  'comaterialbudgets',  _cache.comaterialbudgets, 'jobId');
   add('Write-ups',            'cowriteups',         _cache.cowriteups,        'jobId');
   // Pay Sheets + daily inputs: read the full collections from the server (cache can be partial).
-  for (const [label, coll] of [['Saved pay sheets', 'paysheets'], ['Daily inputs', 'dailyinput']]) {
+  for (const [label, coll] of [['Saved pay sheets', 'paysheets'], ['Daily reports', 'dailyinput']]) {
     try {
       const snap = await db.collection(coll).get();
       const orphans = snap.docs.filter(d => { const j = (d.data() || {}).job; return j && !existing.has(j); });
@@ -5009,7 +5010,7 @@ async function empReplaceConfirm() {
   const { list, bad } = _empParseList(document.getElementById('emp-replace-text').value);
   if (!list.length || bad.length) { empReplacePreview(); return; }
   const old = getEmployees();
-  if (!await uiConfirm(`Replace ALL ${old.length} current employees with ${list.length} new employees?\n\nThe current list is backed up first. Past pay sheets, daily inputs and saved crews are not changed.`)) return;
+  if (!await uiConfirm(`Replace ALL ${old.length} current employees with ${list.length} new employees?\n\nThe current list is backed up first. Past pay sheets, daily reports and saved crews are not changed.`)) return;
   const go = document.getElementById('emp-replace-go');
   if (go) { go.disabled = true; go.textContent = 'Replacing…'; }
   try {
@@ -8429,7 +8430,7 @@ let _diUnlockGrantsUnsub = null;
 let _diPendingReqUnsub = null;
 // Manual locks set by admin keyed by "date__job"
 let _diManualLocks = {};
-// Periodic lock-state refresh interval (checks 5 PM deadline every minute)
+// Periodic lock-state refresh interval (checks the 8 PM deadline every minute)
 let _diLockCheckInterval = null;
 
 
@@ -9730,7 +9731,7 @@ function diPrint() {
   // Temporarily show a simple print view of the daily input
   const date    = document.getElementById('di-date').value || '—';
   const jobName = document.getElementById('ps-job-select').value || '—';
-  let html = `<html><head><title>Daily Input — ${jobName} — ${date}</title>
+  let html = `<html><head><title>Daily Report — ${jobName} — ${date}</title>
   <style>body{font-family:Arial,sans-serif;font-size:13px;padding:24px;color:#000;}
   table{width:100%;border-collapse:collapse;margin-bottom:20px;}
   th,td{border:1px solid #000;padding:5px 8px;text-align:left;}
@@ -9766,7 +9767,7 @@ function diExportExcel() {
     const rows = (_diData[c] || []).filter(r => r.employee.trim() || r.area.trim());
     if (!rows.length) continue;
     const data = [
-      [`Daily Input — ${jobName}`],
+      [`Daily Report — ${jobName}`],
       [`Date: ${date}`],
       [],
       ['Employee Name', 'Area Worked', 'Labor Code', 'Notes'],
@@ -9781,7 +9782,7 @@ function diExportExcel() {
     XLSX.utils.book_append_sheet(wb, ws, `Crew ${c}`);
     added++;
   }
-  if (!added) { alert('No daily input data to export. Fill in at least one employee first.'); return; }
+  if (!added) { alert('No daily report data to export. Fill in at least one employee first.'); return; }
   XLSX.writeFile(wb, `DailyInput_${(jobName+'_'+date).replace(/[^\w-]/g,'_')}.xlsx`);
 }
 
@@ -10193,10 +10194,10 @@ function _calcWeekEnding(dateStr) {
 }
 
 // Returns the Wednesday week-ending date (YYYY-MM-DD) of the pay week that contains
-// the given ISO timestamp, using the current _payWeekSettings (default Thu 4am → Wed 5pm Pacific).
+// the given ISO timestamp, using the current _payWeekSettings (default Thu 4am → Wed 8pm Pacific).
 // Inputs in the gap between week-end and week-start are assigned to the UPCOMING week.
 function _calcPayWeekEnding(isoTimestamp) {
-  const { startDay = 4, startHour = 4, endDay = 3, endHour = 17 } = _payWeekSettings;
+  const { startDay = 4, startHour = 4, endDay = 3, endHour = DI_LOCK_HOUR } = _payWeekSettings;
   const d  = new Date(isoTimestamp);
   const LA = 'America/Los_Angeles';
 
@@ -10273,10 +10274,10 @@ async function submitDailyInput(date, jobName, crews) {
     const badge = document.getElementById('di-saved-badge');
     if (badge) { badge.style.display = ''; setTimeout(() => badge.style.display = 'none', 3000); }
     // Confirmation popup that the daily input was saved.
-    try { toast(`Daily input saved for ${jobName} — ${date}. It’s now in the Submission Log.`, 'success'); } catch(_) {}
+    try { toast(`Daily report saved for ${jobName} — ${date}. It’s now in the Submission Log.`, 'success'); } catch(_) {}
     diLoadLog();
   } catch(e) {
-    alert('Failed to save daily input: ' + e.message);
+    alert('Failed to save daily report: ' + e.message);
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -10579,7 +10580,7 @@ function diRenderFolders() {
       onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'">
       <div style="font-size:.9rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${eh(f.job)}</div>
       <div style="font-size:1.6rem;font-weight:800;color:var(--accent);line-height:1;margin-top:8px;">${f.subs}</div>
-      <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-top:3px;">Daily Input${f.subs !== 1 ? 's' : ''}</div>
+      <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-top:3px;">Daily Report${f.subs !== 1 ? 's' : ''}</div>
       <div style="margin-top:11px;border-top:1px solid var(--border);padding-top:8px;font-size:.78rem;color:var(--muted);">
         ${f.last ? 'Last: ' + fmtDate(f.last) : 'No submissions yet'}
       </div>
@@ -10587,7 +10588,7 @@ function diRenderFolders() {
   wrap.innerHTML = `
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
       <span style="font-weight:700;font-size:1rem;color:var(--text);">Projects</span>
-      <span style="font-size:.82rem;color:var(--muted);">${folders.length} project${folders.length !== 1 ? 's' : ''} &middot; ${totalSubs} daily input${totalSubs !== 1 ? 's' : ''}</span>
+      <span style="font-size:.82rem;color:var(--muted);">${folders.length} project${folders.length !== 1 ? 's' : ''} &middot; ${totalSubs} daily report${totalSubs !== 1 ? 's' : ''}</span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;">${cards}</div>`;
 }
@@ -10669,7 +10670,7 @@ function renderDiWeekCompile() {
       (activeJob
         ? (hasDone
             ? `<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>`
-            : `<span style="font-size:.75rem;color:var(--muted);">Compiles all daily inputs into one summary per crew</span>`)
+            : `<span style="font-size:.75rem;color:var(--muted);">Compiles all daily reports into one summary per crew</span>`)
         : `<span style="font-size:.75rem;color:var(--muted);">Select a job to compile</span>`);
   }
 
@@ -10726,7 +10727,7 @@ function renderDiWeekCompile() {
         </div>
         <button class="btn" style="font-size:.78rem;padding:5px 12px;white-space:nowrap;margin-top:0;" onclick="loadPaysheetFromCloud('${safeId}')">Load</button>
         ${!isForeman() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;white-space:nowrap;margin-top:0;border-color:#1a56db;color:#60a5fa;" onclick="psExportOnePaysheetPDF('${safeId}')" title="Export this foreman's pay sheet to PDF"><span class="ico ico-download" aria-hidden="true"></span> PDF</button>` : ''}
-        ${isAdmin() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;white-space:nowrap;margin-top:0;color:var(--muted);border-color:var(--border);" onclick="psPullInputsToWeek('${safeId}')" title="Re-file daily inputs from another week into this pay sheet's week (keeps original entry timestamps)"><span class="ico ico-corner-down-right" aria-hidden="true"></span> Pull inputs</button>` : ''}
+        ${isAdmin() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;white-space:nowrap;margin-top:0;color:var(--muted);border-color:var(--border);" onclick="psPullInputsToWeek('${safeId}')" title="Re-file daily reports from another week into this pay sheet's week (keeps original entry timestamps)"><span class="ico ico-corner-down-right" aria-hidden="true"></span> Pull inputs</button>` : ''}
         ${canManagePSFolders() ? `<button class="btn btn-outline" style="font-size:.78rem;padding:5px 10px;border-color:#ef4444;color:#ef4444;white-space:nowrap;margin-top:0;" onclick="deleteSavedPaysheet('${safeId}',event)">Delete</button>` : ''}
       </div>`;
     }).join('');
@@ -10832,7 +10833,7 @@ function diClearSelectedInputs() {
 // job / pay-week / column filters. Purely additive — reuses the existing selection set.
 function diSelectAllVisible() {
   const boxes = Array.from(document.querySelectorAll('#di-log-tbody input[type="checkbox"][data-di-id]'));
-  if (!boxes.length) { alert('No daily inputs are currently listed to select.'); return; }
+  if (!boxes.length) { alert('No daily reports are currently listed to select.'); return; }
   const ids = boxes.map(b => b.getAttribute('data-di-id'));
   const allSelected = ids.every(id => _diSelectedInputs.has(id));
   if (allSelected) ids.forEach(id => _diSelectedInputs.delete(id));
@@ -10862,10 +10863,10 @@ function _renderCompileSelectedBar() {
 // per group, scoped to just those inputs. Other foremen's pay sheets are untouched.
 async function psCompileSelectedInputs() {
   if (!canCompilePaysheet()) { alert('Only Admin, VP of Operations, and Project Manager can compile weekly pay sheets.'); return; }
-  if (!_diSelectedInputs.size) { alert('Select one or more daily inputs in the Submission Log first.'); return; }
+  if (!_diSelectedInputs.size) { alert('Select one or more daily reports in the Submission Log first.'); return; }
 
   const inputs = (_cache.dailyInputs || []).filter(d => _diSelectedInputs.has(d.id));
-  if (!inputs.length) { alert('The selected daily inputs are no longer available. Refresh and try again.'); return; }
+  if (!inputs.length) { alert('The selected daily reports are no longer available. Refresh and try again.'); return; }
 
   // Group by job + week so we never merge across jobs or weeks.
   const groups = {};
@@ -10883,7 +10884,7 @@ async function psCompileSelectedInputs() {
     return `  • ${g.job} — Week Ending ${_fmtWeekDate(g.week)} (${g.ids.length} input${g.ids.length !== 1 ? 's' : ''})`;
   }).join('\n');
   const totalSel = inputs.length;
-  if (!await uiConfirm(`Compile ${totalSel} selected daily input${totalSel !== 1 ? 's' : ''} into weekly pay sheets?\n\n${groupKeys.length} group${groupKeys.length !== 1 ? 's' : ''} (by job + week):\n${groupDesc}\n\nEach selected daily input becomes its OWN separate pay sheet for its week. Other pay sheets for these weeks are left untouched.`)) return;
+  if (!await uiConfirm(`Compile ${totalSel} selected daily report${totalSel !== 1 ? 's' : ''} into weekly pay sheets?\n\n${groupKeys.length} group${groupKeys.length !== 1 ? 's' : ''} (by job + week):\n${groupDesc}\n\nEach selected daily report becomes its OWN separate pay sheet for its week. Other pay sheets for these weeks are left untouched.`)) return;
 
   const summaries = [];
   for (const k of groupKeys) {
@@ -11154,7 +11155,7 @@ function _renderPayWeekSettingsBody() {
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <button class="btn-sm" onclick="diMigratePayWeeks()" style="font-size:.75rem;padding:3px 10px;background:rgba(239,68,68,.15);color:#ef4444;border:1px solid #ef4444;">Migrate Existing Data</button>
-        <span style="font-size:.74rem;color:var(--muted);">Recomputes week assignment for all saved daily inputs using their entered date</span>
+        <span style="font-size:.74rem;color:var(--muted);">Recomputes week assignment for all saved daily reports using their entered date</span>
       </div>
     </div>`;
 }
@@ -11193,7 +11194,7 @@ async function diSavePayWeekSettings() {
 // entered date (falling back to the save timestamp only when a record has no date).
 async function diMigratePayWeeks() {
   if (!isAdmin()) { alert('Admin only.'); return; }
-  if (!await uiConfirm('Recompute the weekEnding on all daily inputs using the Thursday→Wednesday pay-week rule and each input\'s entered date?\n\nThis updates existing records. It cannot be undone.')) return;
+  if (!await uiConfirm('Recompute the weekEnding on all daily reports using the Thursday→Wednesday pay-week rule and each input\'s entered date?\n\nThis updates existing records. It cannot be undone.')) return;
   try {
     const snap = await db.collection('dailyinput').get();
     const updates = [];
@@ -11204,7 +11205,7 @@ async function diMigratePayWeeks() {
       if (newWE && newWE !== data.weekEnding) updates.push({ ref: doc.ref, weekEnding: newWE });
     });
     if (!updates.length) {
-      alert('All daily inputs already have the correct weekEnding. Nothing to update.');
+      alert('All daily reports already have the correct weekEnding. Nothing to update.');
       return;
     }
     // Firestore batch limit is 500 — split into chunks
@@ -11213,7 +11214,7 @@ async function diMigratePayWeeks() {
       updates.slice(i, i + 499).forEach(u => batch.update(u.ref, { weekEnding: u.weekEnding }));
       await batch.commit();
     }
-    alert(`Migration complete — updated ${updates.length} daily input${updates.length !== 1 ? 's' : ''}.`);
+    alert(`Migration complete — updated ${updates.length} daily report${updates.length !== 1 ? 's' : ''}.`);
     diLoadLog();
   } catch(e) {
     alert('Migration failed: ' + e.message);
@@ -11775,7 +11776,7 @@ function diViewSubmission(id) {
             .get();
         }
         if (snap.empty) {
-          alert('No saved pay sheet found for this submission. Save daily input to a folder first.');
+          alert('No saved pay sheet found for this submission. Save daily report to a folder first.');
           return;
         }
         ps = snap.docs[0].data();
@@ -11819,7 +11820,7 @@ function diViewSubmission(id) {
 }
 
 async function diDeleteSubmission(id) {
-  if (!await uiConfirm('Delete this daily input submission?')) return;
+  if (!await uiConfirm('Delete this daily report submission?')) return;
   try {
     await db.collection('dailyinput').doc(id).delete();
     diLoadLog();
@@ -11866,7 +11867,7 @@ function psAutoFillFromDaily() {
 
   psRenderMainTable();
   psRenderCrewTable();
-  alert('Pay Sheet filled from Daily Input for all crews.');
+  alert('Pay Sheet filled from Daily Report for all crews.');
 }
 
 // Auto-fill pay sheet from a saved submission
@@ -12028,7 +12029,7 @@ function psUpdateTitle() {
   if (!titleEl) return;
   const jobName = document.getElementById('ps-job-select')?.value || '';
   const isDaily = _psCurrentType === 'daily';
-  const type    = isDaily ? 'Daily Input' : 'Weekly Summary Pay Sheet';
+  const type    = isDaily ? 'Daily Report' : 'Weekly Summary Pay Sheet';
   titleEl.textContent = jobName
     ? `${type} \u2014 ${jobName}`
     : `${type}`;
@@ -16887,7 +16888,7 @@ function _diDailyReportDays(subs) {
 }
 function diExportSelectedToExcel() {
   if (!_diSelectedInputs.size) {
-    alert('Select one or more daily inputs in the Submission Log first (use the checkboxes on the left of each row).');
+    alert('Select one or more daily reports in the Submission Log first (use the checkboxes on the left of each row).');
     return;
   }
   const subs = (_diLogDocs || []).filter(r => _diSelectedInputs.has(r.id));
@@ -16933,7 +16934,7 @@ function diExportSelectedToExcel() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href = url;
-  a.download = `daily-inputs-${new Date().toISOString().slice(0, 10)}.xls`;
+  a.download = `daily-report-${new Date().toISOString().slice(0, 10)}.xls`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -16944,7 +16945,7 @@ function diExportSelectedToExcel() {
 // and layout). Portrait letter; paginates when there are many days.
 function diExportSelectedToPDF() {
   if (!_diSelectedInputs.size) {
-    alert('Select one or more daily inputs in the Submission Log first (use the checkboxes on the left of each row).');
+    alert('Select one or more daily reports in the Submission Log first (use the checkboxes on the left of each row).');
     return;
   }
   if (typeof window.jspdf === 'undefined') { alert('PDF library not loaded — please wait a moment and try again.'); return; }
@@ -17024,7 +17025,7 @@ function diExportSelectedToPDF() {
     y += 20;
   });
 
-  pdf.save(`daily-inputs-${new Date().toISOString().slice(0, 10)}.pdf`);
+  pdf.save(`daily-report-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
 function psCancelEdit() {
@@ -17788,11 +17789,11 @@ function psPullInputsToWeek(paysheetId) {
   const items = (_cache.dailyInputs || [])
     .filter(d => d.job === job && d.weekEnding && d.weekEnding !== targetWeek)
     .sort((a, b) => (b.weekEnding || '').localeCompare(a.weekEnding || '') || (b.submittedAt || '').localeCompare(a.submittedAt || ''));
-  if (!items.length) { alert(`No daily inputs for "${job}" found under any other week to pull in.`); return; }
+  if (!items.length) { alert(`No daily reports for "${job}" found under any other week to pull in.`); return; }
 
   _psPullCtx = { paysheetId, targetWeek, job, items };
   const sub = document.getElementById('ps-pull-sub');
-  if (sub) sub.innerHTML = `Select the daily inputs to move into <strong style="color:var(--accent);">${eh(_fmtWeekDate(targetWeek))}</strong> for "${eh(job)}". Original entry dates/times are kept — only the pay-week assignment changes.`;
+  if (sub) sub.innerHTML = `Select the daily reports to move into <strong style="color:var(--accent);">${eh(_fmtWeekDate(targetWeek))}</strong> for "${eh(job)}". Original entry dates/times are kept — only the pay-week assignment changes.`;
   psPullRenderList();
   document.getElementById('ps-pull-modal').classList.add('open');
 }
@@ -17839,8 +17840,8 @@ async function psConfirmPullInputs() {
   const sel = [...document.querySelectorAll('#ps-pull-list .ps-pull-cb:checked')]
     .map(cb => items[parseInt(cb.dataset.i, 10)])
     .filter(Boolean);
-  if (!sel.length) { alert('Select at least one daily input to move.'); return; }
-  if (!await uiConfirm(`Move ${sel.length} daily input${sel.length !== 1 ? 's' : ''} for "${job}" to Week Ending ${_fmtWeekDate(targetWeek)}?\n\nOriginal entry dates/timestamps are NOT changed — only the pay-week assignment.`)) return;
+  if (!sel.length) { alert('Select at least one daily report to move.'); return; }
+  if (!await uiConfirm(`Move ${sel.length} daily report${sel.length !== 1 ? 's' : ''} for "${job}" to Week Ending ${_fmtWeekDate(targetWeek)}?\n\nOriginal entry dates/timestamps are NOT changed — only the pay-week assignment.`)) return;
 
   try {
     const batch = db.batch();
@@ -17860,7 +17861,7 @@ async function psConfirmPullInputs() {
     try { renderDiWeekSelect(); } catch(_) {}
     try { renderDiWeekCompile(); } catch(_) {}
     try { diRenderLogRows(); } catch(_) {}
-    alert(`Moved ${sel.length} daily input${sel.length !== 1 ? 's' : ''} to Week Ending ${_fmtWeekDate(targetWeek)}.`);
+    alert(`Moved ${sel.length} daily report${sel.length !== 1 ? 's' : ''} to Week Ending ${_fmtWeekDate(targetWeek)}.`);
   } catch(e) {
     alert('Pull failed: ' + e.message);
   }
@@ -17986,7 +17987,7 @@ async function psCompileAllUncompiled(weekEnding) {
 
   const weekInputs = (_cache.dailyInputs || []).filter(d => d.weekEnding === weekEnding && d.job === activeJob);
   if (!weekInputs.length) {
-    alert(`No daily inputs found for this week.\nSubmit at least one Daily Input for Week Ending ${_fmtWeekDate(weekEnding)} first.`);
+    alert(`No daily reports found for this week.\nSubmit at least one Daily Report for Week Ending ${_fmtWeekDate(weekEnding)} first.`);
     return;
   }
 
@@ -18000,7 +18001,7 @@ async function psCompileAllUncompiled(weekEnding) {
 
   const uncompiled = weekInputs.filter(d => !compiledIds.has(d.id));
   if (!uncompiled.length) {
-    alert(`All daily inputs for Week Ending ${_fmtWeekDate(weekEnding)} are already in a pay sheet.\n\nNothing new to compile.`);
+    alert(`All daily reports for Week Ending ${_fmtWeekDate(weekEnding)} are already in a pay sheet.\n\nNothing new to compile.`);
     return;
   }
 
@@ -18013,7 +18014,7 @@ async function psCompileAllUncompiled(weekEnding) {
 
   const newCount = uncompiled.length;
   const fmCount  = affected.size;
-  if (!await uiConfirm(`Compile ${newCount} new daily input${newCount !== 1 ? 's' : ''} for Week Ending ${_fmtWeekDate(weekEnding)}?\n\n${fmCount} foreman${fmCount !== 1 ? 's' : ''} with new inputs will be (re)built from all their inputs this week. Foremen already fully compiled are left untouched.`)) return;
+  if (!await uiConfirm(`Compile ${newCount} new daily report${newCount !== 1 ? 's' : ''} for Week Ending ${_fmtWeekDate(weekEnding)}?\n\n${fmCount} foreman${fmCount !== 1 ? 's' : ''} with new inputs will be (re)built from all their inputs this week. Foremen already fully compiled are left untouched.`)) return;
 
   const res = await psCompileWeeklyPaysheet(weekEnding, { job: activeJob, selectedIds: rebuildIds, skipConfirm: true, skipAlert: true });
 
@@ -18069,12 +18070,12 @@ async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
 
   const totalSources = diInputs.length + legacyDailySheets.length;
   if (!totalSources) {
-    if (!opts.skipAlert) alert(`No daily inputs found for this week.\nSubmit at least one Daily Input for Week Ending ${_fmtWeekDate(weekEnding)} first.`);
+    if (!opts.skipAlert) alert(`No daily reports found for this week.\nSubmit at least one Daily Report for Week Ending ${_fmtWeekDate(weekEnding)} first.`);
     return opts.skipAlert ? [] : undefined;
   }
 
   const srcLabel = diInputs.length
-    ? `${diInputs.length} daily input${diInputs.length !== 1 ? 's' : ''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy pay sheet${legacyDailySheets.length !== 1 ? 's' : ''}` : ''}`
+    ? `${diInputs.length} daily report${diInputs.length !== 1 ? 's' : ''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy pay sheet${legacyDailySheets.length !== 1 ? 's' : ''}` : ''}`
     : `${legacyDailySheets.length} legacy daily pay sheet${legacyDailySheets.length !== 1 ? 's' : ''}`;
 
   if (!opts.skipConfirm && !await uiConfirm(`Compile ${srcLabel} for Week Ending ${_fmtWeekDate(weekEnding)} into weekly pay sheets?\n\nOne SEPARATE pay sheet per foreman/crew lead — each labeled with their name.\n(Any existing compiled pay sheets for this week will be rebuilt.)`)) return;
@@ -18276,7 +18277,7 @@ async function psCompileWeeklyPaysheet(weekEnding, opts = {}) {
 
   renderPSLoadList();
   try { renderDiWeekCompile(); } catch(_) {}
-  if (!opts.skipAlert) alert(`Weekly pay sheets compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily input${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''}.\n\n${savedSummary.length} foreman pay sheet${savedSummary.length !== 1 ? 's' : ''} (one per submitter):\n${savedSummary.map(s => '  • ' + s).join('\n')}`);
+  if (!opts.skipAlert) alert(`Weekly pay sheets compiled for "${activeJob}" — Week Ending ${_fmtWeekDate(weekEnding)}.\n\nScanned ${diInputs.length} daily report${diInputs.length!==1?'s':''}${legacyDailySheets.length ? ` + ${legacyDailySheets.length} legacy sheet${legacyDailySheets.length!==1?'s':''}` : ''}.\n\n${savedSummary.length} foreman pay sheet${savedSummary.length !== 1 ? 's' : ''} (one per submitter):\n${savedSummary.map(s => '  • ' + s).join('\n')}`);
   return savedSummary;
 }
 
@@ -18404,7 +18405,7 @@ async function psDeleteFolder(folderId) {
   }
   const diInFolder = (_cache.dailyInputs || []).filter(d => d.weekEnding === we);
   if (diInFolder.length > 0) {
-    alert(`Cannot delete — this folder still contains ${diInFolder.length} daily input${diInFolder.length !== 1 ? 's' : ''}.\n\nDelete them from the submission log first.`);
+    alert(`Cannot delete — this folder still contains ${diInFolder.length} daily report${diInFolder.length !== 1 ? 's' : ''}.\n\nDelete them from the submission log first.`);
     return;
   }
   if (!await uiConfirm(`Delete empty folder ${folderName}?\nThis cannot be undone.`)) return;
@@ -18617,7 +18618,7 @@ function renderPSLoadList() {
 
   if (!allFolderRows.length) {
     list.innerHTML = canManagePSFolders()
-      ? '<div style="padding:24px;text-align:center;color:var(--muted);">No folders yet. Click &ldquo;+ New Folder&rdquo; to create one, or submit daily input to auto-create.</div>'
+      ? '<div style="padding:24px;text-align:center;color:var(--muted);">No folders yet. Click &ldquo;+ New Folder&rdquo; to create one, or submit daily report to auto-create.</div>'
       : '<div style="padding:24px;text-align:center;color:var(--muted);">No week-ending folders available yet. Ask your manager to create one.</div>';
     return;
   }
@@ -18678,7 +18679,7 @@ function renderPSLoadList() {
         subtitle = 'Empty folder';
       } else {
         const parts = [];
-        if (diCount) parts.push(diCount + ' daily input' + (diCount !== 1 ? 's' : ''));
+        if (diCount) parts.push(diCount + ' daily report' + (diCount !== 1 ? 's' : ''));
         if (cnt)     parts.push(cnt + ' pay sheet' + (cnt !== 1 ? 's' : ''));
         subtitle = parts.join(' · ');
       }
@@ -18745,13 +18746,13 @@ function renderPSLoadList() {
         // Folder has daily inputs but no pay sheets yet
         const weekly = sheets.filter(p => p.type !== 'daily');
         folderBody = `
-          <div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Inputs (${diInputsHere.length})</div>
+          <div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Reports (${diInputsHere.length})</div>
           ${diInputsHere.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(d => _diLoadRow(d)).join('')}
           <div style="padding:8px 14px 10px 36px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap;">
             ${canCompilePaysheet() && activeJob ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:var(--green);color:#000;" onclick="psCompileAllUncompiled('${we}')">
               <span class="ico ico-clipboard" aria-hidden="true"></span> Compile into Weekly Pay Sheet
             </button>
-            <span style="font-size:.75rem;color:var(--muted);">Compiles all daily inputs into one summary per crew</span>` : ''}
+            <span style="font-size:.75rem;color:var(--muted);">Compiles all daily reports into one summary per crew</span>` : ''}
           </div>`;
       } else {
         folderBody = `<div style="padding:10px 36px;font-size:.82rem;color:var(--muted);display:flex;align-items:center;justify-content:space-between;gap:8px;">
@@ -18765,7 +18766,7 @@ function renderPSLoadList() {
       const hasDone   = weekly.length > 0;
       const diInputsHere = (_cache.dailyInputs||[]).filter(d => d.weekEnding === we && (!activeJob || d.job === activeJob));
       folderBody = `
-        ${diInputsHere.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Inputs (${diInputsHere.length})</div>
+        ${diInputsHere.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Daily Reports (${diInputsHere.length})</div>
           ${diInputsHere.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(d => _diLoadRow(d)).join('')}` : ''}
         ${daily.length ? `<div style="padding:6px 14px 2px 36px;font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Legacy Daily Pay Sheets (${daily.length})</div>
           ${daily.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(p => _psLoadRow(p, we)).join('')}` : ''}
@@ -18776,7 +18777,7 @@ function renderPSLoadList() {
             <span class="ico ico-clipboard" aria-hidden="true"></span> Compile into Weekly Pay Sheet
           </button>
           ${hasDone ? `<button class="btn" style="margin-top:0;padding:6px 16px;font-size:.82rem;background:#1a56db;color:#fff;border:none;" onclick="psAddSupplementalPaysheet('${we}')"><span class="ico ico-plus" aria-hidden="true"></span> Add Pay Sheet</button>` : ''}
-          ${hasDone ? '<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>' : '<span style="font-size:.75rem;color:var(--muted);">Compiles all daily inputs into one summary per crew</span>'}` : ''}
+          ${hasDone ? '<span style="font-size:.75rem;color:var(--green);">✓ Weekly summary exists — recompile to update</span>' : '<span style="font-size:.75rem;color:var(--muted);">Compiles all daily reports into one summary per crew</span>'}` : ''}
         </div>`;
     }
 
@@ -18831,9 +18832,9 @@ function _diLoadRow(d) {
 async function psMoveDailyTo(docId, newWeekEnding, selectEl) {
   if (!newWeekEnding) return;
   selectEl.value = '';
-  if (!await uiConfirm(`Move this daily input to "Week Ending: ${_fmtWeekDate(newWeekEnding)}"?`)) return;
+  if (!await uiConfirm(`Move this daily report to "Week Ending: ${_fmtWeekDate(newWeekEnding)}"?`)) return;
   const di = (_cache.dailyInputs||[]).find(x => x.id === docId);
-  if (!di) { alert('Daily input not found.'); return; }
+  if (!di) { alert('Daily report not found.'); return; }
   try {
     await db.collection('dailyinput').doc(docId).update({ weekEnding: newWeekEnding });
     const idx = (_cache.dailyInputs||[]).findIndex(x => x.id === docId);
@@ -19328,7 +19329,7 @@ function diIsLocked() {
     // Past or future dates — not today — are locked
     if (dateMidnight.getTime() !== todayMidnight.getTime()) return true;
 
-    // Today: only open Mon–Fri between 4:00 AM and DI_LOCK_HOUR (5:00 PM)
+    // Today: only open Mon–Fri between 4:00 AM and DI_LOCK_HOUR (8:00 PM)
     const hour = new Date().getHours();
     if (hour < 4 || hour >= DI_LOCK_HOUR) return true;
   }
@@ -19344,17 +19345,17 @@ function _diLockReason() {
   if (date) {
     const d   = new Date(date + 'T12:00:00');
     const dow = d.getDay();
-    if (dow === 0 || dow === 6) return '<span class="ico ico-lock" aria-hidden="true"></span> Daily inputs are closed on weekends.';
+    if (dow === 0 || dow === 6) return '<span class="ico ico-lock" aria-hidden="true"></span> Daily reports are closed on weekends.';
     const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
     const dateMidnight  = new Date(date + 'T00:00:00');
     if (dateMidnight.getTime() !== todayMidnight.getTime()) return '<span class="ico ico-lock" aria-hidden="true"></span> Inputs are only open for today\'s date.';
     const hour = new Date().getHours();
-    if (hour < 4)               return '<span class="ico ico-lock" aria-hidden="true"></span> Daily inputs open at 4:00 AM.';
-    if (hour >= DI_LOCK_HOUR)   return '<span class="ico ico-lock" aria-hidden="true"></span> Deadline passed — daily inputs were locked at 5:00 PM.';
+    if (hour < 4)               return '<span class="ico ico-lock" aria-hidden="true"></span> Daily reports open at 4:00 AM.';
+    if (hour >= DI_LOCK_HOUR)   return '<span class="ico ico-lock" aria-hidden="true"></span> Deadline passed — daily reports were locked at 8:00 PM.';
   }
   const key = _diLockKey();
   if (_diManualLocks[key]) return '<span class="ico ico-lock" aria-hidden="true"></span> This date has been locked by an admin.';
-  return '<span class="ico ico-lock" aria-hidden="true"></span> Daily inputs are currently locked.';
+  return '<span class="ico ico-lock" aria-hidden="true"></span> Daily reports are currently locked.';
 }
 
 function diUpdateLockState() {
@@ -20272,7 +20273,7 @@ async function acctCleanupOrphanedPaysheets() {
   const jobList = [...new Set([...orphanedPS, ...orphanedDI].map(r => r.job))].join('\n  • ');
   if (!await uiConfirm(
     `Delete ${orphanedPS.length} pay sheet${orphanedPS.length !== 1 ? 's' : ''} and ` +
-    `${orphanedDI.length} daily input${orphanedDI.length !== 1 ? 's' : ''} for deleted jobs?\n\n  • ${jobList}\n\nThis cannot be undone.`
+    `${orphanedDI.length} daily report${orphanedDI.length !== 1 ? 's' : ''} for deleted jobs?\n\n  • ${jobList}\n\nThis cannot be undone.`
   )) return;
 
   try {
@@ -20717,7 +20718,7 @@ function renderCODashboard() {
   // Admin tip: prompt to re-approve pay sheets so PTD syncs (only shown when there are COR budgets)
   const reApproveTip = (isAdmin() && corbs.length > 0)
     ? `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);border-radius:8px;font-size:.8rem;color:var(--accent);">
-        <strong>Admin tip:</strong> PTD values include both Daily Input entries and approved Weekly Summary Pay Sheets.
+        <strong>Admin tip:</strong> PTD values include both Daily Report entries and approved Weekly Summary Pay Sheets.
         If a ${_dashIsBurn ? 'Work Order' : 'COR'} row shows $0 PTD after you&rsquo;ve entered amounts on a pay sheet, open that pay sheet and click
         <strong>✓ Approve for Accounting</strong> (or re-approve if already approved) to sync the W/E&nbsp;Earned amounts.
        </div>`
@@ -20923,7 +20924,7 @@ function _coRenderCorCards(container, jobName, cos, corbs) {
 
   const reApproveTip = (isAdmin() && corbs.length > 0)
     ? `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);border-radius:8px;font-size:.8rem;color:var(--accent);">
-        <strong>Admin tip:</strong> PTD values include both Daily Input entries and approved Weekly Summary Pay Sheets.
+        <strong>Admin tip:</strong> PTD values include both Daily Report entries and approved Weekly Summary Pay Sheets.
         If a COR shows $0 PTD after you&rsquo;ve entered amounts on a pay sheet, open that pay sheet and click
         <strong>✓ Approve for Accounting</strong> (or re-approve if already approved) to sync the W/E&nbsp;Earned amounts.
        </div>` : '';
@@ -21995,7 +21996,7 @@ function coOpenBudgetModal(coId) {
   document.getElementById('co-budget-title').textContent    = isBurn ? 'Add Work Order to Budget' : 'Create COR Budget';
   document.getElementById('co-budget-subtitle').textContent = isBurn
     ? 'Enter the budget details for this burn.'
-    : 'Enter the budget details for this approved Change Order. This will appear in Daily Input tracking.';
+    : 'Enter the budget details for this approved Change Order. This will appear in Daily Report tracking.';
   document.getElementById('co-budget-confirm-btn').textContent = isBurn ? '✓ Add to Budget' : '✓ Approve & Create Budget';
   const _internalLabel = document.getElementById('co-budget-internal-label');
   if (_internalLabel) _internalLabel.innerHTML = `${isBurn ? 'Internal Work Order Amount' : 'Internal COR Amount'} <span style="color:#ef4444;">*</span>`;
@@ -22348,7 +22349,7 @@ function computeCorPaid(corb) {
         <h2 id="co-budget-title" style="margin:0;font-size:1.1rem;"><span class="ico ico-dollar" aria-hidden="true"></span> Create COR Budget</h2>
         <button onclick="coCloseBudgetModal()" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;padding:4px;">×</button>
       </div>
-      <p id="co-budget-subtitle" style="font-size:.83rem;color:var(--muted);margin-bottom:16px;">Enter the budget details for this approved Change Order. This will appear in Daily Input tracking.</p>
+      <p id="co-budget-subtitle" style="font-size:.83rem;color:var(--muted);margin-bottom:16px;">Enter the budget details for this approved Change Order. This will appear in Daily Report tracking.</p>
     </div>
     <!-- Scrollable form body -->
     <div style="flex:1;overflow-y:auto;min-height:0;padding-right:4px;">
@@ -22391,7 +22392,7 @@ function computeCorPaid(corb) {
       <div id="co-budget-foreman-single">
         <label style="font-size:.83rem;color:var(--muted);display:block;margin-bottom:6px;">Foreman Tracking Amount <span style="color:#ef4444;">*</span></label>
         <input id="co-budget-foreman-amount" class="fi" type="text" inputmode="decimal" style="width:100%;padding:5px 10px;font-size:.83rem;text-align:right;" placeholder="0.00" oninput="corbFormatDollarInput(this)" />
-        <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Shown to Foreman and used for Daily Input / Weekly Summary tracking.</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Shown to Foreman and used for Daily Report / Weekly Summary tracking.</div>
       </div>
       <!-- Distribution mode (multiple area × labor code pairs) -->
       <div id="co-budget-foreman-dist" style="display:none;">
@@ -22412,7 +22413,7 @@ function computeCorPaid(corb) {
           <span style="color:var(--muted);">Total:</span>
           <strong id="co-budget-dist-sum">$0.00</strong>
         </div>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Shown to Foreman and used for Daily Input / Weekly Summary tracking.</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:4px;font-style:italic;">Shown to Foreman and used for Daily Report / Weekly Summary tracking.</div>
       </div>
       <div id="co-budget-progress" style="display:none;padding:10px;background:var(--surface2);border-radius:8px;font-size:.83rem;color:var(--muted);text-align:center;">Creating budget…</div>
     </div>
