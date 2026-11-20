@@ -22751,6 +22751,36 @@ function computeCorPaid(corb) {
    * largest-remainder method so the returned integer cents ALWAYS sum to
    * totalCents exactly. Falls back to an equal split when all weights are 0.
    */
+  // Each employee's pay split across the crew's Area rows in proportion to W/E Earned,
+  // rounded to cents so every employee's row sums to their split amount. When the splits
+  // add up to the rows' W/E total, single cents are then moved between Areas inside an
+  // employee's own breakdown until every Area's shares also add up to its W/E Earned
+  // exactly (no Area left a penny over / under). Employee totals never change.
+  function _acctBalanceShares(empCents, rowCents) {
+    const M = empCents.map(c => acctAllocateProportional(c, rowCents));
+    const T = rowCents.reduce((s, w) => s + w, 0);
+    if (T <= 0 || empCents.reduce((s, c) => s + c, 0) !== T) return M;
+    const err = rowCents.map((w, j) => M.reduce((s, r) => s + r[j], 0) - w);
+    // How far a cell sits below (+) / above (−) its exact proportional share.
+    const want = (i, j) => (empCents[i] * rowCents[j]) / T - M[i][j];
+    for (let guard = 0; guard < 100000; guard++) {
+      const over = err.findIndex(x => x > 0);
+      if (over < 0) break;
+      const under = err.findIndex(x => x < 0);
+      if (under < 0) break;
+      let best = -1, bestScore = -Infinity;
+      M.forEach((r, i) => {
+        if (r[over] <= 0) return;
+        const sc = want(i, under) - want(i, over);
+        if (sc > bestScore) { bestScore = sc; best = i; }
+      });
+      if (best < 0) break;
+      M[best][over] -= 1; M[best][under] += 1;
+      err[over] -= 1; err[under] += 1;
+    }
+    return M;
+  }
+
   function acctAllocateProportional(totalCents, weights) {
     const nW = weights.length;
     if (nW === 0) return [];
@@ -22894,9 +22924,11 @@ function computeCorPaid(corb) {
         }
 
         const rowsTotal = rows.reduce((s, r) => s + r.weCents, 0);
-        splitEmps.forEach(e => {
-          if (rows.length && rowsTotal > 0) {
-            const shares = acctAllocateProportional(e.amtCents, rows.map(r => r.weCents));
+        const shareM = (rows.length && rowsTotal > 0)
+          ? _acctBalanceShares(splitEmps.map(e => e.amtCents), rows.map(r => r.weCents)) : null;
+        splitEmps.forEach((e, ei) => {
+          if (shareM) {
+            const shares = shareM[ei];
             rows.forEach((r, idx) => {
               const sc = shares[idx];
               if (!sc) return;
