@@ -762,6 +762,21 @@
     <div class="cards">
       <div class="card"><div class="label">Total Budget</div><div class="value cg" id="stat-budget">$0</div><div class="sub" id="stat-budget-sub"></div></div>
     </div>
+    <!-- Budget by Area (every area, same numbers as the Daily Reports Budget by Area panel) -->
+    <details id="csv-area-budget" style="margin-bottom:20px;" ontoggle="if(this.open)renderCsvAreaBudget()">
+      <summary style="cursor:pointer;font-weight:600;font-size:.95rem;color:var(--green);padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;list-style:none;display:flex;align-items:center;gap:8px;">
+        <span><span class="ico ico-dollar" aria-hidden="true"></span></span><span>Budget by Area</span><span id="csv-area-budget-count" style="margin-left:auto;font-size:.8rem;color:var(--muted);font-weight:500;"></span>
+      </summary>
+      <div style="margin-top:8px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:0 0 8px 8px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+          <input id="csv-area-budget-search" class="fi" style="flex:1;min-width:180px;max-width:340px;" placeholder="Search area…" autocomplete="off" oninput="renderCsvAreaBudget()" />
+          <button class="btn btn-outline" style="margin-top:0;padding:8px 12px;font-size:.82rem;" onclick="csvAreaBudgetExpand(true)">Expand all</button>
+          <button class="btn btn-outline" style="margin-top:0;padding:8px 12px;font-size:.82rem;" onclick="csvAreaBudgetExpand(false)">Collapse all</button>
+          <button class="btn" style="margin-top:0;padding:8px 14px;font-size:.82rem;margin-left:auto;" onclick="exportCsvAreaBudgetExcel()">Export Excel</button>
+        </div>
+        <div id="csv-area-budget-body"></div>
+      </div>
+    </details>
     <div class="main-grid">
       <div>
         <div class="filters">
@@ -918,20 +933,13 @@
     </div>
 
     <!-- Labor Code Control Number -->
-    <div id="lc-control-wrap" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
-      <span style="font-size:.85rem;font-weight:600;color:var(--muted);white-space:nowrap;">Labor Code Remaining</span>
-      <select id="lc-control-select" class="fi" style="min-width:220px;flex:1;max-width:340px;" onchange="renderLaborCodeControl()">
-        <option value="">— Select a labor code —</option>
-      </select>
-      <div id="lc-control-result" style="display:none;align-items:baseline;gap:10px;flex-wrap:wrap;">
-        <span style="font-size:.8rem;color:var(--muted);">Budget:</span>
-        <span id="lc-ctrl-budget" style="font-size:.9rem;font-weight:600;"></span>
-        <span style="font-size:.8rem;color:var(--muted);margin-left:8px;">Paid:</span>
-        <span id="lc-ctrl-paid" style="font-size:.9rem;font-weight:600;color:var(--yellow);"></span>
-        <span style="font-size:.8rem;color:var(--muted);margin-left:8px;">Remaining:</span>
-        <span id="lc-ctrl-remaining" style="font-size:1.15rem;font-weight:700;"></span>
+    <div id="lc-control-wrap" style="margin-bottom:20px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+        <span style="font-size:.85rem;font-weight:600;color:var(--muted);white-space:nowrap;">Labor Code Remaining</span>
+        <span id="lc-control-scope" style="font-size:.78rem;color:var(--muted);"></span>
+        <button class="btn-sm" onclick="exportLaborCodeRemainingExcel()" style="margin-left:auto;font-size:.75rem;padding:4px 10px;">Export Excel</button>
       </div>
-      <div id="lc-control-empty" style="font-size:.83rem;color:var(--muted);display:none;">No data for this code on the selected job.</div>
+      <div id="lc-control-table" style="overflow-x:auto;"></div>
     </div>
 
     <!-- Budget by Area -->
@@ -6933,6 +6941,7 @@ function displayCSVData(rows, name) {
   const ta = document.getElementById('th-amount');
   if (ta) { ta.classList.add('sorted'); ta.querySelector('.sa').textContent = '↑'; }
   populateCSVFilters(); resetFilters(); renderCSVSummary(); renderCharts();
+  try { renderCsvAreaBudget(); } catch (e) { console.warn('renderCsvAreaBudget:', e); }
 }
 
 // ═══════════════════════════
@@ -8228,74 +8237,125 @@ function renderPayrollSummary() {
   _lcControlPopulate(selectedFile);
 }
 
-function _lcControlPopulate(selectedFile) {
-  const sel = document.getElementById('lc-control-select');
-  if (!sel) return;
+// Labor Code Remaining — every labor code group with budget or paid on the selected job
+// (or all jobs). Built from the SAME money as the Total Budget / Total Paid cards above it,
+// so the TOTAL row always equals those cards:
+//  • Budget = budget CSV rows + approved Change Order labor, each by code group (101 → 100…);
+//  • Paid   = every payroll entry by code group; entries with no code get their own row.
+function _lcControlRows(selectedFile) {
   const allEntries = getPayrollEntries();
   const allFiles   = getSavedCSVFiles();
   const entries    = selectedFile ? allEntries.filter(e => e.csvFile === selectedFile) : allEntries;
   const files      = selectedFile ? allFiles.filter(f => f.name === selectedFile) : allFiles;
-
-  // Collect codes that have budget or paid for this job scope
-  const activeCodes = new Set();
-  files.forEach(f => f.rows.forEach(r => { if (r.amount) activeCodes.add(getCodeGroup(String(r.costCode))); }));
-  entries.forEach(e => { if (e.costCode) activeCodes.add(String(e.costCode)); });
-
-  // Keep current selection if it's still valid
-  const prev = sel.value;
-  sel.innerHTML = '<option value="">— Select a labor code —</option>';
-  PAYROLL_GROUPS
-    .filter(g => activeCodes.has(g.code) && g.code !== '999')
-    .forEach(g => {
-      const opt = document.createElement('option');
-      opt.value = g.code;
-      opt.textContent = `${g.code} — ${g.description}`;
-      if (g.code === prev) opt.selected = true;
-      sel.appendChild(opt);
-    });
-
-  // Refresh the result display (keeps previous selection if still in list)
-  renderLaborCodeControl();
+  const NONE = '';
+  const grp = c => String(c == null ? '' : c).trim() ? getCodeGroup(String(c).trim()) : NONE;
+  const budget = new Map(), paid = new Map();
+  const add = (m, k, v) => m.set(k, (m.get(k) || 0) + (v || 0));
+  files.forEach(f => f.rows.forEach(r => add(budget, grp(r.costCode), r.amount)));
+  const jobNames = new Set(files.map(f => f.name));
+  (_cache.corbudgets || []).filter(b => b.writeUpId && _corbParentLive(b) && jobNames.has(b.jobId))
+    .forEach(b => add(budget, grp(b.laborCode), corbInternalAmount(b)));
+  entries.forEach(e => add(paid, grp(e.costCode), e.price));
+  const desc = code => {
+    if (code === NONE) return 'No labor code';
+    const g = PAYROLL_GROUPS.find(x => x.code === code);
+    if (g) return g.description;
+    const lc = (typeof getLaborCodes === 'function' ? getLaborCodes() : []).find(x => String(x.code) === code);
+    return lc ? lc.description : '';
+  };
+  return [...new Set([...budget.keys(), ...paid.keys()])]
+    .map(code => {
+      const b = budget.get(code) || 0, p = paid.get(code) || 0;
+      return { code, description: desc(code), budget: b, paid: p, remaining: b - p };
+    })
+    .filter(r => Math.round(r.budget * 100) !== 0 || Math.round(r.paid * 100) !== 0)
+    .sort((x, y) => (x.code === NONE) - (y.code === NONE) || String(x.code).localeCompare(String(y.code), undefined, { numeric: true }));
 }
 
+function _lcControlPopulate(selectedFile) { renderLaborCodeControl(); }
+
 function renderLaborCodeControl() {
-  const sel    = document.getElementById('lc-control-select');
-  const result = document.getElementById('lc-control-result');
-  const empty  = document.getElementById('lc-control-empty');
-  if (!sel || !result || !empty) return;
-
-  const code         = sel.value;
+  const box = document.getElementById('lc-control-table');
+  if (!box) return;
   const selectedFile = (document.getElementById('pr-filter-file') || {}).value || '';
-  if (!code) { result.style.display = 'none'; empty.style.display = 'none'; return; }
+  const scope = document.getElementById('lc-control-scope');
+  if (scope) scope.textContent = selectedFile ? '· ' + selectedFile : '· all jobs';
+  const rows = _lcControlRows(selectedFile);
+  if (!rows.length) { box.innerHTML = '<div style="font-size:.83rem;color:var(--muted);">No labor code data for the selected job.</div>'; return; }
+  const money = n => (n < 0 ? '-' : '') + fm(Math.abs(n));
+  const pct = r => r.budget > 0 ? Math.round(r.paid / r.budget * 100) + '%' : (r.paid ? '—' : '0%');
+  const th = 'padding:6px 10px;font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);white-space:nowrap;';
+  const td = 'padding:6px 10px;font-size:.85rem;border-bottom:1px solid var(--border);white-space:nowrap;';
+  const tot = rows.reduce((t, r) => ({ budget: t.budget + r.budget, paid: t.paid + r.paid, remaining: t.remaining + r.remaining }), { budget: 0, paid: 0, remaining: 0 });
+  const line = (r, bold) => `<tr${bold ? ' style="font-weight:700;"' : ''}>
+      <td style="${td}">${bold ? 'TOTAL' : (r.code ? r.code + ' — ' : '') + String(r.description || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td>
+      <td style="${td}text-align:right;">${fm(r.budget)}</td>
+      <td style="${td}text-align:right;color:var(--yellow);">${fm(r.paid)}</td>
+      <td style="${td}text-align:right;font-weight:700;color:${r.remaining < 0 ? 'var(--red)' : 'var(--green)'};">${money(r.remaining)}</td>
+      <td style="${td}text-align:right;color:var(--muted);">${pct(r)}</td></tr>`;
+  box.innerHTML = `<table style="width:100%;border-collapse:collapse;">
+    <thead><tr><th style="${th}text-align:left;">Labor Code</th><th style="${th}text-align:right;">Budget</th><th style="${th}text-align:right;">Paid</th><th style="${th}text-align:right;">Remaining</th><th style="${th}text-align:right;">% Used</th></tr></thead>
+    <tbody>${rows.map(r => line(r)).join('')}${line(tot, true)}</tbody></table>`;
+}
 
-  const allEntries = getPayrollEntries();
-  const allFiles   = getSavedCSVFiles();
-  const entries    = selectedFile ? allEntries.filter(e => e.csvFile === selectedFile) : allEntries;
-  const files      = selectedFile ? allFiles.filter(f => f.name === selectedFile) : allFiles;
+// Styled cell for xlsx-js-style exports on the Payroll / Budget tabs.
+function _xlsCell(v, o) {
+  o = o || {};
+  const B = { style: 'thin', color: { rgb: 'FF000000' } };
+  const isNum = typeof v === 'number';
+  const c = { v: v == null ? '' : v, t: isNum ? 'n' : 's', s: {
+    font: { name: 'Arial', sz: 10, bold: !!o.bold, color: o.color ? { rgb: o.color } : undefined },
+    alignment: { horizontal: o.align || (isNum ? 'right' : 'left'), vertical: 'center' },
+    border: o.border === false ? undefined : { top: B, bottom: B, left: B, right: B } } };
+  if (o.fill) c.s.fill = { patternType: 'solid', fgColor: { rgb: o.fill } };
+  if (o.z) c.z = o.z;
+  return c;
+}
+function _xlsSheet(XL, grid, cols) {
+  const ws = {};
+  let maxC = 0;
+  grid.forEach((row, R) => (row || []).forEach((c, C) => { if (c) { ws[XL.utils.encode_cell({ r: R, c: C })] = c; if (C > maxC) maxC = C; } }));
+  ws['!ref'] = XL.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(0, grid.length - 1), c: Math.max(maxC, cols.length - 1) } });
+  ws['!cols'] = cols;
+  return ws;
+}
 
-  // Budget: sum CSV rows that map to this group code
-  const budget = files.reduce((s, f) =>
-    s + f.rows.filter(r => getCodeGroup(String(r.costCode)) === code).reduce((ss, r) => ss + r.amount, 0), 0);
-
-  // Paid: sum payroll entries tagged with this exact group code
-  const paid = entries.filter(e => String(e.costCode) === code).reduce((s, e) => s + e.price, 0);
-
-  const remaining = budget - paid;
-  const hasData   = budget !== 0 || paid !== 0;
-
-  if (!hasData) {
-    result.style.display = 'none';
-    empty.style.display  = 'block';
-    return;
-  }
-
-  empty.style.display  = 'none';
-  result.style.display = 'flex';
-  document.getElementById('lc-ctrl-budget').textContent    = fm(budget);
-  document.getElementById('lc-ctrl-paid').textContent      = fm(paid);
-  const remEl = document.getElementById('lc-ctrl-remaining');
-  remEl.textContent = (remaining < 0 ? '-' : '') + fm(Math.abs(remaining));
-  remEl.style.color = remaining < 0 ? 'var(--red)' : 'var(--green)';
+function exportLaborCodeRemainingExcel() {
+  const XL = window.XLSXStyle || window.XLSX;
+  if (!XL) { alert('Excel library is still loading — try again in a moment.'); return; }
+  const selectedFile = (document.getElementById('pr-filter-file') || {}).value || '';
+  const rows = _lcControlRows(selectedFile);
+  if (!rows.length) { alert('No labor code data to export.'); return; }
+  const cell = _xlsCell;
+  const M = '"$"#,##0.00;[Red]-"$"#,##0.00', P = '0%';
+  const H = { bold: true, fill: 'FFD9E1F2', align: 'center' };
+  const grid = [
+    [cell('LABOR CODE REMAINING', { bold: true, border: false })],
+    [cell('Job: ' + (selectedFile || 'All jobs'), { border: false })],
+    [cell('Exported: ' + new Date().toLocaleString('en-US'), { border: false })],
+    [],
+    ['Code', 'Description', 'Budget', 'Paid', 'Remaining', '% Used'].map(h => cell(h, H))
+  ];
+  const first = grid.length + 1;
+  rows.forEach(r => grid.push([cell(r.code, { align: 'center' }), cell(r.description), cell(r.budget, { z: M }), cell(r.paid, { z: M }),
+    cell(r.remaining, { z: M, bold: true }), r.budget > 0 ? cell(r.paid / r.budget, { z: P }) : cell('—', { align: 'right' })]));
+  const last = grid.length;
+  const T = { bold: true, fill: 'FFF0F4FF', z: M };
+  const tot = rows.reduce((t, r) => [t[0] + r.budget, t[1] + r.paid, t[2] + r.remaining], [0, 0, 0]);
+  const totRow = [cell('TOTAL', { bold: true, fill: 'FFF0F4FF' }), cell('', { fill: 'FFF0F4FF' }), cell(tot[0], T), cell(tot[1], T), cell(tot[2], T),
+    tot[0] > 0 ? cell(tot[1] / tot[0], { bold: true, fill: 'FFF0F4FF', z: P }) : cell('—', { bold: true, fill: 'FFF0F4FF', align: 'right' })];
+  // Live formulas on the total row so the sheet stays consistent if someone edits it.
+  ['C', 'D', 'E'].forEach((col, i) => { totRow[i + 2].f = `SUM(${col}${first}:${col}${last})`; });
+  if (tot[0] > 0) totRow[5].f = `IF(C${last + 1}=0,"",D${last + 1}/C${last + 1})`;
+  grid.push(totRow);
+  const ws = {};
+  grid.forEach((row, R) => (row || []).forEach((c, C) => { if (c) ws[XL.utils.encode_cell({ r: R, c: C })] = c; }));
+  ws['!ref'] = XL.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: grid.length - 1, c: 5 } });
+  ws['!cols'] = [{ wch: 8 }, { wch: 28 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 10 }];
+  const wb = XL.utils.book_new();
+  XL.utils.book_append_sheet(wb, ws, 'Labor Code Remaining');
+  const base = (selectedFile || 'All Jobs').replace(/\.csv$/i, '').replace(/[\\/:*?"<>|]/g, '').trim();
+  XL.writeFile(wb, `${base} - Labor Code Remaining.xlsx`);
 }
 
 function exportPayrollCSV() {
@@ -8313,6 +8373,169 @@ function exportPayrollCSV() {
     lines.push([e.date,fmtTime(e.time),`"${e.csvFile}"`,`"${e.area||''}"`,`"${e.costCode||''}"`,`"${e.description.replace(/"/g,'""')}"`,budget,e.price,budget-paid].join(','));
   });
   dlCSV(lines.join('\n'),'payroll-export.csv');
+}
+
+// ═══════════════════════════
+//  BUDGET TAB — BUDGET BY AREA (every area of the open labor budget)
+// ═══════════════════════════
+// Same numbers as the Daily Reports "Budget by Area" panel (renderPSAreaBudgetTable):
+//  • regular areas: each budget CSV row, Paid = psGetAreaCodeData's PTD for that code
+//    (exact code first, then code group), split across the code's rows by budget share;
+//  • [COR] / Work Order areas: each labor code's foreman budget + live PTD.
+// Lookups are pre-indexed so a 3,000+ row budget renders instantly.
+function _csvAreaBudgetData(jobName) {
+  const f = getSavedCSVFiles().find(x => x.name === jobName);
+  if (!f) return [];
+  const entries = getPayrollEntries().filter(e => e.csvFile === jobName);
+  const K = (a, c) => a + '\u0000' + c;
+  const add = (m, k, v) => m.set(k, (m.get(k) || 0) + (v || 0));
+  const exB = new Map(), grB = new Map(), exP = new Map(), grP = new Map();
+  f.rows.forEach(r => { add(exB, K(r.area, r.costCode), r.amount); add(grB, K(r.area, getCodeGroup(r.costCode)), r.amount); });
+  entries.forEach(e => { add(exP, K(e.area, e.costCode), e.price); add(grP, K(e.area, getCodeGroup(e.costCode)), e.price); });
+  const codeData = (area, code) => {
+    const budget = exB.get(K(area, code)) || grB.get(K(area, code)) || 0;
+    const ptd    = exP.get(K(area, code)) || grP.get(K(area, code)) || 0;
+    return { budget, ptd };
+  };
+  const byArea = new Map();
+  f.rows.forEach(r => {
+    if (!r.area || r.area === '—' || !isForemanAllowedCode(r.costCode)) return;
+    if (!byArea.has(r.area)) byArea.set(r.area, []);
+    byArea.get(r.area).push(r);
+  });
+  const out = [];
+  psGetAreas(jobName).forEach(area => {
+    let lines;
+    if (isSpecialArea(area)) {
+      lines = corbsForArea(area, jobName).map(corb => {
+        const budget = corbForemanAmount(corb), paid = computeCorPaid(corb);
+        return { code: String(corb.laborCode || ''), description: corb.description || '', budget, paid };
+      });
+    } else {
+      lines = (byArea.get(area) || []).map(r => {
+        const d = codeData(area, r.costCode);
+        const paid = d.budget > 0 ? d.ptd * (r.amount / d.budget) : 0;
+        return { code: String(r.costCode || ''), description: r.description || '', budget: r.amount || 0, paid };
+      });
+    }
+    if (!lines.length) return;
+    const budget = lines.reduce((t, l) => t + l.budget, 0), paid = lines.reduce((t, l) => t + l.paid, 0);
+    out.push({ area, label: areaDisplayLabel(area), lines, budget, paid, remaining: budget - paid });
+  });
+  return out;
+}
+
+function renderCsvAreaBudget() {
+  const det  = document.getElementById('csv-area-budget');
+  const body = document.getElementById('csv-area-budget-body');
+  const cnt  = document.getElementById('csv-area-budget-count');
+  if (!det || !body || !activeCSVName) return;
+  const all = _csvAreaBudgetData(activeCSVName);
+  if (cnt) cnt.textContent = `${all.length} area${all.length !== 1 ? 's' : ''}`;
+  if (!det.open) return;   // build the list only while the section is open
+  const q = ((document.getElementById('csv-area-budget-search') || {}).value || '').trim().toLowerCase();
+  const list = q ? all.filter(a => a.label.toLowerCase().includes(q) || a.area.toLowerCase().includes(q)) : all;
+  if (!list.length) { body.innerHTML = `<div style="text-align:center;padding:24px;color:var(--muted);">${all.length ? 'No areas match your search.' : 'No budget data for this project.'}</div>`; return; }
+  const rc  = n => n < 0 ? 'color:var(--red)' : n === 0 ? 'color:var(--yellow)' : 'color:var(--green)';
+  const sgn = n => (n < 0 ? '-' : '') + fm(Math.abs(n));
+  const paidTxt = n => n > 0 ? fm(n) : '—';
+  const open = new Set([...body.querySelectorAll('details[data-area][open]')].map(d => d.dataset.area));
+  const tot = list.reduce((t, a) => ({ budget: t.budget + a.budget, paid: t.paid + a.paid }), { budget: 0, paid: 0 });
+  const totRem = tot.budget - tot.paid;
+  const num = 'text-align:right;white-space:nowrap;';
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) repeat(3,minmax(90px,140px));gap:8px;padding:6px 14px;font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">
+      <span>Area</span><span style="${num}">Budget</span><span style="${num}">Paid</span><span style="${num}">Remaining</span>
+    </div>
+    ${list.map(a => `
+    <details data-area="${eh(a.area)}" ${open.has(a.area) ? 'open' : ''} style="border:1px solid var(--border);border-radius:8px;margin-bottom:6px;">
+      <summary style="cursor:pointer;list-style:none;display:grid;grid-template-columns:minmax(0,1fr) repeat(3,minmax(90px,140px));gap:8px;align-items:center;padding:10px 14px;font-size:.88rem;">
+        <span style="font-weight:600;overflow-wrap:anywhere;">${eh(a.label)} <span style="color:var(--muted);font-weight:400;font-size:.78rem;">· ${a.lines.length} code${a.lines.length !== 1 ? 's' : ''}</span></span>
+        <span style="${num}">${fm(a.budget)}</span>
+        <span style="${num}color:var(--yellow);">${paidTxt(a.paid)}</span>
+        <span style="${num}font-weight:700;${rc(a.remaining)}">${sgn(a.remaining)}</span>
+      </summary>
+      <div style="overflow-x:auto;padding:0 8px 8px;">
+        <table style="min-width:500px;margin:0;">
+          <thead><tr><th>Cost Code</th><th>Description</th><th style="text-align:right;">Budget</th><th style="text-align:right;">Paid</th><th style="text-align:right;">Remaining</th></tr></thead>
+          <tbody>${a.lines.map(l => { const rem = l.budget - l.paid; return `<tr>
+            <td style="font-size:.85rem;color:var(--muted);font-family:monospace;">${eh(l.code)}</td>
+            <td style="font-size:.85rem;">${eh(l.description)}</td>
+            <td style="text-align:right;">${fm(l.budget)}</td>
+            <td style="text-align:right;color:var(--yellow);">${paidTxt(l.paid)}</td>
+            <td style="text-align:right;${rc(rem)}">${sgn(rem)}</td></tr>`; }).join('')}
+          <tr style="border-top:2px solid var(--border);font-weight:700;"><td colspan="2">Total</td>
+            <td style="text-align:right;">${fm(a.budget)}</td><td style="text-align:right;color:var(--yellow);">${paidTxt(a.paid)}</td>
+            <td style="text-align:right;${rc(a.remaining)}">${sgn(a.remaining)}</td></tr></tbody>
+        </table>
+      </div>
+    </details>`).join('')}
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) repeat(3,minmax(90px,140px));gap:8px;padding:12px 14px;margin-top:8px;border-top:2px solid var(--border);font-weight:700;font-size:.92rem;">
+      <span>Total${q ? ' (filtered)' : ''} · ${list.length} area${list.length !== 1 ? 's' : ''}</span>
+      <span style="${num}">${fm(tot.budget)}</span><span style="${num}color:var(--yellow);">${paidTxt(tot.paid)}</span>
+      <span style="${num}${rc(totRem)}">${sgn(totRem)}</span>
+    </div>`;
+}
+
+function csvAreaBudgetExpand(open) {
+  document.querySelectorAll('#csv-area-budget-body details[data-area]').forEach(d => { d.open = open; });
+}
+
+function exportCsvAreaBudgetExcel() {
+  const XL = window.XLSXStyle || window.XLSX;
+  if (!XL) { alert('Excel library is still loading — try again in a moment.'); return; }
+  if (!activeCSVName) return;
+  const q = ((document.getElementById('csv-area-budget-search') || {}).value || '').trim().toLowerCase();
+  const all = _csvAreaBudgetData(activeCSVName);
+  const list = q ? all.filter(a => a.label.toLowerCase().includes(q) || a.area.toLowerCase().includes(q)) : all;
+  if (!list.length) { alert('No areas to export.'); return; }
+  const cell = _xlsCell, M = '"$"#,##0.00;[Red]-"$"#,##0.00';
+  const H = { bold: true, fill: 'FFD9E1F2', align: 'center' };
+  const AF = 'FFF2F2F2', TF = 'FFF0F4FF';
+  const head = (title) => [
+    [cell(title, { bold: true, border: false })],
+    [cell('Job: ' + activeCSVName.replace(/\.csv$/i, ''), { border: false })],
+    [cell('Exported: ' + new Date().toLocaleString('en-US') + (q ? '  ·  filter: "' + q + '"' : ''), { border: false })],
+    []
+  ];
+
+  // Sheet 1 — Area Summary: one row per area.
+  const g1 = head('BUDGET BY AREA — SUMMARY');
+  g1.push(['Area', 'Codes', 'Budget', 'Paid', 'Remaining'].map(h => cell(h, H)));
+  const f1 = g1.length + 1;
+  list.forEach(a => g1.push([cell(a.label), cell(a.lines.length, { align: 'center' }), cell(a.budget, { z: M }), cell(a.paid, { z: M }), cell(a.remaining, { z: M, bold: true })]));
+  const l1 = g1.length;
+  const T = { bold: true, fill: TF, z: M };
+  const tb = list.reduce((t, a) => t + a.budget, 0), tp = list.reduce((t, a) => t + a.paid, 0);
+  const tr1 = [cell('TOTAL', { bold: true, fill: TF }), cell('', { fill: TF }), cell(tb, T), cell(tp, T), cell(tb - tp, T)];
+  ['C', 'D', 'E'].forEach((col, i) => { tr1[i + 2].f = `SUM(${col}${f1}:${col}${l1})`; });
+  g1.push(tr1);
+
+  // Sheet 2 — Area Detail: every area's codes with an area subtotal.
+  const g2 = head('BUDGET BY AREA — DETAIL');
+  g2.push(['Area', 'Cost Code', 'Description', 'Budget', 'Paid', 'Remaining'].map(h => cell(h, H)));
+  const subRows = [];
+  list.forEach(a => {
+    const first = g2.length + 1;
+    a.lines.forEach(l => g2.push([cell(a.label), cell(l.code, { align: 'center' }), cell(l.description),
+      cell(l.budget, { z: M }), cell(l.paid, { z: M }), cell(l.budget - l.paid, { z: M })]));
+    const last = g2.length;
+    const S = { bold: true, fill: AF, z: M };
+    const sr = [cell(a.label + ' — Total', { bold: true, fill: AF }), cell('', { fill: AF }), cell('', { fill: AF }),
+      cell(a.budget, S), cell(a.paid, S), cell(a.remaining, S)];
+    ['D', 'E', 'F'].forEach((col, i) => { sr[i + 3].f = `SUM(${col}${first}:${col}${last})`; });
+    g2.push(sr);
+    subRows.push(g2.length);
+  });
+  const tr2 = [cell('GRAND TOTAL', { bold: true, fill: TF }), cell('', { fill: TF }), cell('', { fill: TF }), cell(tb, T), cell(tp, T), cell(tb - tp, T)];
+  ['D', 'E', 'F'].forEach((col, i) => { tr2[i + 3].f = subRows.map(r => col + r).join('+') || '0'; });
+  g2.push(tr2);
+
+  const wb = XL.utils.book_new();
+  XL.utils.book_append_sheet(wb, _xlsSheet(XL, g1, [{ wch: 40 }, { wch: 8 }, { wch: 16 }, { wch: 16 }, { wch: 16 }]), 'Area Summary');
+  XL.utils.book_append_sheet(wb, _xlsSheet(XL, g2, [{ wch: 40 }, { wch: 11 }, { wch: 30 }, { wch: 16 }, { wch: 16 }, { wch: 16 }]), 'Area Detail');
+  const base = activeCSVName.replace(/\.csv$/i, '').replace(/[\\/:*?"<>|]/g, '').trim();
+  XL.writeFile(wb, `${base} - Budget by Area.xlsx`);
 }
 
 // ═══════════════════════════
@@ -23956,15 +24179,19 @@ function computeCorPaid(corb) {
   //     day-by-day rules, SAT when there is overflow OT);
   //   • below it, each day's pay is broken into JOB # / LOT # / CODE # (NGC) / BUDGET
   //     blocks, drawn from that employee's own NGC Job Cost lines for the week.
-  // Lots are condensed: the employee's lines are grouped by Job # + NGC code (+ EWO),
-  // and each group shows its largest Area as the LOT #. Groups fill the days in order,
+  // Lots are condensed: lines are grouped by Job # + NGC code (+ EWO), and within each
+  // group the crew's Area dollars are handed out so each employee gets as few Areas as
+  // possible (largest Areas to largest shares, in order). Every employee's group total and
+  // every Area's crew total stay exact, so the cards still sum to the NGC Job Cost Summary;
+  // only who carries which Area moves. Groups fill the days in order,
   // so every day's BUDGET cells sum to that day's pay, and the whole card sums to the
   // employee's weekly total (= their share of the NGC Job Cost Summary). Read-only.
   const _NGCP_DAYS = ['THU', 'FRI', 'SAT', 'MON', 'TUE', 'WED'];
 
   function _ngcPayrollData(job, week) {
     const data = acctEmployeeEarnings(job, week);
-    const employees = data.employees.map(emp => {
+    // 1) Each employee's dollars per Job # + code group, and the crew's dollars per Area in it.
+    const empGm = data.employees.map(emp => {
       const gm = new Map();
       (emp.allocations || []).forEach(a => {
         const c = a.employeeShareCents || 0;
@@ -23975,16 +24202,46 @@ function computeCorPaid(corb) {
         const ngc   = _ngcResolveCode(app);
         const ewo   = cowo ? String(a.corNumber || '').trim() : '';
         const k = jobNo + '|' + (ngc || 'u:' + app) + '|' + ewo;
-        if (!gm.has(k)) gm.set(k, { jobNo, ngc, app, ewo, cents: 0, areas: new Map() });
+        if (!gm.has(k)) gm.set(k, { k, jobNo, ngc, app, ewo, cents: 0, areas: new Map() });
         const g = gm.get(k);
         g.cents += c;
         const ad = a.areaDisplay || a.area || '—';
         g.areas.set(ad, (g.areas.get(ad) || 0) + c);
       });
-      const groups = [...gm.values()]
+      return gm;
+    });
+    // 2) Per group, walk employees (largest share first) and Areas (largest first) together,
+    //    giving each employee the next Area dollars until their share is used up.
+    const lineMap = empGm.map(() => new Map());
+    const keys = new Set(); empGm.forEach(gm => gm.forEach((_, k) => keys.add(k)));
+    keys.forEach(k => {
+      const pool = new Map(), emps = [];
+      empGm.forEach((gm, ei) => {
+        const g = gm.get(k);
+        if (!g) return;
+        emps.push({ ei, left: g.cents });
+        g.areas.forEach((c, area) => pool.set(area, (pool.get(area) || 0) + c));
+      });
+      const areas = [...pool.entries()].filter(([, c]) => c > 0).map(([area, c]) => ({ area, left: c }))
+        .sort((x, y) => y.left - x.left || _ngcNumSort(x.area, y.area));
+      emps.sort((x, y) => y.left - x.left || x.ei - y.ei);
+      let ai = 0;
+      emps.forEach(e => {
+        const g = empGm[e.ei].get(k), lines = [];
+        while (e.left > 0 && ai < areas.length) {
+          const take = Math.min(e.left, areas[ai].left);
+          lines.push({ ...g, lot: areas[ai].area, cents: take, areas: new Map([[areas[ai].area, take]]) });
+          e.left -= take; areas[ai].left -= take;
+          if (areas[ai].left <= 0) ai++;
+        }
+        lineMap[e.ei].set(k, lines);
+      });
+    });
+    const employees = data.employees.map((emp, ei) => {
+      const groups = [...empGm[ei].values()]
         .sort((a, b) => _ngcJobRank(a.jobNo) - _ngcJobRank(b.jobNo) || _ngcNumSort(a.jobNo, b.jobNo) ||
                         _ngcNumSort(a.ngc || a.app, b.ngc || b.app) || _ngcNumSort(a.ewo, b.ewo))
-        .map(g => ({ ...g, lot: [...g.areas.entries()].sort((x, y) => y[1] - x[1] || _ngcNumSort(x[0], y[0]))[0][0] }));
+        .flatMap(g => lineMap[ei].get(g.k) || []);
 
       // Daily pay exactly as the Weekly Time Sheet (THU FRI SAT MON TUE WED).
       const daily = _acctEarnDaily(emp, true).map(c => c || 0);
@@ -24080,7 +24337,7 @@ function computeCorPaid(corb) {
       const blockRows = e.blocks.map((bl, bi) => {
         const ewo = bl.some(x => x && x.g.ewo);
         const rows = [];
-        if (bi > 0) rows.push(`<tr><td style="${lab}border-top:2px solid #000;">${eh(e.name.toUpperCase())}</td>${'<td style="' + bd + 'border-top:2px solid #000;"></td>'.repeat(8)}</tr>`);
+        if (bi > 0) rows.push(`<tr><td style="${lab}border-top:2px solid #000;">${eh(e.name.toUpperCase())}</td>${('<td style="' + bd + 'border-top:2px solid #000;"></td>').repeat(8)}</tr>`);
         if (bi === 0) rows.push(`<tr><td style="${lab}border-top:2px solid #000;">JOB NAME</td><td colspan="7" style="${bd}border-top:2px solid #000;">${eh(job)}</td><td style="${tot}border-top:2px solid #000;"></td></tr>`);
         if (bi === 0 || ewo) rows.push(`<tr><td style="${lab}">EWO</td><td style="${bd}"></td>${bl.map(x => `<td style="${cen}">${eh(x ? x.g.ewo : '')}</td>`).join('')}<td style="${tot}"></td></tr>`);
         rows.push(`<tr><td style="${lab}">JOB #</td><td style="${bd}"></td>${bl.map(x => `<td style="${cen}font-weight:700;">${eh(_ngcpJobCell(x))}</td>`).join('')}<td style="${tot}"></td></tr>`);
@@ -24198,7 +24455,7 @@ function computeCorPaid(corb) {
     const P = _ngcPayrollExportPrep(); if (!P) return;
     const XL = _acctXL(), XC = _acctXCell, wb = XL.utils.book_new(), sheetName = _acctSheetNamer();
     P.D.employees.forEach(e => {
-      const grid = [], merges = [];
+      const grid = [], merges = [], rowH = [];
       const L = (t) => XC(t, { bold: true, align: 'center' });
       const blankDays = () => _NGCP_DAYS.map(() => XC(''));
       grid.push([null, null, XC('NGC CONSTRUCTION INC  DBA DRYWALL', { bold: true, size: 12, align: 'center', border: false })]); merges.push(_acctMrg(0, 2, 0, 6));
@@ -24213,6 +24470,10 @@ function computeCorPaid(corb) {
         else grid.push([L(e.name.toUpperCase()), XC(''), ...blankDays(), XC('')]);
         if (ewo) grid.push([L('EWO'), XC(''), ...bl.map(x => XC(x ? x.g.ewo : '', { align: 'center' })), XC('')]);
         grid.push([L('JOB #'), XC(''), ...bl.map(x => XC(_ngcpJobCell(x), { bold: true, align: 'center' })), XC('')]);
+        // Tall enough for the longest wrapped LOT # name (≈18 chars per line at 8pt in a 16-wide column),
+        // otherwise Excel centers a 2–3 line name in a 1-line row and the cell looks blank.
+        const lotLines = Math.max(1, ...bl.map(x => x ? Math.ceil(String(x.g.lot || '').length / 18) : 1));
+        rowH[grid.length] = { hpt: Math.max(15, lotLines * 11 + 4) };
         grid.push([L('LOT #'), XC(''), ...bl.map(x => XC(x ? x.g.lot : '', { align: 'center', wrap: true, size: 8 })), XC('')]);
         grid.push([L('CODE #'), XC(''), ...bl.map(x => XC(_ngcpCodeCell(x), { align: 'center' })), XC('')]);
         grid.push([L('BUDGET'), XC(''), ...bl.map(x => x ? XC(x.cents / 100, { z: _MONEYZ }) : XC('')), XC(_ngcpBlockTotal(bl) / 100, { bold: true, z: _MONEYZ })]);
@@ -24222,6 +24483,7 @@ function computeCorPaid(corb) {
       const R = grid.length;
       grid.push([null, null, null, null, XC('SUPERINTENDENT AUTHORIZATION:', { bold: true, border: false })]); merges.push(_acctMrg(R, 4, R, 8));
       const ws = _acctXSheet(grid, [{ wch: 26 }, { wch: 10 }, ..._NGCP_DAYS.map(() => ({ wch: 16 })), { wch: 15 }], merges);
+      ws['!rows'] = Array.from({ length: grid.length }, (_, i) => rowH[i] || null);
       XL.utils.book_append_sheet(wb, ws, sheetName(e.name));
     });
     XL.writeFile(wb, P.base + '.xlsx');
